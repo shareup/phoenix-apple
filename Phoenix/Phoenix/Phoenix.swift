@@ -1,5 +1,4 @@
 import Foundation
-import Starscream
 
 protocol PhoenixDelegate: class {
     func didJoin(topic: String)
@@ -21,13 +20,25 @@ final class Phoenix {
         set { sync { self._delegate = newValue } }
     }
 
-    private let _websocketURL: URL
+    var autoReconnect: Bool = false {
+        didSet {
+            sync {
+                _timer?.invalidate()
+                if autoReconnect {
+                    let timer = makeTimer()
+                    RunLoop.main.add(timer, forMode: .common)
+                    _timer = timer
+                }
+            }
+        }
+    }
+
+    private let _websocket: WebSocketProtocol
     private let _topic: String
     private weak var _delegate: PhoenixDelegate?
     private let _delegateQueue: DispatchQueue
 
     private var _state: State = .disconnected
-    private var _websocket: WebSocket?
     private let _ref = Ref.Generator()
     private let _pushTracker = PushTracker()
 
@@ -39,21 +50,19 @@ final class Phoenix {
     private let _queueKey = DispatchSpecificKey<Int>()
     private lazy var _queueContext: Int = unsafeBitCast(self, to: Int.self)
 
-    private lazy var _timer: Timer = { [unowned self] in
-        return Timer(timeInterval: 15, repeats: true) { [weak self] in self?.didFire(timer: $0) }
-    }()
+    private var _timer: Timer?
 
-    init(url: URL, topic: String, delegate: PhoenixDelegate? = nil, delegateQueue: DispatchQueue = .main) {
-        _websocketURL = url
+    init(websocket: WebSocketProtocol, topic: String, delegate: PhoenixDelegate? = nil, delegateQueue: DispatchQueue = .main) {
+        _websocket = websocket
         _topic = topic
         _delegate = delegate
         _delegateQueue = delegateQueue
-        connect()
-        RunLoop.main.add(_timer, forMode: .common)
+        _websocket.callbackQueue = DispatchQueue(label: "Phoenix._websocket.callbackQueue")
+        _websocket.delegate = self
     }
 
     deinit {
-        _timer.invalidate()
+        _timer?.invalidate()
     }
 
     func push(event: Event, payload: Dictionary<String, Any> = [:]) {
@@ -68,19 +77,21 @@ final class Phoenix {
 }
 
 extension Phoenix {
-    private func connect() {
+    func connect() {
         sync {
             guard case .disconnected = _state else { return }
             _state = .connecting
-            let socket = WebSocket(url: _websocketURL)
-            socket.callbackQueue = DispatchQueue(label: "Phoenix._websocket.callbackQueue")
-            socket.delegate = self
-            socket.connect()
-            _websocket = socket
+            _websocket.connect()
         }
     }
 
-    private func join(socket: WebSocketClient) {
+    func disconnect() {
+        sync { _websocket.disconnect() }
+    }
+}
+
+extension Phoenix {
+    private func join(socket: WebSocketProtocol) {
         sync {
             let join = makeJoin()
             if let data = try? join.encoded() {
@@ -102,7 +113,7 @@ extension Phoenix {
     private func synced_push(_ push: Push, joinRef: Ref) {
         assert(isSynced)
         do {
-            _websocket?.write(data: try push.encoded(with: joinRef))
+            _websocket.write(data: try push.encoded(with: joinRef))
         } catch {
             print("Could not encode \(String(describing: push))")
             _pushTracker.removePush(for: push.ref)
@@ -115,7 +126,7 @@ extension Phoenix {
             let heartbeat = makeHeartbeat()
             guard let data = try? heartbeat.encoded(with: ref) else { return assertionFailure() }
             _pushTracker[heartbeat.ref] = heartbeat
-            _websocket?.write(data: data)
+            _websocket.write(data: data)
         }
     }
 
@@ -167,14 +178,14 @@ extension Phoenix {
             _pushTracker.removePush(for: push.ref)
             synced_flushAllPushes()
         } else {
-            _websocket?.disconnect()
+            _websocket.disconnect()
         }
     }
 
     private func synced_handleHeartbeat(reply: Message, for push: Push) {
         assert(isSynced)
         if reply.isNotOk {
-            _websocket?.disconnect()
+            _websocket.disconnect()
         }
     }
 }
@@ -202,6 +213,10 @@ extension Phoenix {
 }
 
 extension Phoenix {
+    private func makeTimer() -> Timer {
+        return Timer(timeInterval: 15, repeats: true) { [weak self] in self?.didFire(timer: $0) }
+    }
+
     private func didFire(timer: Timer) {
         let state: State = sync { return self._state }
         switch state {
@@ -217,12 +232,12 @@ extension Phoenix {
     }
 }
 
-extension Phoenix: WebSocketDelegate {
-    func websocketDidConnect(socket: WebSocketClient) {
-        join(socket: socket)
+extension Phoenix: WebSocketDelegateProtocol {
+    func didConnect(websocket: WebSocketProtocol) {
+        join(socket: websocket)
     }
 
-    func websocketDidDisconnect(socket: WebSocketClient, error: Error?) {
+    func didDisconnect(websocket: WebSocketProtocol, error: Error?) {
         sync {
             _state = .disconnected
             let topic = _topic
@@ -230,7 +245,7 @@ extension Phoenix: WebSocketDelegate {
         }
     }
 
-    func websocketDidReceiveMessage(socket: WebSocketClient, text: String) {
+    func didReceiveMessage(websocket: WebSocketProtocol, text: String) {
         guard let data = text.data(using: .utf8) else { return }
 
         do {
@@ -240,7 +255,7 @@ extension Phoenix: WebSocketDelegate {
         }
     }
 
-    func websocketDidReceiveData(socket: WebSocketClient, data: Data) {
+    func didReceiveData(websocket: WebSocketProtocol, data: Data) {
         assertionFailure("\(#function) \(string(from: data))")
     }
 }
