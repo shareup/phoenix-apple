@@ -42,18 +42,52 @@ class PhoenixTests: XCTestCase {
         phoenix = Phoenix(websocket: websocket, topic: topic, delegate: delegate, delegateQueue: queue)
     }
 
-    func testConnect() {
+    func testConnectJoinsChannel() {
         websocket.onConnect = { $0.sendConnectFromServer() }
         websocket.onWriteData = { websocket, _ in
             websocket.sendReplyFromServer(self.json(ref: 1, payload: ["status": "ok"]))
         }
-        
         phoenix.connect()
         wait { [topic] == $1.joined }
+    }
+
+    func testSendNewMessage() {
+        connect()
+        let event = "phx_msg"
+        let payload = ["status": "ok", "key": "value"]
+        var json = self.json(ref: 2, joinRef: 1, payload: payload)
+        json["event"] = event
+        websocket.sendFromServer(json)
+        wait { websocket, delegate in
+            guard let message = delegate.receivedMessages.first else { return false }
+            let expected = Phoenix.Message(
+                joinRef: 1, ref: 2, topic: topic, event: Phoenix.Event(event), payload: payload
+            )
+            return isMessage(message, equalTo: expected)
+        }
+    }
+
+    func testReply() {
+        connect()
+
+
     }
 }
 
 private extension PhoenixTests {
+    func connect() {
+        websocket.onConnect = { $0.sendConnectFromServer() }
+        websocket.onWriteData = { websocket, _ in
+            websocket.sendReplyFromServer(self.json(ref: 1, payload: ["status": "ok"]))
+        }
+        phoenix.connect()
+        wait { [topic] == $1.joined }
+
+        delegate.joined = []
+        delegate.receivedReplies = []
+        delegate.receivedMessages = []
+    }
+
     func json(ref: Int, joinRef: Int? = nil, payload: Dictionary<String, Any>) -> Dictionary<String, Any> {
         var json: Dictionary<String, Any> = ["ref": ref, "topic": topic, "payload": payload]
         if let joinRef = joinRef { json["join_ref"] = joinRef }
@@ -73,5 +107,16 @@ private extension PhoenixTests {
         }
 
         XCTFail()
+    }
+
+    func isMessage(_ message: Phoenix.Message, equalTo other: Phoenix.Message) -> Bool {
+        guard message.topic == other.topic else { return false }
+        guard message.event == other.event else { return false }
+        guard message.ref == other.ref else { return false }
+        guard message.joinRef == other.joinRef else { return false }
+        guard message.status == other.status else { return false }
+        guard let payload = message.payload as? Dictionary<String, String> else { return false }
+        guard let otherPayload = message.payload as? Dictionary<String, String> else { return false }
+        return payload == otherPayload
     }
 }

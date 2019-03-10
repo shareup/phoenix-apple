@@ -1,7 +1,7 @@
 import Foundation
 
 extension Phoenix {
-    enum Event {
+    enum Event: Equatable {
         case join
         case leave
         case close
@@ -46,6 +46,10 @@ extension Phoenix {
             case .custom(let string):
                 return string
             }
+        }
+
+        static func == (lhs: Event, rhs: Event) -> Bool {
+            return lhs.stringValue == rhs.stringValue
         }
     }
 }

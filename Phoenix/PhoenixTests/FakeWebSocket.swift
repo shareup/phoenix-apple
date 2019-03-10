@@ -49,7 +49,7 @@ class FakeWebSocket: WebSocketProtocol {
         sendFromServer(json)
     }
 
-    private func sendFromServer(_ json: Dictionary<String, Any>) {
+    func sendFromServer(_ json: Dictionary<String, Any>) {
         let data = try! JSONSerialization.data(withJSONObject: json, options: [])
         let text = String(data: data, encoding: .utf8)!
         callbackQueue.async { [unowned self] in
