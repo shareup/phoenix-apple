@@ -15,6 +15,7 @@
 		570D01DF222C1405004D08BD /* Phoenix.Ref.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DB222C1405004D08BD /* Phoenix.Ref.swift */; };
 		570D01E0222C1405004D08BD /* Phoenix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DC222C1405004D08BD /* Phoenix.swift */; };
 		570D01E3222C1449004D08BD /* Starscream.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 570D01E2222C1449004D08BD /* Starscream.framework */; };
+		57FC4AF42235481E006D977F /* Phoenix.Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4AF32235481E006D977F /* Phoenix.Message.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +44,7 @@
 		570D01DB222C1405004D08BD /* Phoenix.Ref.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Ref.swift; sourceTree = "<group>"; };
 		570D01DC222C1405004D08BD /* Phoenix.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.swift; sourceTree = "<group>"; };
 		570D01E2222C1449004D08BD /* Starscream.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Starscream.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		57FC4AF32235481E006D977F /* Phoenix.Message.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Message.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +91,7 @@
 			isa = PBXGroup;
 			children = (
 				570D01D9222C1404004D08BD /* Phoenix.Event.swift */,
+				57FC4AF32235481E006D977F /* Phoenix.Message.swift */,
 				570D01DA222C1405004D08BD /* Phoenix.Push.swift */,
 				570D01DB222C1405004D08BD /* Phoenix.Ref.swift */,
 				570D01DC222C1405004D08BD /* Phoenix.swift */,
@@ -246,6 +249,7 @@
 				570D01DE222C1405004D08BD /* Phoenix.Push.swift in Sources */,
 				570D01DD222C1405004D08BD /* Phoenix.Event.swift in Sources */,
 				570D01DF222C1405004D08BD /* Phoenix.Ref.swift in Sources */,
+				57FC4AF42235481E006D977F /* Phoenix.Message.swift in Sources */,
 				570D01E0222C1405004D08BD /* Phoenix.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
