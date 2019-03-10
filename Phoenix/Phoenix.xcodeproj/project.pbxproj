@@ -1,0 +1,347 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 50;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		570D01C3222C0B81004D08BD /* Phoenix.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 570D01B9222C0B81004D08BD /* Phoenix.framework */; };
+		570D01C8222C0B81004D08BD /* PhoenixTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01C7222C0B81004D08BD /* PhoenixTests.swift */; };
+		570D01CA222C0B81004D08BD /* Phoenix.h in Headers */ = {isa = PBXBuildFile; fileRef = 570D01BC222C0B81004D08BD /* Phoenix.h */; settings = {ATTRIBUTES = (Public, ); }; };
+		570D01DD222C1405004D08BD /* Phoenix.Event.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01D9222C1404004D08BD /* Phoenix.Event.swift */; };
+		570D01DE222C1405004D08BD /* Phoenix.Push.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DA222C1405004D08BD /* Phoenix.Push.swift */; };
+		570D01DF222C1405004D08BD /* Phoenix.Ref.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DB222C1405004D08BD /* Phoenix.Ref.swift */; };
+		570D01E0222C1405004D08BD /* Phoenix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DC222C1405004D08BD /* Phoenix.swift */; };
+		570D01E3222C1449004D08BD /* Starscream.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 570D01E2222C1449004D08BD /* Starscream.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		570D01C4222C0B81004D08BD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 570D01B0222C0B81004D08BD /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 570D01B8222C0B81004D08BD;
+			remoteInfo = Phoenix;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		570D01B9222C0B81004D08BD /* Phoenix.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Phoenix.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		570D01BC222C0B81004D08BD /* Phoenix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Phoenix.h; sourceTree = "<group>"; };
+		570D01BD222C0B81004D08BD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		570D01C2222C0B81004D08BD /* PhoenixTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PhoenixTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		570D01C7222C0B81004D08BD /* PhoenixTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoenixTests.swift; sourceTree = "<group>"; };
+		570D01C9222C0B81004D08BD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		570D01D4222C0C14004D08BD /* phoenixtests-release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "phoenixtests-release.xcconfig"; sourceTree = "<group>"; };
+		570D01D5222C0C14004D08BD /* phoenix-debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "phoenix-debug.xcconfig"; sourceTree = "<group>"; };
+		570D01D6222C0C14004D08BD /* phoenix-release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "phoenix-release.xcconfig"; sourceTree = "<group>"; };
+		570D01D7222C0C14004D08BD /* phoenixtests-debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = "phoenixtests-debug.xcconfig"; sourceTree = "<group>"; };
+		570D01D9222C1404004D08BD /* Phoenix.Event.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Event.swift; sourceTree = "<group>"; };
+		570D01DA222C1405004D08BD /* Phoenix.Push.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Push.swift; sourceTree = "<group>"; };
+		570D01DB222C1405004D08BD /* Phoenix.Ref.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Ref.swift; sourceTree = "<group>"; };
+		570D01DC222C1405004D08BD /* Phoenix.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.swift; sourceTree = "<group>"; };
+		570D01E2222C1449004D08BD /* Starscream.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Starscream.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		570D01B6222C0B81004D08BD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				570D01E3222C1449004D08BD /* Starscream.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		570D01BF222C0B81004D08BD /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				570D01C3222C0B81004D08BD /* Phoenix.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		570D01AF222C0B81004D08BD = {
+			isa = PBXGroup;
+			children = (
+				570D01D3222C0C14004D08BD /* Configurations */,
+				570D01BB222C0B81004D08BD /* Phoenix */,
+				570D01C6222C0B81004D08BD /* PhoenixTests */,
+				570D01BA222C0B81004D08BD /* Products */,
+				570D01E1222C1449004D08BD /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		570D01BA222C0B81004D08BD /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				570D01B9222C0B81004D08BD /* Phoenix.framework */,
+				570D01C2222C0B81004D08BD /* PhoenixTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		570D01BB222C0B81004D08BD /* Phoenix */ = {
+			isa = PBXGroup;
+			children = (
+				570D01D9222C1404004D08BD /* Phoenix.Event.swift */,
+				570D01DA222C1405004D08BD /* Phoenix.Push.swift */,
+				570D01DB222C1405004D08BD /* Phoenix.Ref.swift */,
+				570D01DC222C1405004D08BD /* Phoenix.swift */,
+				570D01D8222C13C3004D08BD /* Resources */,
+			);
+			path = Phoenix;
+			sourceTree = "<group>";
+		};
+		570D01C6222C0B81004D08BD /* PhoenixTests */ = {
+			isa = PBXGroup;
+			children = (
+				570D01C7222C0B81004D08BD /* PhoenixTests.swift */,
+				570D01C9222C0B81004D08BD /* Info.plist */,
+			);
+			path = PhoenixTests;
+			sourceTree = "<group>";
+		};
+		570D01D3222C0C14004D08BD /* Configurations */ = {
+			isa = PBXGroup;
+			children = (
+				570D01D5222C0C14004D08BD /* phoenix-debug.xcconfig */,
+				570D01D6222C0C14004D08BD /* phoenix-release.xcconfig */,
+				570D01D7222C0C14004D08BD /* phoenixtests-debug.xcconfig */,
+				570D01D4222C0C14004D08BD /* phoenixtests-release.xcconfig */,
+			);
+			path = Configurations;
+			sourceTree = "<group>";
+		};
+		570D01D8222C13C3004D08BD /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				570D01BC222C0B81004D08BD /* Phoenix.h */,
+				570D01BD222C0B81004D08BD /* Info.plist */,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+		};
+		570D01E1222C1449004D08BD /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				570D01E2222C1449004D08BD /* Starscream.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		570D01B4222C0B81004D08BD /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				570D01CA222C0B81004D08BD /* Phoenix.h in Headers */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
+
+/* Begin PBXNativeTarget section */
+		570D01B8222C0B81004D08BD /* Phoenix */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 570D01CD222C0B81004D08BD /* Build configuration list for PBXNativeTarget "Phoenix" */;
+			buildPhases = (
+				570D01B4222C0B81004D08BD /* Headers */,
+				570D01B5222C0B81004D08BD /* Sources */,
+				570D01B6222C0B81004D08BD /* Frameworks */,
+				570D01B7222C0B81004D08BD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Phoenix;
+			productName = Phoenix;
+			productReference = 570D01B9222C0B81004D08BD /* Phoenix.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		570D01C1222C0B81004D08BD /* PhoenixTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 570D01D0222C0B81004D08BD /* Build configuration list for PBXNativeTarget "PhoenixTests" */;
+			buildPhases = (
+				570D01BE222C0B81004D08BD /* Sources */,
+				570D01BF222C0B81004D08BD /* Frameworks */,
+				570D01C0222C0B81004D08BD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				570D01C5222C0B81004D08BD /* PBXTargetDependency */,
+			);
+			name = PhoenixTests;
+			productName = PhoenixTests;
+			productReference = 570D01C2222C0B81004D08BD /* PhoenixTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		570D01B0222C0B81004D08BD /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1010;
+				LastUpgradeCheck = 1010;
+				ORGANIZATIONNAME = "Anthony Drendel";
+				TargetAttributes = {
+					570D01B8222C0B81004D08BD = {
+						CreatedOnToolsVersion = 10.1;
+						LastSwiftMigration = 1010;
+					};
+					570D01C1222C0B81004D08BD = {
+						CreatedOnToolsVersion = 10.1;
+					};
+				};
+			};
+			buildConfigurationList = 570D01B3222C0B81004D08BD /* Build configuration list for PBXProject "Phoenix" */;
+			compatibilityVersion = "Xcode 9.3";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 570D01AF222C0B81004D08BD;
+			productRefGroup = 570D01BA222C0B81004D08BD /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				570D01B8222C0B81004D08BD /* Phoenix */,
+				570D01C1222C0B81004D08BD /* PhoenixTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		570D01B7222C0B81004D08BD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		570D01C0222C0B81004D08BD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		570D01B5222C0B81004D08BD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				570D01DE222C1405004D08BD /* Phoenix.Push.swift in Sources */,
+				570D01DD222C1405004D08BD /* Phoenix.Event.swift in Sources */,
+				570D01DF222C1405004D08BD /* Phoenix.Ref.swift in Sources */,
+				570D01E0222C1405004D08BD /* Phoenix.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		570D01BE222C0B81004D08BD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				570D01C8222C0B81004D08BD /* PhoenixTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		570D01C5222C0B81004D08BD /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 570D01B8222C0B81004D08BD /* Phoenix */;
+			targetProxy = 570D01C4222C0B81004D08BD /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		570D01CB222C0B81004D08BD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 570D01D5222C0C14004D08BD /* phoenix-debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		570D01CC222C0B81004D08BD /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 570D01D6222C0C14004D08BD /* phoenix-release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		570D01CE222C0B81004D08BD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 570D01D5222C0C14004D08BD /* phoenix-debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		570D01CF222C0B81004D08BD /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 570D01D6222C0C14004D08BD /* phoenix-release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		570D01D1222C0B81004D08BD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 570D01D7222C0C14004D08BD /* phoenixtests-debug.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+		570D01D2222C0B81004D08BD /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 570D01D4222C0C14004D08BD /* phoenixtests-release.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		570D01B3222C0B81004D08BD /* Build configuration list for PBXProject "Phoenix" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				570D01CB222C0B81004D08BD /* Debug */,
+				570D01CC222C0B81004D08BD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		570D01CD222C0B81004D08BD /* Build configuration list for PBXNativeTarget "Phoenix" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				570D01CE222C0B81004D08BD /* Debug */,
+				570D01CF222C0B81004D08BD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		570D01D0222C0B81004D08BD /* Build configuration list for PBXNativeTarget "PhoenixTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				570D01D1222C0B81004D08BD /* Debug */,
+				570D01D2222C0B81004D08BD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 570D01B0222C0B81004D08BD /* Project object */;
+}

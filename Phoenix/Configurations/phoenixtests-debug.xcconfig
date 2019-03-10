@@ -1,0 +1,5 @@
+#include "../../Configurations/debug.xcconfig"
+
+INFOPLIST_FILE = PhoenixTests/Info.plist
+PRODUCT_BUNDLE_IDENTIFIER = app.shareup.phoenixtests
+PRODUCT_MODULE_NAME = PhoenixTests

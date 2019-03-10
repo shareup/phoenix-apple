@@ -1,0 +1,6 @@
+#include "../../Configurations/release.xcconfig"
+
+INFOPLIST_FILE = Phoenix/Info.plist
+PRODUCT_BUNDLE_IDENTIFIER = app.shareup.phoenix
+PRODUCT_MODULE_NAME = Phoenix
+SKIP_INSTALL = NO
