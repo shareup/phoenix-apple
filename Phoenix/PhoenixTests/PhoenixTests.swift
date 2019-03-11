@@ -70,7 +70,30 @@ class PhoenixTests: XCTestCase {
     func testReply() {
         connect()
 
+        let push = Phoenix.Push(
+            ref: 2, topic: topic, event: "message:create",
+            payload: ["id": "123", "user_id": "456", "text": "This is message text"]
+        )
 
+        var replyPayload = push.payload
+        replyPayload["status"] = "ok"
+        let reply = Phoenix.Message(joinRef: 1, ref: 2, topic: topic, event: .reply, payload: replyPayload)
+
+        websocket.onWriteData = { [unowned self] websocket, data in
+            guard let sent = try? Phoenix.Message(data: data) else { return XCTFail() }
+            let expected = Phoenix.Message(
+                joinRef: 1, ref: 2, topic: self.topic, event: push.event, payload: push.payload
+            )
+            XCTAssertTrue(self.isMessage(sent, equalTo: expected))
+            websocket.sendReplyFromServer(self.json(ref: 2, joinRef: 1, payload: replyPayload))
+        }
+
+        phoenix.push(event: push.event, payload: push.payload)
+
+        wait { websocket, delegate in
+            guard let (incoming, outgoing) = delegate.receivedReplies.first else { return false }
+            return isMessage(incoming, equalTo: reply) && isPush(outgoing, equalTo: push)
+        }
     }
 }
 
@@ -107,6 +130,15 @@ private extension PhoenixTests {
         }
 
         XCTFail()
+    }
+
+    func isPush(_ push: Phoenix.Push, equalTo other: Phoenix.Push) -> Bool {
+        guard push.topic == other.topic else { return false }
+        guard push.event == other.event else { return false }
+        guard push.ref == other.ref else { return false }
+        guard let payload = push.payload as? Dictionary<String, String> else { return false }
+        guard let otherPayload = other.payload as? Dictionary<String, String> else { return false }
+        return payload == otherPayload
     }
 
     func isMessage(_ message: Phoenix.Message, equalTo other: Phoenix.Message) -> Bool {

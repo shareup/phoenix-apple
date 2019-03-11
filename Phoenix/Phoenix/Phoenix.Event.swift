@@ -1,7 +1,7 @@
 import Foundation
 
 extension Phoenix {
-    enum Event: Equatable {
+    enum Event: Equatable, ExpressibleByStringLiteral {
         case join
         case leave
         case close
@@ -27,6 +27,10 @@ extension Phoenix {
             default:
                 self = .custom(stringValue)
             }
+        }
+
+        init(stringLiteral: String) {
+            self.init(stringLiteral)
         }
 
         var stringValue: String {
