@@ -45,7 +45,10 @@ class PhoenixTests: XCTestCase {
     func testConnectJoinsChannel() {
         websocket.onConnect = { $0.sendConnectFromServer() }
         websocket.onWriteData = { websocket, _ in
-            websocket.sendReplyFromServer(self.json(ref: 1, payload: ["status": "ok"]))
+            let message = Phoenix.Message(
+                joinRef: 1, ref: 1, topic: self.topic, event: .reply, payload: ["status": "ok"]
+            )
+            websocket.sendMessageFromServer(message)
         }
         phoenix.connect()
         wait { [topic] == $1.joined }
@@ -53,17 +56,13 @@ class PhoenixTests: XCTestCase {
 
     func testSendNewMessage() {
         connect()
-        let event = "phx_msg"
-        let payload = ["status": "ok", "key": "value"]
-        var json = self.json(ref: 2, joinRef: 1, payload: payload)
-        json["event"] = event
-        websocket.sendFromServer(json)
+        let message = Phoenix.Message(
+            joinRef: 1, ref: 2, topic: topic, event: "phx_msg", payload: ["status": "ok", "key": "value"]
+        )
+        websocket.sendMessageFromServer(message)
         wait { websocket, delegate in
-            guard let message = delegate.receivedMessages.first else { return false }
-            let expected = Phoenix.Message(
-                joinRef: 1, ref: 2, topic: topic, event: Phoenix.Event(event), payload: payload
-            )
-            return isMessage(message, equalTo: expected)
+            guard let received = delegate.receivedMessages.first else { return false }
+            return isMessage(received, equalTo: message)
         }
     }
 
@@ -85,7 +84,7 @@ class PhoenixTests: XCTestCase {
                 joinRef: 1, ref: 2, topic: self.topic, event: push.event, payload: push.payload
             )
             XCTAssertTrue(self.isMessage(sent, equalTo: expected))
-            websocket.sendReplyFromServer(self.json(ref: 2, joinRef: 1, payload: replyPayload))
+            websocket.sendMessageFromServer(reply)
         }
 
         phoenix.push(event: push.event, payload: push.payload)
@@ -101,7 +100,10 @@ private extension PhoenixTests {
     func connect() {
         websocket.onConnect = { $0.sendConnectFromServer() }
         websocket.onWriteData = { websocket, _ in
-            websocket.sendReplyFromServer(self.json(ref: 1, payload: ["status": "ok"]))
+            let message = Phoenix.Message(
+                ref: 1, topic: self.topic, event: "phx_reply", payload: ["status": "ok"]
+            )
+            websocket.sendMessageFromServer(message)
         }
         phoenix.connect()
         wait { [topic] == $1.joined }

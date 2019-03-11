@@ -43,16 +43,10 @@ class FakeWebSocket: WebSocketProtocol {
         }
     }
 
-    func sendReplyFromServer(_ json: Dictionary<String, Any>) {
-        var json = json
-        json["event"] = "phx_reply"
-        sendFromServer(json)
-    }
-
-    func sendFromServer(_ json: Dictionary<String, Any>) {
-        let data = try! JSONSerialization.data(withJSONObject: json, options: [])
-        let text = String(data: data, encoding: .utf8)!
+    func sendMessageFromServer(_ message: Phoenix.Message) {
         callbackQueue.async { [unowned self] in
+            let data = try! message.encoded()
+            let text = String(data: data, encoding: .utf8)!
             self.delegate?.didReceiveMessage(websocket: self, text: text)
         }
     }
