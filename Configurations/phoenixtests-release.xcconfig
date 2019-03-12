@@ -1,4 +1,4 @@
-#include "../../Configurations/release.xcconfig"
+#include "release.xcconfig"
 
 INFOPLIST_FILE = PhoenixTests/Info.plist
 PRODUCT_BUNDLE_IDENTIFIER = app.shareup.phoenixtests
