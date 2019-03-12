@@ -1,13 +1,13 @@
 import Foundation
 
 extension Phoenix {
-    struct Push {
-        let ref: Ref
-        let topic: String
-        let event: Event
-        let payload: Dictionary<String, Any>
+    public struct Push {
+        public let ref: Ref
+        public let topic: String
+        public let event: Event
+        public let payload: Dictionary<String, Any>
 
-        init(ref: Ref, topic: String, event: Event, payload: Dictionary<String, Any> = [:]) {
+        public init(ref: Ref, topic: String, event: Event, payload: Dictionary<String, Any> = [:]) {
             self.ref = ref
             self.topic = topic
             self.event = event

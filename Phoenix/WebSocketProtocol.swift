@@ -1,13 +1,13 @@
 import Foundation
 
-protocol WebSocketDelegateProtocol: class {
+public protocol WebSocketDelegateProtocol: class {
     func didConnect(websocket: WebSocketProtocol)
     func didDisconnect(websocket: WebSocketProtocol, error: Error?)
     func didReceiveMessage(websocket: WebSocketProtocol, text: String)
     func didReceiveData(websocket: WebSocketProtocol, data: Data)
 }
 
-protocol WebSocketProtocol: class {
+public protocol WebSocketProtocol: class {
     var callbackQueue: DispatchQueue { get set }
     var delegate: WebSocketDelegateProtocol? { get set }
 

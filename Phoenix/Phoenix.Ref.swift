@@ -1,22 +1,22 @@
 import Foundation
 
 extension Phoenix {
-    struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
+    public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
         private(set) var rawValue: UInt64
 
-        init(_ rawValue: UInt64) {
+        public init(_ rawValue: UInt64) {
             self.rawValue = rawValue
         }
 
-        init(integerLiteral value: UInt64) {
+        public init(integerLiteral value: UInt64) {
             self.rawValue = value
         }
 
-        static func == (lhs: Ref, rhs: Ref) -> Bool {
+        public static func == (lhs: Ref, rhs: Ref) -> Bool {
             return lhs.rawValue == rhs.rawValue
         }
 
-        static func < (lhs: Ref, rhs: Ref) -> Bool {
+        public static func < (lhs: Ref, rhs: Ref) -> Bool {
             return lhs.rawValue < rhs.rawValue
         }
     }

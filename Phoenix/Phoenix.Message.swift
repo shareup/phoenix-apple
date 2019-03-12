@@ -1,23 +1,23 @@
 import Foundation
 
 extension Phoenix {
-    struct Message {
-        enum DecodingError: Error {
+    public struct Message {
+        public enum DecodingError: Error {
             case invalidType(Any)
             case missingValue(String)
         }
 
-        let joinRef: Ref?
-        let ref: Ref?
-        let topic: String
-        let event: Event
-        let payload: Dictionary<String, Any>
+        public let joinRef: Ref?
+        public let ref: Ref?
+        public let topic: String
+        public let event: Event
+        public let payload: Dictionary<String, Any>
 
-        var status: String? { return payload["status"] as? String }
-        var isOk: Bool { return status == "ok" }
-        var isNotOk: Bool { return isOk == false }
+        public var status: String? { return payload["status"] as? String }
+        public var isOk: Bool { return status == "ok" }
+        public var isNotOk: Bool { return isOk == false }
 
-        init(data: Data) throws {
+        public init(data: Data) throws {
             let jsonObject = try JSONSerialization.jsonObject(with: data, options: [])
             guard let dict = jsonObject as? Dictionary<String, Any> else {
                 throw DecodingError.invalidType(jsonObject)
@@ -35,7 +35,7 @@ extension Phoenix {
             )
         }
 
-        init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: Event, payload: Dictionary<String, Any> = [:]) {
+        public init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: Event, payload: Dictionary<String, Any> = [:]) {
             self.joinRef = joinRef
             self.ref = ref
             self.topic = topic

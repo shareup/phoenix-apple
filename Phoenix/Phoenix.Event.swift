@@ -1,7 +1,7 @@
 import Foundation
 
 extension Phoenix {
-    enum Event: Equatable, ExpressibleByStringLiteral {
+    public enum Event: Equatable, ExpressibleByStringLiteral {
         case join
         case leave
         case close
@@ -10,7 +10,7 @@ extension Phoenix {
         case heartbeat
         case custom(String)
 
-        init(_ stringValue: String) {
+        public init(_ stringValue: String) {
             switch stringValue {
             case "phx_join":
                 self = .join
@@ -29,11 +29,11 @@ extension Phoenix {
             }
         }
 
-        init(stringLiteral: String) {
+        public init(stringLiteral: String) {
             self.init(stringLiteral)
         }
 
-        var stringValue: String {
+        public var stringValue: String {
             switch self {
             case .join:
                 return "phx_join"
@@ -52,7 +52,7 @@ extension Phoenix {
             }
         }
 
-        static func == (lhs: Event, rhs: Event) -> Bool {
+        public static func == (lhs: Event, rhs: Event) -> Bool {
             return lhs.stringValue == rhs.stringValue
         }
     }

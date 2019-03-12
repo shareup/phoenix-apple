@@ -14,11 +14,13 @@
 		570D01DE222C1405004D08BD /* Phoenix.Push.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DA222C1405004D08BD /* Phoenix.Push.swift */; };
 		570D01DF222C1405004D08BD /* Phoenix.Ref.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DB222C1405004D08BD /* Phoenix.Ref.swift */; };
 		570D01E0222C1405004D08BD /* Phoenix.swift in Sources */ = {isa = PBXBuildFile; fileRef = 570D01DC222C1405004D08BD /* Phoenix.swift */; };
-		570D01E3222C1449004D08BD /* Starscream.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 570D01E2222C1449004D08BD /* Starscream.framework */; };
 		57FC4AF42235481E006D977F /* Phoenix.Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4AF32235481E006D977F /* Phoenix.Message.swift */; };
 		57FC4AF622354870006D977F /* WebSocketProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4AF522354870006D977F /* WebSocketProtocol.swift */; };
 		57FC4AF822354A37006D977F /* StarscreamWebSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4AF722354A37006D977F /* StarscreamWebSocket.swift */; };
 		57FC4AFA22357DB8006D977F /* FakeWebSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4AF922357DB8006D977F /* FakeWebSocket.swift */; };
+		57FC4B0A2237A4FB006D977F /* Starscream.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 57FC4B072237A4EB006D977F /* Starscream.framework */; };
+		57FC4B0C2237A537006D977F /* Starscream.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = 57FC4B072237A4EB006D977F /* Starscream.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		57FC4B162237B7D1006D977F /* RefGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4B152237B7D1006D977F /* RefGeneratorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,7 +31,35 @@
 			remoteGlobalIDString = 570D01B8222C0B81004D08BD;
 			remoteInfo = Phoenix;
 		};
+		57FC4B062237A4EB006D977F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 57FC4B012237A4EB006D977F /* Starscream.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 33CCF0921F5DDC030099B092;
+			remoteInfo = Starscream;
+		};
+		57FC4B082237A4EB006D977F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 57FC4B012237A4EB006D977F /* Starscream.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 335FA2021F5DF71D00F6D2EC;
+			remoteInfo = "Starscream Tests";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		57FC4B0B2237A51F006D977F /* Copy Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				57FC4B0C2237A537006D977F /* Starscream.framework in Copy Frameworks */,
+			);
+			name = "Copy Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		570D01B9222C0B81004D08BD /* Phoenix.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Phoenix.framework; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -46,11 +76,12 @@
 		570D01DA222C1405004D08BD /* Phoenix.Push.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Push.swift; sourceTree = "<group>"; };
 		570D01DB222C1405004D08BD /* Phoenix.Ref.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Ref.swift; sourceTree = "<group>"; };
 		570D01DC222C1405004D08BD /* Phoenix.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.swift; sourceTree = "<group>"; };
-		570D01E2222C1449004D08BD /* Starscream.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = Starscream.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		57FC4AF32235481E006D977F /* Phoenix.Message.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Phoenix.Message.swift; sourceTree = "<group>"; };
 		57FC4AF522354870006D977F /* WebSocketProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketProtocol.swift; sourceTree = "<group>"; };
 		57FC4AF722354A37006D977F /* StarscreamWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarscreamWebSocket.swift; sourceTree = "<group>"; };
 		57FC4AF922357DB8006D977F /* FakeWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeWebSocket.swift; sourceTree = "<group>"; };
+		57FC4B012237A4EB006D977F /* Starscream.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = Starscream.xcodeproj; path = Starscream/Starscream.xcodeproj; sourceTree = "<group>"; };
+		57FC4B152237B7D1006D977F /* RefGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefGeneratorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -58,7 +89,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				570D01E3222C1449004D08BD /* Starscream.framework in Frameworks */,
+				57FC4B0A2237A4FB006D977F /* Starscream.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -77,10 +108,11 @@
 			isa = PBXGroup;
 			children = (
 				570D01D3222C0C14004D08BD /* Configurations */,
+				570D01E1222C1449004D08BD /* Frameworks */,
 				570D01BB222C0B81004D08BD /* Phoenix */,
 				570D01C6222C0B81004D08BD /* PhoenixTests */,
 				570D01BA222C0B81004D08BD /* Products */,
-				570D01E1222C1449004D08BD /* Frameworks */,
+				57FC4B002237A4D3006D977F /* Starscream */,
 			);
 			sourceTree = "<group>";
 		};
@@ -111,9 +143,10 @@
 		570D01C6222C0B81004D08BD /* PhoenixTests */ = {
 			isa = PBXGroup;
 			children = (
-				570D01C7222C0B81004D08BD /* PhoenixTests.swift */,
-				57FC4AF922357DB8006D977F /* FakeWebSocket.swift */,
 				570D01C9222C0B81004D08BD /* Info.plist */,
+				57FC4AF922357DB8006D977F /* FakeWebSocket.swift */,
+				570D01C7222C0B81004D08BD /* PhoenixTests.swift */,
+				57FC4B152237B7D1006D977F /* RefGeneratorTests.swift */,
 			);
 			path = PhoenixTests;
 			sourceTree = "<group>";
@@ -141,9 +174,25 @@
 		570D01E1222C1449004D08BD /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				570D01E2222C1449004D08BD /* Starscream.framework */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		57FC4B002237A4D3006D977F /* Starscream */ = {
+			isa = PBXGroup;
+			children = (
+				57FC4B012237A4EB006D977F /* Starscream.xcodeproj */,
+			);
+			name = Starscream;
+			sourceTree = "<group>";
+		};
+		57FC4B022237A4EB006D977F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				57FC4B072237A4EB006D977F /* Starscream.framework */,
+				57FC4B092237A4EB006D977F /* Starscream Tests.xctest */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -167,7 +216,7 @@
 				570D01B4222C0B81004D08BD /* Headers */,
 				570D01B5222C0B81004D08BD /* Sources */,
 				570D01B6222C0B81004D08BD /* Frameworks */,
-				570D01B7222C0B81004D08BD /* Resources */,
+				57FC4B0B2237A51F006D977F /* Copy Frameworks */,
 			);
 			buildRules = (
 			);
@@ -225,6 +274,12 @@
 			mainGroup = 570D01AF222C0B81004D08BD;
 			productRefGroup = 570D01BA222C0B81004D08BD /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 57FC4B022237A4EB006D977F /* Products */;
+					ProjectRef = 57FC4B012237A4EB006D977F /* Starscream.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				570D01B8222C0B81004D08BD /* Phoenix */,
@@ -233,14 +288,24 @@
 		};
 /* End PBXProject section */
 
-/* Begin PBXResourcesBuildPhase section */
-		570D01B7222C0B81004D08BD /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
+/* Begin PBXReferenceProxy section */
+		57FC4B072237A4EB006D977F /* Starscream.framework */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.framework;
+			path = Starscream.framework;
+			remoteRef = 57FC4B062237A4EB006D977F /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
 		};
+		57FC4B092237A4EB006D977F /* Starscream Tests.xctest */ = {
+			isa = PBXReferenceProxy;
+			fileType = wrapper.cfbundle;
+			path = "Starscream Tests.xctest";
+			remoteRef = 57FC4B082237A4EB006D977F /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXReferenceProxy section */
+
+/* Begin PBXResourcesBuildPhase section */
 		570D01C0222C0B81004D08BD /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -269,6 +334,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				57FC4B162237B7D1006D977F /* RefGeneratorTests.swift in Sources */,
 				57FC4AFA22357DB8006D977F /* FakeWebSocket.swift in Sources */,
 				570D01C8222C0B81004D08BD /* PhoenixTests.swift in Sources */,
 			);
