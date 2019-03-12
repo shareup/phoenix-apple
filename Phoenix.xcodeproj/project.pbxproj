@@ -20,6 +20,7 @@
 		57FC4AFA22357DB8006D977F /* FakeWebSocket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4AF922357DB8006D977F /* FakeWebSocket.swift */; };
 		57FC4B0A2237A4FB006D977F /* Starscream.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 57FC4B072237A4EB006D977F /* Starscream.framework */; };
 		57FC4B0C2237A537006D977F /* Starscream.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = 57FC4B072237A4EB006D977F /* Starscream.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		57FC4B162237B7D1006D977F /* RefGeneratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FC4B152237B7D1006D977F /* RefGeneratorTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -80,6 +81,7 @@
 		57FC4AF722354A37006D977F /* StarscreamWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarscreamWebSocket.swift; sourceTree = "<group>"; };
 		57FC4AF922357DB8006D977F /* FakeWebSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeWebSocket.swift; sourceTree = "<group>"; };
 		57FC4B012237A4EB006D977F /* Starscream.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = Starscream.xcodeproj; path = Starscream/Starscream.xcodeproj; sourceTree = "<group>"; };
+		57FC4B152237B7D1006D977F /* RefGeneratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RefGeneratorTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -141,9 +143,10 @@
 		570D01C6222C0B81004D08BD /* PhoenixTests */ = {
 			isa = PBXGroup;
 			children = (
-				570D01C7222C0B81004D08BD /* PhoenixTests.swift */,
-				57FC4AF922357DB8006D977F /* FakeWebSocket.swift */,
 				570D01C9222C0B81004D08BD /* Info.plist */,
+				57FC4AF922357DB8006D977F /* FakeWebSocket.swift */,
+				570D01C7222C0B81004D08BD /* PhoenixTests.swift */,
+				57FC4B152237B7D1006D977F /* RefGeneratorTests.swift */,
 			);
 			path = PhoenixTests;
 			sourceTree = "<group>";
@@ -331,6 +334,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				57FC4B162237B7D1006D977F /* RefGeneratorTests.swift in Sources */,
 				57FC4AFA22357DB8006D977F /* FakeWebSocket.swift in Sources */,
 				570D01C8222C0B81004D08BD /* PhoenixTests.swift in Sources */,
 			);

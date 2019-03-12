@@ -1,13 +1,13 @@
 import Foundation
 
-protocol PhoenixDelegate: class {
+public protocol PhoenixDelegate: class {
     func didJoin(topic: String)
     func didReceive(reply: Phoenix.Message, for: Phoenix.Push)
     func didReceive(message: Phoenix.Message)
     func didLeave(topic: String)
 }
 
-final class Phoenix {
+public final class Phoenix {
     private enum State {
         case disconnected
         case connecting
@@ -15,12 +15,12 @@ final class Phoenix {
         case joined(Ref)
     }
 
-    var delegate: PhoenixDelegate? {
+    public var delegate: PhoenixDelegate? {
         get { return sync { return self._delegate } }
         set { sync { self._delegate = newValue } }
     }
 
-    var autoReconnect: Bool = false {
+    public var autoReconnect: Bool = false {
         didSet {
             sync {
                 _timer?.invalidate()
@@ -52,7 +52,9 @@ final class Phoenix {
 
     private var _timer: Timer?
 
-    init(websocket: WebSocketProtocol, topic: String, delegate: PhoenixDelegate? = nil, delegateQueue: DispatchQueue = .main) {
+    public init(websocket: WebSocketProtocol, topic: String, delegate: PhoenixDelegate? = nil,
+                delegateQueue: DispatchQueue = .main) {
+        assert(websocket.delegate == nil)
         _websocket = websocket
         _topic = topic
         _delegate = delegate
@@ -65,7 +67,7 @@ final class Phoenix {
         _timer?.invalidate()
     }
 
-    func push(event: Event, payload: Dictionary<String, Any> = [:]) {
+    public func push(event: Event, payload: Dictionary<String, Any> = [:]) {
         let push = Push(ref: _ref.advance(), topic: _topic, event: event, payload: payload)
         _pushTracker[push.ref] = push
         _synchronizationQueue.async { [weak self] in
@@ -77,7 +79,7 @@ final class Phoenix {
 }
 
 extension Phoenix {
-    func connect() {
+    public func connect() {
         sync {
             guard case .disconnected = _state else { return }
             _state = .connecting
@@ -85,7 +87,7 @@ extension Phoenix {
         }
     }
 
-    func disconnect() {
+    public func disconnect() {
         sync { _websocket.disconnect() }
     }
 }
@@ -233,11 +235,11 @@ extension Phoenix {
 }
 
 extension Phoenix: WebSocketDelegateProtocol {
-    func didConnect(websocket: WebSocketProtocol) {
+    public func didConnect(websocket: WebSocketProtocol) {
         join(socket: websocket)
     }
 
-    func didDisconnect(websocket: WebSocketProtocol, error: Error?) {
+    public func didDisconnect(websocket: WebSocketProtocol, error: Error?) {
         sync {
             _state = .disconnected
             let topic = _topic
@@ -245,7 +247,7 @@ extension Phoenix: WebSocketDelegateProtocol {
         }
     }
 
-    func didReceiveMessage(websocket: WebSocketProtocol, text: String) {
+    public func didReceiveMessage(websocket: WebSocketProtocol, text: String) {
         guard let data = text.data(using: .utf8) else { return }
 
         do {
@@ -255,7 +257,7 @@ extension Phoenix: WebSocketDelegateProtocol {
         }
     }
 
-    func didReceiveData(websocket: WebSocketProtocol, data: Data) {
+    public func didReceiveData(websocket: WebSocketProtocol, data: Data) {
         assertionFailure("\(#function) \(string(from: data))")
     }
 }
