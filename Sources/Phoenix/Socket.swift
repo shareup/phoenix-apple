@@ -68,7 +68,7 @@ public final class Socket {
         _timer?.invalidate()
     }
     
-    private func channel(for topic: String) -> Channel {
+    private func track(_ topic: String) -> Channel {
         sync {
             if let _channel = _channels[topic] {
                 return _channel
@@ -80,9 +80,27 @@ public final class Socket {
         }
     }
     
+    private func channel(for topic: String) -> Channel? {
+        sync {
+            if let _channel = _channels[topic] {
+                return _channel
+            } else {
+                return nil
+            }
+        }
+    }
+    
+    private func isTracked(_ topic: String) -> Bool {
+        sync { return _channels.keys.contains(topic) }
+    }
+    
     public func join(_ topic: String) {
-        let channel: Channel = self.channel(for: topic)
-        push(channel.makeJoinPush())
+        let channel: Channel = self.track(topic)
+        
+        if !channel.isJoining && !channel.isJoined {
+            push(channel.makeJoinPush())
+            channel.change(to: .joining)
+        }
     }
 
     public func push(topic: String, event: Event, payload: Dictionary<String, Any> = [:], callback: Push.Callback? = nil) {
@@ -148,11 +166,10 @@ extension Socket {
             guard isOpen else { return }
             
             _pushTracker.process { push -> OutgoingMessage? in
-                let channel = self.channel(for: push.topic)
-                let ref = _ref.advance()
-                
+                guard let channel = self.channel(for: push.topic) else { return nil }
                 guard let joinRef = channel.joinRef else { return nil }
                 
+                let ref = _ref.advance()
                 let message = OutgoingMessage(joinRef: joinRef, ref: ref, push: push)
                 try? _websocket.write(data: message.encoded())
                 return message
@@ -206,18 +223,17 @@ extension Socket {
     
     private func handleJoin(topic: String, joinRef: Ref) {
         sync {
-            let channel = self.channel(for: topic)
+            guard let channel = self.channel(for: topic) else { return }
+            guard channel.isJoining else { return }
             
-            if channel.joinRef == joinRef {
-                channel.change(to: .joined(joinRef))
-                _delegateQueue.async { [weak self] in self?.delegate?.didJoin(topic: topic) }
-            }
+            channel.change(to: .joined(joinRef))
+            _delegateQueue.async { [weak self] in self?.delegate?.didJoin(topic: topic) }
         }
     }
     
     private func handleLeave(topic: String) {
         sync {
-            let channel = self.channel(for: topic)
+            guard let channel = self.channel(for: topic) else { return }
             channel.change(to: .closed)
             _delegateQueue.async { [weak self] in self?.delegate?.didLeave(topic: topic) }
         }
