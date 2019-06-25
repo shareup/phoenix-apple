@@ -95,11 +95,13 @@ public final class Socket {
     }
     
     public func join(_ topic: String) {
-        let channel: Channel = self.track(topic)
-        
-        if !channel.isJoining && !channel.isJoined {
-            push(channel.makeJoinPush())
-            channel.change(to: .joining)
+        sync {
+            let channel: Channel = self.track(topic)
+            
+            if isOpen && !channel.isJoining && !channel.isJoined {
+                push(channel.makeJoinPush())
+                channel.change(to: .joining)
+            }
         }
     }
 
@@ -323,7 +325,10 @@ extension Socket: WebSocketDelegateProtocol {
         sync {
             change(to: .open)
             _channels.forEach { (_, channel) in
-                push(channel.makeJoinPush())
+                if !channel.isClosed {
+                    push(channel.makeJoinPush())
+                    channel.change(to: .joining)
+                }
             }
         }
     }

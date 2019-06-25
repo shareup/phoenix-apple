@@ -4,6 +4,7 @@ internal final class Channel {
     private let _queue = DispatchQueue(label: "Phoenix.Channel._queue")
     
     enum State {
+        case new
         case closed
         case joining
         case joined(Ref)
@@ -12,7 +13,7 @@ internal final class Channel {
     }
     
     let topic: String
-    private var _state: State = .closed
+    private var _state: State = .new
     
     init(topic: String) {
         self.topic = topic
