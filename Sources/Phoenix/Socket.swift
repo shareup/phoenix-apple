@@ -11,9 +11,10 @@ public typealias Payload = Dictionary<String, Any>
 
 public final class Socket {
     private enum State {
-        case disconnected
         case connecting
-        case connected
+        case open
+        case closing
+        case closed
     }
 
     public var delegate: SocketDelegate? {
@@ -39,7 +40,7 @@ public final class Socket {
     private weak var _delegate: SocketDelegate?
     private let _delegateQueue: DispatchQueue
 
-    private var _state: State = .disconnected
+    private var _state: State = .closed
     private let _ref = Ref.Generator()
     private let _pushTracker = PushTracker()
 
@@ -97,23 +98,39 @@ public final class Socket {
 }
 
 extension Socket {
+    private func change(to state: State) {
+        sync {
+            self._state = state
+        }
+    }
+    
+    public var isConnecting: Bool { sync { _state == .connecting } }
+    public var isOpen: Bool { sync { _state == .open } }
+    public var isClosing: Bool { sync { _state == .closing } }
+    public var isClosed: Bool { sync { _state == .closed } }
+}
+
+extension Socket {
     public func connect() {
         sync {
-            guard case .disconnected = _state else { return }
-            _state = .connecting
+            guard isClosed else { return }
+            change(to: .connecting)
             _websocket.connect()
         }
     }
 
     public func disconnect() {
-        sync { _websocket.disconnect() }
+        sync {
+            change(to: .closing)
+            _websocket.disconnect()
+        }
     }
 }
 
 extension Socket {
     private func flush() {
         sync {
-            guard case .connected = _state else { return }
+            guard isOpen else { return }
             
             _pushTracker.process { push -> OutgoingMessage? in
                 let channel = self.channel(for: push.topic)
@@ -206,40 +223,6 @@ extension Socket {
             _delegateQueue.async { [weak self] in self?.delegate?.didReceive(message: message) }
         }
     }
-
-//    private func synced_handle(reply: Message, for push: Push) {
-//        assert(isSynced)
-//        switch (_state, push.event) {
-//        case (_, .join):
-//            synced_handleJoin(reply: reply, for: push)
-//        case (.joined, .heartbeat):
-//            synced_handleHeartbeat(reply: reply, for: push)
-//        case (.joined, _):
-//            _delegateQueue.async { [weak self] in self?.delegate?.didReceive(reply: reply, for: push) }
-//        default:
-//            break
-//        }
-//    }
-//
-//    private func synced_handleJoin(reply: Message, for push: Push) {
-//        assert(isSynced)
-//        if reply.isOk {
-//            _state = .joined(push.ref)
-//            let topic = _topic
-//            _delegateQueue.async { [weak self] in self?.delegate?.didJoin(topic: topic) }
-//            _pushTracker.removePush(for: push.ref)
-//            synced_flushAllPushes()
-//        } else {
-//            _websocket.disconnect()
-//        }
-//    }
-//
-//    private func synced_handleHeartbeat(reply: Message, for push: Push) {
-//        assert(isSynced)
-//        if reply.isNotOk {
-//            _websocket.disconnect()
-//        }
-//    }
 }
 
 extension Socket {
@@ -262,6 +245,10 @@ extension Socket {
     private var isSynced: Bool {
         return DispatchQueue.getSpecific(key: _queueKey) == _queueContext
     }
+    
+    private func async(_ block: @escaping () -> Void) {
+        _synchronizationQueue.async(execute: block)
+    }
 }
 
 extension Socket {
@@ -270,14 +257,15 @@ extension Socket {
     }
 
     private func didFire(timer: Timer) {
-        let state: State = sync { return self._state }
-        switch state {
-        case .disconnected:
-            connect()
-        case .connecting:
-            break
-        case .connected:
-            heartbeat()
+        sync {
+            switch _state {
+            case .closed:
+                async { self.connect() }
+            case .connecting, .closing:
+                break
+            case .open:
+                async { self.heartbeat() }
+            }
         }
     }
 }
@@ -285,7 +273,7 @@ extension Socket {
 extension Socket: WebSocketDelegateProtocol {
     public func didConnect(websocket: WebSocketProtocol) {
         sync {
-            _state = .connected
+            change(to: .open)
             _channels.forEach { (_, channel) in
                 push(channel.makeJoinPush())
             }
@@ -294,7 +282,7 @@ extension Socket: WebSocketDelegateProtocol {
 
     public func didDisconnect(websocket: WebSocketProtocol, error: Error?) {
         sync {
-            _state = .disconnected
+            change(to: .closed)
             _channels.forEach { (_, channel) in
                 channel.change(to: .disconnected)
                 _delegateQueue.async { [weak self] in self?._delegate?.didLeave(topic: channel.topic) }

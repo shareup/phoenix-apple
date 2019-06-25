@@ -32,7 +32,7 @@ internal final class Channel {
         }
     }
     
-    func change(to state: State) {
+    internal func change(to state: State) {
         self.state = state
     }
     
