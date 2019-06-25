@@ -1,28 +1,28 @@
 import XCTest
 @testable import Phoenix
 
-private class Delegate: SocketDelegate {
-    var joined = Array<String>()
-    var receivedReplies = Array<Phoenix.Reply>()
-    var receivedMessages = Array<Phoenix.Message>()
-
-    func didJoin(topic: String) {
-        joined.append(topic)
-    }
-
-    func didReceive(reply: Phoenix.Reply) {
-        receivedReplies.append(reply)
-    }
-
-    func didReceive(message: Phoenix.Message) {
-        receivedMessages.append(message)
-    }
-
-    func didLeave(topic: String) {
-        guard let index = joined.lastIndex(of: topic) else { return XCTFail() }
-        joined.remove(at: index)
-    }
-}
+//private class Delegate: SocketDelegate {
+//    var joined = Array<String>()
+//    var receivedReplies = Array<Phoenix.Reply>()
+//    var receivedMessages = Array<Phoenix.Message>()
+//
+//    func didJoin(topic: String) {
+//        joined.append(topic)
+//    }
+//
+//    func didReceive(reply: Phoenix.Reply) {
+//        receivedReplies.append(reply)
+//    }
+//
+//    func didReceive(message: Phoenix.Message) {
+//        receivedMessages.append(message)
+//    }
+//
+//    func didLeave(topic: String) {
+//        guard let index = joined.lastIndex(of: topic) else { return XCTFail() }
+//        joined.remove(at: index)
+//    }
+//}
 
 class PhoenixTests: XCTestCase {
 //    private var websocket: FakeWebSocket!
