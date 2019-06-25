@@ -192,7 +192,7 @@ extension Socket {
                 guard let joinRef = incomingMessage.joinRef else { break }
                 handleJoin(topic: message.topic, joinRef: joinRef)
             case .leave:
-                handleLeave(topic: message.topic)
+                handleLeave(topic: message.topic, joinRef: joinRef)
             case .close:
                 disconnect()
             case .error:
@@ -207,14 +207,14 @@ extension Socket {
                     let status = incomingMessage.payload["status"] as? String,
                     let response = incomingMessage.payload["response"] as? Payload,
                     let originalMessage = _pushTracker.find(related: incomingMessage) else {
-                    handleCustom(message)
+                    handleCustom(message, joinRef: joinRef)
                     break
                 }
                 
                 let reply = Reply(joinRef: joinRef, ref: ref, message: message, status: status, response: response)
-                handleReply(reply, for: originalMessage)
+                handleReply(reply, for: originalMessage.push)
             case .custom:
-                handleCustom(message)
+                handleCustom(message, joinRef: joinRef)
             }
             
             _pushTracker.cleanup(related: incomingMessage)
@@ -231,17 +231,19 @@ extension Socket {
         }
     }
     
-    private func handleLeave(topic: String) {
+    private func handleLeave(topic: String, joinRef: joinRef) {
         sync {
             guard let channel = self.channel(for: topic) else { return }
+            guard channel.joinRef == joinRef else { return }
+            
             channel.change(to: .closed)
             _delegateQueue.async { [weak self] in self?.delegate?.didLeave(topic: topic) }
         }
     }
     
-    private func handleReply(_ reply: Reply, for originalMessage: OutgoingMessage) {
+    private func handleReply(_ reply: Reply, for push: Push) {
         sync {
-            if let callback = originalMessage.push.callback {
+            if let callback = push.callback {
                 _delegateQueue.async { callback(reply) }
             }
             
@@ -249,8 +251,10 @@ extension Socket {
         }
     }
     
-    private func handleCustom(_ message: Message) {
+    private func handleCustom(_ message: Message, joinRef: joinRef) {
         sync {
+            guard channel.joinRef == joinRef else { return }
+            
             _delegateQueue.async { [weak self] in self?.delegate?.didReceive(message: message) }
         }
     }
