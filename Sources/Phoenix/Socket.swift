@@ -2,7 +2,7 @@ import Foundation
 
 public protocol SocketDelegate: class {
     func didJoin(topic: String)
-    func didReceive(reply: Reply)
+    func didReceive(reply: Reply, from: Push)
     func didReceive(message: Message)
     func didLeave(topic: String)
 }
@@ -187,11 +187,16 @@ extension Socket {
         sync {
             let message = Message(from: incomingMessage)
             
+            
             switch message.event {
             case .join:
                 guard let joinRef = incomingMessage.joinRef else { break }
                 handleJoin(topic: message.topic, joinRef: joinRef)
             case .leave:
+                guard let joinRef = incomingMessage.joinRef else {
+                    break
+                }
+                
                 handleLeave(topic: message.topic, joinRef: joinRef)
             case .close:
                 disconnect()
@@ -202,8 +207,11 @@ extension Socket {
                 // handle heartbeat
                 fatalError()
             case .reply:
-                guard let joinRef = incomingMessage.joinRef,
-                    let ref = incomingMessage.ref,
+                guard let joinRef = incomingMessage.joinRef else {
+                    break
+                }
+                
+                guard let ref = incomingMessage.ref,
                     let status = incomingMessage.payload["status"] as? String,
                     let response = incomingMessage.payload["response"] as? Payload,
                     let originalMessage = _pushTracker.find(related: incomingMessage) else {
@@ -214,6 +222,10 @@ extension Socket {
                 let reply = Reply(joinRef: joinRef, ref: ref, message: message, status: status, response: response)
                 handleReply(reply, for: originalMessage.push)
             case .custom:
+                guard let joinRef = incomingMessage.joinRef else {
+                    break
+                }
+                
                 handleCustom(message, joinRef: joinRef)
             }
             
@@ -231,7 +243,7 @@ extension Socket {
         }
     }
     
-    private func handleLeave(topic: String, joinRef: joinRef) {
+    private func handleLeave(topic: String, joinRef: Ref) {
         sync {
             guard let channel = self.channel(for: topic) else { return }
             guard channel.joinRef == joinRef else { return }
@@ -247,12 +259,13 @@ extension Socket {
                 _delegateQueue.async { callback(reply) }
             }
             
-            _delegateQueue.async { [weak self] in self?.delegate?.didReceive(reply: reply) }
+            _delegateQueue.async { [weak self] in self?.delegate?.didReceive(reply: reply, from: push) }
         }
     }
     
-    private func handleCustom(_ message: Message, joinRef: joinRef) {
+    private func handleCustom(_ message: Message, joinRef: Ref) {
         sync {
+            guard let channel = channel(for: message.topic) else { return }
             guard channel.joinRef == joinRef else { return }
             
             _delegateQueue.async { [weak self] in self?.delegate?.didReceive(message: message) }
