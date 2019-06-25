@@ -1,22 +1,22 @@
 import Foundation
 
-public protocol PhoenixDelegate: class {
+public protocol SocketDelegate: class {
     func didJoin(topic: String)
-    func didReceive(reply: Phoenix.Reply)
-    func didReceive(message: Phoenix.Message)
+    func didReceive(reply: Reply)
+    func didReceive(message: Message)
     func didLeave(topic: String)
 }
 
-public final class Phoenix {
-    public typealias Payload = Dictionary<String, Any>
-    
+public typealias Payload = Dictionary<String, Any>
+
+public final class Socket {
     private enum State {
         case disconnected
         case connecting
         case connected
     }
 
-    public var delegate: PhoenixDelegate? {
+    public var delegate: SocketDelegate? {
         get { return sync { return self._delegate } }
         set { sync { self._delegate = newValue } }
     }
@@ -36,7 +36,7 @@ public final class Phoenix {
 
     private let _websocket: WebSocketProtocol
     private var _channels: Dictionary<String, Channel> = [:]
-    private weak var _delegate: PhoenixDelegate?
+    private weak var _delegate: SocketDelegate?
     private let _delegateQueue: DispatchQueue
 
     private var _state: State = .disconnected
@@ -44,7 +44,7 @@ public final class Phoenix {
     private let _pushTracker = PushTracker()
 
     private lazy var _synchronizationQueue: DispatchQueue = {
-        let queue = DispatchQueue(label: "Phoenix._synchronizationQueue")
+        let queue = DispatchQueue(label: "Phoenix.Socket._synchronizationQueue")
         queue.setSpecific(key: self._queueKey, value: self._queueContext)
         return queue
     }()
@@ -53,13 +53,13 @@ public final class Phoenix {
 
     private var _timer: Timer?
 
-    public init(websocket: WebSocketProtocol, delegate: PhoenixDelegate? = nil,
+    public init(websocket: WebSocketProtocol, delegate: SocketDelegate? = nil,
                 delegateQueue: DispatchQueue = .main) {
         assert(websocket.delegate == nil)
         _websocket = websocket
         _delegate = delegate
         _delegateQueue = delegateQueue
-        _websocket.callbackQueue = DispatchQueue(label: "Phoenix._websocket.callbackQueue")
+        _websocket.callbackQueue = DispatchQueue(label: "Phoenix.Socket._websocket.callbackQueue")
         _websocket.delegate = self
     }
 
@@ -96,7 +96,7 @@ public final class Phoenix {
     }
 }
 
-extension Phoenix {
+extension Socket {
     public func connect() {
         sync {
             guard case .disconnected = _state else { return }
@@ -110,7 +110,7 @@ extension Phoenix {
     }
 }
 
-extension Phoenix {
+extension Socket {
     private func flush() {
         sync {
             guard case .connected = _state else { return }
@@ -133,7 +133,7 @@ extension Phoenix {
     }
 }
 
-extension Phoenix {
+extension Socket {
     private func handle(incomingMessage: IncomingMessage) {
         sync {
             let message = Message(from: incomingMessage)
@@ -242,7 +242,7 @@ extension Phoenix {
 //    }
 }
 
-extension Phoenix {
+extension Socket {
     private func sync<T>(_ block: () throws -> T) rethrows -> T {
         if isSynced {
             return try block()
@@ -264,7 +264,7 @@ extension Phoenix {
     }
 }
 
-extension Phoenix {
+extension Socket {
     private func makeTimer() -> Timer {
         return Timer(timeInterval: 15, repeats: true) { [weak self] in self?.didFire(timer: $0) }
     }
@@ -282,7 +282,7 @@ extension Phoenix {
     }
 }
 
-extension Phoenix: WebSocketDelegateProtocol {
+extension Socket: WebSocketDelegateProtocol {
     public func didConnect(websocket: WebSocketProtocol) {
         sync {
             _state = .connected

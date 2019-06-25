@@ -1,28 +1,26 @@
 import Foundation
 
-extension Phoenix {
-    public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
-        let rawValue: UInt64
+public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
+    let rawValue: UInt64
 
-        public init(_ rawValue: UInt64) {
-            self.rawValue = rawValue
-        }
+    public init(_ rawValue: UInt64) {
+        self.rawValue = rawValue
+    }
 
-        public init(integerLiteral value: UInt64) {
-            self.rawValue = value
-        }
+    public init(integerLiteral value: UInt64) {
+        self.rawValue = value
+    }
 
-        public static func == (lhs: Ref, rhs: Ref) -> Bool {
-            return lhs.rawValue == rhs.rawValue
-        }
+    public static func == (lhs: Ref, rhs: Ref) -> Bool {
+        return lhs.rawValue == rhs.rawValue
+    }
 
-        public static func < (lhs: Ref, rhs: Ref) -> Bool {
-            return lhs.rawValue < rhs.rawValue
-        }
+    public static func < (lhs: Ref, rhs: Ref) -> Bool {
+        return lhs.rawValue < rhs.rawValue
     }
 }
 
-extension Phoenix.Ref {
+extension Ref {
     final class Generator {
         var current: Phoenix.Ref {
             let ref: Phoenix.Ref

@@ -1,7 +1,7 @@
 import XCTest
 @testable import Phoenix
 
-private class Delegate: PhoenixDelegate {
+private class Delegate: SocketDelegate {
     var joined = Array<String>()
     var receivedReplies = Array<Phoenix.Reply>()
     var receivedMessages = Array<Phoenix.Message>()
@@ -26,7 +26,7 @@ private class Delegate: PhoenixDelegate {
 
 class PhoenixTests: XCTestCase {
     private var websocket: FakeWebSocket!
-    private var phoenix: Phoenix!
+    private var phoenix: Socket!
     private var delegate: Delegate!
 
     private let topic = "Test"
@@ -39,13 +39,13 @@ class PhoenixTests: XCTestCase {
         super.setUp()
         websocket = FakeWebSocket(url: URL(string: "127.0.0.1")!)
         delegate = Delegate()
-        phoenix = Phoenix(websocket: websocket, delegate: delegate, delegateQueue: queue)
+        phoenix = Socket(websocket: websocket, delegate: delegate, delegateQueue: queue)
     }
 
     func testConnectJoinsChannel() {
         websocket.onConnect = { $0.sendConnectFromServer() }
         websocket.onWriteData = { websocket, _ in
-            let message = Phoenix.IncomingMessage(
+            let message = IncomingMessage(
                 joinRef: 1, ref: 1, topic: self.topic, event: .reply, payload: ["status": "ok"]
             )
             websocket.sendMessageFromServer(message)
@@ -56,7 +56,7 @@ class PhoenixTests: XCTestCase {
 
     func testSendNewMessage() {
         connect()
-        let message = Phoenix.IncomingMessage(
+        let message = IncomingMessage(
             joinRef: 1, ref: 2, topic: topic, event: "phx_msg", payload: ["status": "ok", "key": "value"]
         )
         websocket.sendMessageFromServer(message)
@@ -69,17 +69,17 @@ class PhoenixTests: XCTestCase {
     func testReply() {
         connect()
 
-        let push = Phoenix.Push(
+        let push = Push(
             topic: topic, event: "message:create",
             payload: ["id": "123", "user_id": "456", "text": "This is message text"]
         )
 
-        var message = Phoenix.Message(topic: topic, event: "message:create", payload: [:])
-        let reply = Phoenix.Reply(joinRef: 1, ref: 2, message: message, status: "ok", response: [:])
+        var message = Message(topic: topic, event: "message:create", payload: [:])
+        let reply = Reply(joinRef: 1, ref: 2, message: message, status: "ok", response: [:])
 
         websocket.onWriteData = { [unowned self] websocket, data in
-            guard let sent = try? Phoenix.Message(data: data) else { return XCTFail() }
-            let expected = Phoenix.Message(
+            guard let sent = try? Message(data: data) else { return XCTFail() }
+            let expected = Message(
                 joinRef: 1, ref: 2, topic: self.topic, event: push.event, payload: push.payload
             )
             XCTAssertTrue(self.isMessage(sent, equalTo: expected))
@@ -99,7 +99,7 @@ private extension PhoenixTests {
     func connect() {
         websocket.onConnect = { $0.sendConnectFromServer() }
         websocket.onWriteData = { websocket, _ in
-            let message = Phoenix.Message(
+            let message = Message(
                 ref: 1, topic: self.topic, event: "phx_reply", payload: ["status": "ok"]
             )
             websocket.sendMessageFromServer(message)
@@ -133,7 +133,7 @@ private extension PhoenixTests {
         XCTFail()
     }
 
-    func isPush(_ push: Phoenix.Push, equalTo other: Phoenix.Push) -> Bool {
+    func isPush(_ push: Push, equalTo other: Push) -> Bool {
         guard push.topic == other.topic else { return false }
         guard push.event == other.event else { return false }
         guard push.ref == other.ref else { return false }
@@ -142,7 +142,7 @@ private extension PhoenixTests {
         return payload == otherPayload
     }
 
-    func isMessage(_ message: Phoenix.Message, equalTo other: Phoenix.Message) -> Bool {
+    func isMessage(_ message: Message, equalTo other: Message) -> Bool {
         guard message.topic == other.topic else { return false }
         guard message.event == other.event else { return false }
         guard message.ref == other.ref else { return false }
