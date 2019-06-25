@@ -337,6 +337,7 @@ extension Socket: WebSocketDelegateProtocol {
         sync {
             change(to: .closed)
             _channels.forEach { (_, channel) in
+                // FIXME: this doesn't seem write at all
                 channel.change(to: .closed)
                 _delegateQueue.async { [weak self] in self?._delegate?.didLeave(topic: channel.topic) }
             }
