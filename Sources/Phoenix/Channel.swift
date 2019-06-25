@@ -1,14 +1,18 @@
 import Foundation
 
 internal final class Channel {
+    private let _queue = DispatchQueue(label: "Phoenix.Channel._queue")
+    
     enum State {
-        case disconnected
+        case closed
         case joining
         case joined(Ref)
+        case leaving
+        case errored(Error)
     }
     
     let topic: String
-    var state: State = .disconnected
+    private var _state: State = .closed
     
     init(topic: String) {
         self.topic = topic
@@ -16,25 +20,42 @@ internal final class Channel {
     
     init(topic: String, state: State) {
         self.topic = topic
-        self.state = state
+        self._state = state
     }
     
-    var joinRef: Ref? {
-        guard case .joined(let ref) = state else { return nil }
+    var joinRef: Ref? { _queue.sync {
+        guard case let .joined(ref) = _state else { return nil }
         return ref
-    }
+    } }
     
-    var isJoined: Bool {
-        if case .joined = state {
-            return true
-        } else {
-            return false
-        }
-    }
+    var isClosed: Bool { _queue.sync {
+        guard case .closed = _state else { return false }
+        return true
+    } }
     
-    internal func change(to state: State) {
-        self.state = state
-    }
+    var isJoining: Bool { _queue.sync {
+        guard case .joining = _state else { return false }
+        return true
+    } }
+    
+    var isJoined: Bool { _queue.sync {
+        guard case .joined = _state else { return false }
+        return true
+    } }
+    
+    var isLeaving: Bool { _queue.sync {
+        guard case .leaving = _state else { return false }
+        return true
+    } }
+    
+    var isErrored: Bool { _queue.sync {
+        guard case .errored = _state else { return false }
+        return true
+    } }
+    
+    internal func change(to state: State) { _queue.sync {
+        self._state = state
+    } }
     
     func makeJoinPush() -> Push {
         return Push(topic: topic, event: .join)
@@ -44,4 +65,3 @@ internal final class Channel {
         return Push(topic: topic, event: .leave)
     }
 }
-

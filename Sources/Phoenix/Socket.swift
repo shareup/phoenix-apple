@@ -104,10 +104,25 @@ extension Socket {
         }
     }
     
-    public var isConnecting: Bool { sync { _state == .connecting } }
-    public var isOpen: Bool { sync { _state == .open } }
-    public var isClosing: Bool { sync { _state == .closing } }
-    public var isClosed: Bool { sync { _state == .closed } }
+    public var isConnecting: Bool { sync {
+        guard case .connecting = _state else { return false }
+        return true
+    } }
+    
+    public var isOpen: Bool { sync {
+        guard case .open = _state else { return false }
+        return true
+    } }
+    
+    public var isClosing: Bool { sync {
+        guard case .closing = _state else { return false }
+        return true
+    } }
+    
+    public var isClosed: Bool { sync {
+        guard case .closed = _state else { return true }
+        return false
+    } }
 }
 
 extension Socket {
@@ -203,7 +218,7 @@ extension Socket {
     private func handleLeave(topic: String) {
         sync {
             let channel = self.channel(for: topic)
-            channel.change(to: .disconnected)
+            channel.change(to: .closed)
             _delegateQueue.async { [weak self] in self?.delegate?.didLeave(topic: topic) }
         }
     }
@@ -284,7 +299,7 @@ extension Socket: WebSocketDelegateProtocol {
         sync {
             change(to: .closed)
             _channels.forEach { (_, channel) in
-                channel.change(to: .disconnected)
+                channel.change(to: .closed)
                 _delegateQueue.async { [weak self] in self?._delegate?.didLeave(topic: channel.topic) }
             }
         }

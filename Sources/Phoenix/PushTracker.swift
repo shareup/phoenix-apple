@@ -38,7 +38,7 @@ internal final class PushTracker {
         }
     }
     
-    private let _queue = DispatchQueue(label: "PushTracker._queue")
+    private let _queue = DispatchQueue(label: "Phoenix.PushTracker._queue")
     private var _pendingPushes = Array<Push>()
     private var _inProgressMessages = Dictionary<MessageID, OutgoingMessage>()
     

@@ -7,7 +7,7 @@ public struct Reply {
     let message: Message
     
     let status: String
-    let response: Dictionary<String, Any>
+    let response: Payload
     
     public var isOk: Bool { return status == "ok" }
     public var isNotOk: Bool { return isOk == false }
