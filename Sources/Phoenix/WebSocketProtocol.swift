@@ -1,20 +1,13 @@
 import Foundation
-
-public protocol WebSocketDelegateProtocol: class {
-    func didConnect(websocket: WebSocketProtocol)
-    func didDisconnect(websocket: WebSocketProtocol, error: Error?)
-    func didReceiveMessage(websocket: WebSocketProtocol, text: String)
-    func didReceiveData(websocket: WebSocketProtocol, data: Data)
-}
+import Combine
 
 public protocol WebSocketProtocol: class {
-    var callbackQueue: DispatchQueue { get set }
-    var delegate: WebSocketDelegateProtocol? { get set }
-
-    init(url: URL)
-
-    func connect()
-    func disconnect()
-
-    func write(data: Data)
+    typealias Message = URLSessionWebSocketTask.Message
+    
+    var subject: AnySubject<Result<Message, Error>, Error> { get }
+    
+    init(url: URL) throws
+    
+    func send(_ message: Message, completionHandler: @escaping (Error?) -> Void) throws
+    func close()
 }

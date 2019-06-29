@@ -1,27 +1,9 @@
 import Foundation
-
-public protocol SocketDelegate: class {
-    func didJoin(topic: String)
-    func didReceive(reply: Reply, from: Push)
-    func didReceive(message: Message)
-    func didLeave(topic: String)
-}
+import Combine
 
 public typealias Payload = Dictionary<String, Any>
 
 public final class Socket {
-    private enum State {
-        case connecting
-        case open
-        case closing
-        case closed
-    }
-
-    public var delegate: SocketDelegate? {
-        get { return sync { return self._delegate } }
-        set { sync { self._delegate = newValue } }
-    }
-
     public var autoReconnect: Bool = false {
         didSet {
             sync {
@@ -35,14 +17,13 @@ public final class Socket {
         }
     }
 
-    private let _websocket: WebSocketProtocol
+    private let _webSocket: WebSocketProtocol
     private var _channels: Dictionary<String, Channel> = [:]
-    private weak var _delegate: SocketDelegate?
-    private let _delegateQueue: DispatchQueue
 
-    private var _state: State = .closed
     private let _ref = Ref.Generator()
     private let _pushTracker = PushTracker()
+    
+    private var _subscription: Subscription?
 
     private lazy var _synchronizationQueue: DispatchQueue = {
         let queue = DispatchQueue(label: "Phoenix.Socket._synchronizationQueue")
@@ -54,14 +35,32 @@ public final class Socket {
 
     private var _timer: Timer?
 
-    public init(websocket: WebSocketProtocol, delegate: SocketDelegate? = nil,
-                delegateQueue: DispatchQueue = .main) {
-        assert(websocket.delegate == nil)
-        _websocket = websocket
-        _delegate = delegate
-        _delegateQueue = delegateQueue
-        _websocket.callbackQueue = DispatchQueue(label: "Phoenix.Socket._websocket.callbackQueue")
-        _websocket.delegate = self
+    public init(websocket: WebSocketProtocol) {
+        _webSocket = websocket
+        
+//        _webSocketSubscriber = _webSocket.subject.sink(receiveCompletion: { completion in
+//            print("WebSocket publisher errored: \(completion)")
+//            self.change(to: .closing)
+//        }) { result in
+//            switch result {
+//            case .success(let message):
+//                switch message {
+//                case .string(let text):
+//                    guard let data = text.data(using: .utf8) else { break }
+//                    do {
+//                        self.handle(incomingMessage: try IncomingMessage(data: data))
+//                    } catch {
+//                        print("Could not decode: '\(text)': \(error)")
+//                    }
+//                case .data:
+//                    print("Don't support data frames at the moment")
+//                @unknown default:
+//                    fatalError()
+//                }
+//            case .failure(let error):
+//                print("Error: \(error)")
+//            }
+//        }.eraseToAnySubscriber()
     }
 
     deinit {
@@ -95,14 +94,14 @@ public final class Socket {
     }
     
     public func join(_ topic: String) {
-        sync {
-            let channel: Channel = self.track(topic)
-            
-            if isOpen && !channel.isJoining && !channel.isJoined {
-                push(channel.makeJoinPush())
-                channel.change(to: .joining)
-            }
-        }
+//        sync {
+//            let channel: Channel = self.track(topic)
+//
+//            if isOpen && !channel.isJoining && !channel.isJoined {
+//                push(channel.makeJoinPush())
+//                channel.change(to: .joining)
+//            }
+//        }
     }
 
     public func push(topic: String, event: Event, payload: Dictionary<String, Any> = [:], callback: Push.Callback? = nil) {
@@ -118,65 +117,37 @@ public final class Socket {
 }
 
 extension Socket {
-    private func change(to state: State) {
-        sync {
-            self._state = state
-        }
-    }
-    
-    public var isConnecting: Bool { sync {
-        guard case .connecting = _state else { return false }
-        return true
-    } }
-    
-    public var isOpen: Bool { sync {
-        guard case .open = _state else { return false }
-        return true
-    } }
-    
-    public var isClosing: Bool { sync {
-        guard case .closing = _state else { return false }
-        return true
-    } }
-    
-    public var isClosed: Bool { sync {
-        guard case .closed = _state else { return true }
-        return false
-    } }
-}
-
-extension Socket {
     public func connect() {
-        sync {
-            guard isClosed else { return }
-            change(to: .connecting)
-            _websocket.connect()
-        }
+//        sync {
+//            guard isClosed else { return }
+//            change(to: .connecting)
+//            // _websocket.reopen()
+//        }
     }
 
     public func disconnect() {
-        sync {
-            change(to: .closing)
-            _websocket.disconnect()
-        }
+//        sync {
+//            change(to: .closing)
+//            _webSocket.close()
+//        }
     }
 }
 
 extension Socket {
     private func flush() {
-        sync {
-            guard isOpen else { return }
-            
-            _pushTracker.process { push -> OutgoingMessage? in
-                guard let channel = self.channel(for: push.topic) else { return nil }
-                guard let joinRef = channel.joinRef else { return nil }
-                
-                let ref = _ref.advance()
-                let message = OutgoingMessage(joinRef: joinRef, ref: ref, push: push)
-                try? _websocket.write(data: message.encoded())
-                return message
-            }
-        }
+//        sync {
+//            guard isOpen else { return }
+//
+//            _pushTracker.process { push -> OutgoingMessage? in
+//                guard let channel = self.channel(for: push.topic) else { return nil }
+//                guard let joinRef = channel.joinRef else { return nil }
+//
+//                let ref = _ref.advance()
+//                let message = OutgoingMessage(joinRef: joinRef, ref: ref, push: push)
+//                try? _webSocket.send(.data(message.encoded()), completionHandler: {_ in })
+//                return message
+//            }
+//        }
     }
 
     private func heartbeat() {
@@ -236,42 +207,42 @@ extension Socket {
     }
     
     private func handleJoin(topic: String, joinRef: Ref) {
-        sync {
-            guard let channel = self.channel(for: topic) else { return }
-            guard channel.isJoining else { return }
-            
-            channel.change(to: .joined(joinRef))
-            _delegateQueue.async { [weak self] in self?.delegate?.didJoin(topic: topic) }
-        }
+//        sync {
+//            guard let channel = self.channel(for: topic) else { return }
+//            guard channel.isJoining else { return }
+//
+//            channel.change(to: .joined(joinRef))
+//            _delegateQueue.async { [weak self] in self?.delegate?.didJoin(topic: topic) }
+//        }
     }
     
     private func handleLeave(topic: String, joinRef: Ref) {
-        sync {
-            guard let channel = self.channel(for: topic) else { return }
-            guard channel.joinRef == joinRef else { return }
-            
-            channel.change(to: .closed)
-            _delegateQueue.async { [weak self] in self?.delegate?.didLeave(topic: topic) }
-        }
+//        sync {
+//            guard let channel = self.channel(for: topic) else { return }
+//            guard channel.joinRef == joinRef else { return }
+//
+//            channel.change(to: .closed)
+//            _delegateQueue.async { [weak self] in self?.delegate?.didLeave(topic: topic) }
+//        }
     }
     
     private func handleReply(_ reply: Reply, for push: Push) {
-        sync {
-            if let callback = push.callback {
-                _delegateQueue.async { callback(reply) }
-            }
-            
-            _delegateQueue.async { [weak self] in self?.delegate?.didReceive(reply: reply, from: push) }
-        }
+//        sync {
+//            if let callback = push.callback {
+//                _delegateQueue.async { callback(reply) }
+//            }
+//
+//            _delegateQueue.async { [weak self] in self?.delegate?.didReceive(reply: reply, from: push) }
+//        }
     }
     
     private func handleCustom(_ message: Message, joinRef: Ref) {
-        sync {
-            guard let channel = channel(for: message.topic) else { return }
-            guard channel.joinRef == joinRef else { return }
-            
-            _delegateQueue.async { [weak self] in self?.delegate?.didReceive(message: message) }
-        }
+//        sync {
+//            guard let channel = channel(for: message.topic) else { return }
+//            guard channel.joinRef == joinRef else { return }
+//
+//            _delegateQueue.async { [weak self] in self?.delegate?.didReceive(message: message) }
+//        }
     }
 }
 
@@ -307,57 +278,57 @@ extension Socket {
     }
 
     private func didFire(timer: Timer) {
-        sync {
-            switch _state {
-            case .closed:
-                async { self.connect() }
-            case .connecting, .closing:
-                break
-            case .open:
-                async { self.heartbeat() }
-            }
-        }
+//        sync {
+//            switch _state {
+//            case .closed:
+//                async { self.connect() }
+//            case .connecting, .closing:
+//                break
+//            case .open:
+//                async { self.heartbeat() }
+//            }
+//        }
     }
 }
 
-extension Socket: WebSocketDelegateProtocol {
-    public func didConnect(websocket: WebSocketProtocol) {
-        sync {
-            change(to: .open)
-            _channels.forEach { (_, channel) in
-                if !channel.isClosed {
-                    push(channel.makeJoinPush())
-                    channel.change(to: .joining)
-                }
-            }
-        }
-    }
-
-    public func didDisconnect(websocket: WebSocketProtocol, error: Error?) {
-        sync {
-            change(to: .closed)
-            _channels.forEach { (_, channel) in
-                // FIXME: this doesn't seem write at all
-                channel.change(to: .closed)
-                _delegateQueue.async { [weak self] in self?._delegate?.didLeave(topic: channel.topic) }
-            }
-        }
-    }
-
-    public func didReceiveMessage(websocket: WebSocketProtocol, text: String) {
-        guard let data = text.data(using: .utf8) else { return }
-
-        do {
-            handle(incomingMessage: try IncomingMessage(data: data))
-        } catch {
-            print("Could not decode: '\(text)': \(error)")
-        }
-    }
-
-    public func didReceiveData(websocket: WebSocketProtocol, data: Data) {
-        assertionFailure("\(#function) \(string(from: data))")
-    }
-}
+//extension Socket: WebSocketDelegateProtocol {
+//    public func didConnect(websocket: WebSocketProtocol) {
+//        sync {
+//            change(to: .open)
+//            _channels.forEach { (_, channel) in
+//                if !channel.isClosed {
+//                    push(channel.makeJoinPush())
+//                    channel.change(to: .joining)
+//                }
+//            }
+//        }
+//    }
+//
+//    public func didDisconnect(websocket: WebSocketProtocol, error: Error?) {
+//        sync {
+//            change(to: .closed)
+//            _channels.forEach { (_, channel) in
+//                // FIXME: this doesn't seem write at all
+//                channel.change(to: .closed)
+//                _delegateQueue.async { [weak self] in self?._delegate?.didLeave(topic: channel.topic) }
+//            }
+//        }
+//    }
+//
+//    public func didReceiveMessage(websocket: WebSocketProtocol, text: String) {
+//        guard let data = text.data(using: .utf8) else { return }
+//
+//        do {
+//            handle(incomingMessage: try IncomingMessage(data: data))
+//        } catch {
+//            print("Could not decode: '\(text)': \(error)")
+//        }
+//    }
+//
+//    public func didReceiveData(websocket: WebSocketProtocol, data: Data) {
+//        assertionFailure("\(#function) \(string(from: data))")
+//    }
+//}
 
 private func string(from data: Data?) -> String {
     return String(describing: data.map({ String(data: $0, encoding: .utf8) }))

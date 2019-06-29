@@ -1,9 +1,8 @@
 import Foundation
 @testable import Phoenix
 
-class FakeWebSocket: WebSocketProtocol {
+class FakeWebSocket { // : WebSocketProtocol
     var callbackQueue: DispatchQueue = .main
-    var delegate: WebSocketDelegateProtocol?
 
     let url: URL
 
@@ -32,22 +31,22 @@ class FakeWebSocket: WebSocketProtocol {
     }
 
     func sendConnectFromServer() {
-        callbackQueue.async { [unowned self] in
-            self.delegate?.didConnect(websocket: self)
-        }
+//        callbackQueue.async { [unowned self] in
+//            self.delegate?.didConnect(websocket: self)
+//        }
     }
 
     func sendDisconnectFromServer(error: Error? = nil) {
-        callbackQueue.async { [unowned self] in
-            self.delegate?.didDisconnect(websocket: self, error: error)
-        }
+//        callbackQueue.async { [unowned self] in
+//            self.delegate?.didDisconnect(websocket: self, error: error)
+//        }
     }
 
     func sendMessageFromServer(_ message: Phoenix.IncomingMessage) {
-        callbackQueue.async { [unowned self] in
-            let data = try! message.encoded()
-            let text = String(data: data, encoding: .utf8)!
-            self.delegate?.didReceiveMessage(websocket: self, text: text)
-        }
+//        callbackQueue.async { [unowned self] in
+//            let data = try! message.encoded()
+//            let text = String(data: data, encoding: .utf8)!
+//            self.delegate?.didReceiveMessage(websocket: self, text: text)
+//        }
     }
 }
