@@ -1,10 +1,8 @@
 import Foundation
 import Combine
 
-public protocol WebSocketProtocol: class {
+public protocol WebSocketProtocol: Publisher where Failure == Error, Output == Result<Message, Error> {
     typealias Message = URLSessionWebSocketTask.Message
-    
-    var subject: AnySubject<Result<Message, Error>, Error> { get }
     
     init(url: URL) throws
     

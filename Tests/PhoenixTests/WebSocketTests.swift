@@ -96,7 +96,7 @@ class WebSocketTests: XCTestCase {
         var hasReplied = false
         var reply: [Any?] = []
         
-        let _ = webSocket.subject.sink { result in
+        let _ = webSocket.sink { result in
             guard !hasReplied else { return }
 
             let message: WebSocket.Message
@@ -133,7 +133,171 @@ class WebSocketTests: XCTestCase {
             
             XCTAssertEqual(rp["status"] as! String, "ok")
             XCTAssertEqual(rp["response"] as! [String: String], [:])
+        } else {
+            XCTFail("Reply wasn't the right shape")
         }
+        
+        webSocket.close()
+        
+        wait("Should be closed") {
+            webSocket.isClosed
+        }
+    }
+    
+    func testHeartbeater() {
+        let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
+        
+        let webSocket: WebSocket
+        
+        do {
+            webSocket = try WebSocket(url: url)
+        } catch {
+            return XCTFail("Making a socket failed \(error)")
+        }
+        
+        wait("Should be open") { webSocket.isOpen }
+        
+        let heartbeater = Heartbeater()
+        
+        let publisher = webSocket.compactMap { result -> IncomingMessage? in
+            switch result {
+            case .failure:
+                return nil
+            case .success(let message):
+                switch message {
+                case .data:
+                    return nil
+                case .string(let string):
+                    if let incomingMessage = try? IncomingMessage(data: string.data(using: .utf8)!) {
+                        return incomingMessage
+                    } else {
+                        return nil
+                    }
+                @unknown default:
+                    fatalError()
+                }
+            }
+        }.filter { message -> Bool in
+            return message.topic == "phoenix"
+        }
+        
+        publisher.subscribe(heartbeater)
+        
+        wait("Should have subscribed") { heartbeater.isSubscribed }
+        
+        try! webSocket.send(.data(heartbeater.pushData(ref: gen.advance().rawValue))) { error in
+            guard let error = error else { return }
+            XCTFail("Sending data down the socket failed \(String(describing: error))")
+        }
+        
+        wait("First beat") { heartbeater.count == 1 }
+        
+        try! webSocket.send(.data(heartbeater.pushData(ref: gen.advance().rawValue))) { error in
+            guard let error = error else { return }
+            XCTFail("Sending data down the socket failed \(String(describing: error))")
+        }
+        
+        wait("Second beat") { heartbeater.count == 2 }
+        
+        try! webSocket.send(.data(heartbeater.pushData(ref: gen.advance().rawValue))) { error in
+            guard let error = error else { return }
+            XCTFail("Sending data down the socket failed \(String(describing: error))")
+        }
+        
+        wait("Third beat") { heartbeater.count == 3 }
+        
+        webSocket.close()
+        
+        wait("Should be closed") { webSocket.isClosed }
+    }
+    
+    func testEcho() {
+        let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
+        
+        let webSocket: WebSocket
+        
+        do {
+            webSocket = try WebSocket(url: url)
+        } catch {
+            return XCTFail("Making a socket failed \(error)")
+        }
+        
+        wait("Should be open") {
+            webSocket.isOpen
+        }
+        
+        let joinRef = gen.advance().rawValue
+        let ref = gen.current.rawValue
+        let topic = "room:lobby"
+        let event = "phx_join"
+        let payload: Payload = [:]
+        
+        let message = serialize([
+            joinRef,
+            ref,
+            topic,
+            event,
+            payload
+        ])!
+        
+        try! webSocket.send(.data(message)) { error in
+            if let error = error {
+                XCTFail("Sending data down the socket failed \(error)")
+            }
+        }
+        
+        var replies = [IncomingMessage]()
+        
+        let _ = webSocket.sink { result in
+            let message: WebSocket.Message
+            
+            switch result {
+            case .success(let _message):
+                message = _message
+            case .failure(let error):
+                XCTFail("Received an error \(error)")
+                return
+            }
+            
+            switch message {
+            case .data(_):
+                XCTFail("Received a data response, which is wrong")
+            case .string(let string):
+                let reply = try! IncomingMessage(data: string.data(using: .utf8)!)
+                replies.append(reply)
+                print("reply: \(reply)")
+            @unknown default:
+                XCTFail("Received an unknown response type")
+            }
+            
+            if replies.count == 1 {
+                let nextRef = self.gen.advance().rawValue
+                let repeatEvent = "repeat"
+                let repeatPayload: Payload = [
+                    "echo": "hello",
+                    "amount": 5
+                ]
+                
+                let message = self.serialize([
+                    joinRef,
+                    nextRef,
+                    topic,
+                    repeatEvent,
+                    repeatPayload
+                ])!
+                
+                try! webSocket.send(.data(message)) { error in
+                    if let error = error {
+                        XCTFail("Sending data down the socket failed \(error)")
+                    }
+                }
+            
+            }
+            
+            return
+        }
+        
+        wait("Should receive reply") { replies.count > 6 }
         
         webSocket.close()
         

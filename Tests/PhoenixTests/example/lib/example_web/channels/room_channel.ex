@@ -23,6 +23,6 @@ defmodule ExampleWeb.RoomChannel do
       push(socket, "repeated", %{echo: echo_text, n: n})
     end
 
-    {:reply, %{amount: amount}, socket}
+    {:reply, {:ok, %{amount: amount}}, socket}
   end
 end

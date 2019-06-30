@@ -1,9 +1,8 @@
 import Foundation
 import Combine
 
-public class WebSocket: NSObject, WebSocketProtocol, URLSessionWebSocketDelegate {
+public class WebSocket: NSObject, WebSocketProtocol {
     public typealias Message = URLSessionWebSocketTask.Message
-    public var subject = PassthroughSubject<Result<Message, Error>, Error>().eraseToAnySubject()
     
     public enum Errors: Error {
         case invalidURL(URL)
@@ -19,12 +18,12 @@ public class WebSocket: NSObject, WebSocketProtocol, URLSessionWebSocketDelegate
         case closed(Errors)
     }
     
-    public var isOpen: Bool { get { _queue.sync {
+    public var isOpen: Bool { get { sync {
         guard case .open = _state else { return false }
         return true
     } } }
     
-    public var isClosed: Bool { get { _queue.sync {
+    public var isClosed: Bool { get { sync {
         guard case .closed = _state else { return false }
         return true
     } } }
@@ -32,8 +31,17 @@ public class WebSocket: NSObject, WebSocketProtocol, URLSessionWebSocketDelegate
     private let _url: URL
     private var _state: State
     
+    private var _subscriptions: [SocketSubscription] = []
+    
     private let _delegateQueue: OperationQueue = OperationQueue()
-    private let _queue: DispatchQueue = DispatchQueue(label: "Phoenix.WebSocket._queue")
+    
+    private lazy var _synchronizationQueue: DispatchQueue = {
+        let queue = DispatchQueue(label: "Phoenix.WebSocket._synchronizationQueue")
+        queue.setSpecific(key: self._queueKey, value: self._queueContext)
+        return queue
+    }()
+    private let _queueKey = DispatchSpecificKey<Int>()
+    private lazy var _queueContext: Int = unsafeBitCast(self, to: Int.self)
     
     public required init(url original: URL) throws {
         let appended = original.appendingPathComponent("websocket")
@@ -63,35 +71,12 @@ public class WebSocket: NSObject, WebSocketProtocol, URLSessionWebSocketDelegate
         let _session = URLSession(configuration: .default, delegate: self, delegateQueue: _delegateQueue)
         
         let task = _session.webSocketTask(with: _url)
-        task.receive { result in self.subject.send(result) }
+        task.receive { result in self.publish(result) }
         task.resume()
     }
     
-    public func urlSession(_ session: URLSession,
-                           webSocketTask: URLSessionWebSocketTask,
-                           didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
-                           reason: Data?) {
-        _queue.sync {
-            _state = .closed(Errors.closed(closeCode, reason))
-            
-            if closeCode == .normalClosure {
-                subject.send(completion: .finished)
-            } else {
-                subject.send(completion: .failure(Errors.closed(closeCode, reason)))
-            }
-        }
-    }
-    
-    public func urlSession(_ session: URLSession,
-                           webSocketTask: URLSessionWebSocketTask,
-                           didOpenWithProtocol protocol: String?) {
-        _queue.sync {
-            _state = .open(webSocketTask)
-        }
-    }
-    
     public func send(_ message: Message, completionHandler: @escaping (Error?) -> Void) throws {
-        try _queue.sync {
+        try sync {
             guard case .open(let task) = _state else {
                 throw Errors.notOpen
             }
@@ -101,10 +86,121 @@ public class WebSocket: NSObject, WebSocketProtocol, URLSessionWebSocketDelegate
     }
     
     public func close() {
-        _queue.sync {
+        sync {
             guard case .open(let task) = _state else { return }
             task.cancel(with: .normalClosure, reason: nil)
             _state = .closing
         }
+    }
+}
+
+extension WebSocket {
+    class SocketSubscription: Subscription {
+        let subscriber: AnySubscriber<Result<Message, Error>, Error>
+        var demand: Subscribers.Demand? = nil
+        
+        init(subscriber: AnySubscriber<Result<Message, Error>, Error>) {
+            self.subscriber = subscriber
+        }
+
+        func request(_ demand: Subscribers.Demand) {
+            self.demand = demand
+        }
+        
+        func cancel() {
+        }
+    }
+}
+
+extension WebSocket: Publisher {
+    public typealias Output = Result<Message, Error>
+    public typealias Failure = Error
+    
+    public func receive<S>(subscriber: S) where S : Subscriber, WebSocket.Failure == S.Failure, WebSocket.Output == S.Input {
+        sync {
+            let subscription = SocketSubscription(subscriber: subscriber.eraseToAnySubscriber())
+            subscriber.receive(subscription: subscription)
+            _subscriptions.append(subscription)
+        }
+    }
+    
+    private func publish(_ output: Output) {
+        sync {
+            for subscription in _subscriptions {
+                guard let demand = subscription.demand else { return }
+                guard demand > 0 else { return }
+                
+                let newDemand = subscription.subscriber.receive(output)
+                subscription.demand = newDemand
+            }
+        }
+    }
+    
+    private func complete() {
+        complete(.finished)
+    }
+    
+    private func complete(_ failure: Failure) {
+        complete(.failure(failure))
+    }
+    
+    private func complete(_ failure: Subscribers.Completion<Failure>) {
+        sync {
+            for subscription in _subscriptions {
+                subscription.subscriber.receive(completion: failure)
+            }
+            _subscriptions.removeAll()
+        }
+    }
+}
+
+extension WebSocket: URLSessionWebSocketDelegate {
+    public func urlSession(_ session: URLSession,
+                           webSocketTask: URLSessionWebSocketTask,
+                           didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+                           reason: Data?) {
+        sync {
+            _state = .closed(Errors.closed(closeCode, reason))
+            
+            if closeCode == .normalClosure {
+                complete()
+            } else {
+                complete(Errors.closed(closeCode, reason))
+            }
+        }
+    }
+    
+    public func urlSession(_ session: URLSession,
+                           webSocketTask: URLSessionWebSocketTask,
+                           didOpenWithProtocol protocol: String?) {
+        sync {
+            _state = .open(webSocketTask)
+        }
+    }
+}
+
+extension WebSocket {
+    private func sync<T>(_ block: () throws -> T) rethrows -> T {
+        if isSynced {
+            return try block()
+        } else {
+            return try _synchronizationQueue.sync(execute: block)
+        }
+    }
+    
+    private func sync(_ block: () throws -> Void) rethrows {
+        if isSynced {
+            try block()
+        } else {
+            try _synchronizationQueue.sync(execute: block)
+        }
+    }
+    
+    private var isSynced: Bool {
+        return DispatchQueue.getSpecific(key: _queueKey) == _queueContext
+    }
+    
+    private func async(_ block: @escaping () -> Void) {
+        _synchronizationQueue.async(execute: block)
     }
 }

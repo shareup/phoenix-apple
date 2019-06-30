@@ -32,7 +32,7 @@ internal struct IncomingMessage {
 
         let event = Phoenix.Event(eventName)
 
-        guard let payload = arr[4] as? Dictionary<String, Any> else {
+        guard let payload = arr[4] as? Payload else {
             throw DecodingError.invalidTypeForValue("payload", arr[4])
         }
 

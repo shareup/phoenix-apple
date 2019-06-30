@@ -3,27 +3,25 @@ import Combine
 
 public typealias Payload = Dictionary<String, Any>
 
-public final class Socket {
-    public var autoReconnect: Bool = false {
-        didSet {
-            sync {
-                _timer?.invalidate()
-                if autoReconnect {
-                    let timer = makeTimer()
-                    RunLoop.main.add(timer, forMode: .common)
-                    _timer = timer
-                }
-            }
-        }
-    }
+public final class Socket<WS: WebSocketProtocol> {
+//    public var autoReconnect: Bool = false {
+//        didSet {
+//            sync {
+//                _timer?.invalidate()
+//                if autoReconnect {
+//                    let timer = makeTimer()
+//                    RunLoop.main.add(timer, forMode: .common)
+//                    _timer = timer
+//                }
+//            }
+//        }
+//    }
 
-    private let _webSocket: WebSocketProtocol
+    private let _webSocket: WS
     private var _channels: Dictionary<String, Channel> = [:]
 
     private let _ref = Ref.Generator()
     private let _pushTracker = PushTracker()
-    
-    private var _subscription: Subscription?
 
     private lazy var _synchronizationQueue: DispatchQueue = {
         let queue = DispatchQueue(label: "Phoenix.Socket._synchronizationQueue")
@@ -33,10 +31,8 @@ public final class Socket {
     private let _queueKey = DispatchSpecificKey<Int>()
     private lazy var _queueContext: Int = unsafeBitCast(self, to: Int.self)
 
-    private var _timer: Timer?
-
-    public init(websocket: WebSocketProtocol) {
-        _webSocket = websocket
+    public init(url: URL) throws {
+        _webSocket = try WS(url: url)
         
 //        _webSocketSubscriber = _webSocket.subject.sink(receiveCompletion: { completion in
 //            print("WebSocket publisher errored: \(completion)")
@@ -64,34 +60,34 @@ public final class Socket {
     }
 
     deinit {
-        _timer?.invalidate()
+//        _timer?.invalidate()
     }
     
-    private func track(_ topic: String) -> Channel {
-        sync {
-            if let _channel = _channels[topic] {
-                return _channel
-            } else {
-                let channel = Channel(topic: topic)
-                _channels[topic] = channel
-                return channel
-            }
-        }
-    }
+//    private func track(_ topic: String) -> Channel {
+//        sync {
+//            if let _channel = _channels[topic] {
+//                return _channel
+//            } else {
+//                let channel = Channel(topic: topic)
+//                _channels[topic] = channel
+//                return channel
+//            }
+//        }
+//    }
     
-    private func channel(for topic: String) -> Channel? {
-        sync {
-            if let _channel = _channels[topic] {
-                return _channel
-            } else {
-                return nil
-            }
-        }
-    }
+//    private func channel(for topic: String) -> Channel? {
+//        sync {
+//            if let _channel = _channels[topic] {
+//                return _channel
+//            } else {
+//                return nil
+//            }
+//        }
+//    }
     
-    private func isTracked(_ topic: String) -> Bool {
-        sync { return _channels.keys.contains(topic) }
-    }
+//    private func isTracked(_ topic: String) -> Bool {
+//        sync { return _channels.keys.contains(topic) }
+//    }
     
     public func join(_ topic: String) {
 //        sync {
@@ -159,7 +155,6 @@ extension Socket {
     private func handle(incomingMessage: IncomingMessage) {
         sync {
             let message = Message(from: incomingMessage)
-            
             
             switch message.event {
             case .join:
