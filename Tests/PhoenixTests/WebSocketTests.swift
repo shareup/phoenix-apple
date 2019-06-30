@@ -3,13 +3,42 @@ import XCTest
 
 class WebSocketTests: XCTestCase {
     var gen = Ref.Generator()
+    
+    var proc: Process? = nil
 
-//    override func setUp() {
-//        super.setUp()
-//        websocket = FakeWebSocket(url: URL(string: "127.0.0.1")!)
-//        delegate = Delegate()
-//        phoenix = Socket(websocket: websocket, delegate: delegate, delegateQueue: queue)
-//    }
+    override func setUp() {
+        super.setUp()
+        
+        let _proc = Process()
+        proc = _proc
+        
+        _proc.launchPath = "/usr/local/bin/mix"
+        _proc.arguments = ["phx.server"]
+        
+        let PATH = ProcessInfo.processInfo.environment["PATH"]!
+        
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = "\(PATH):/usr/local/bin/"
+        
+        _proc.environment = env
+        
+        _proc.currentDirectoryURL = URL(fileURLWithPath: #file).appendingPathComponent("../example/")
+        
+        try! _proc.run()
+        
+        sleep(1)
+    }
+    
+    override func tearDown() {
+        super.tearDown()
+        
+        proc?.interrupt()
+        sleep(1)
+        proc?.interrupt()
+        sleep(1)
+        proc?.terminate()
+        proc?.waitUntilExit()
+    }
     
     func testConnectAfterInit() {
         let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
