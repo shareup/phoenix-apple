@@ -19,6 +19,16 @@ public class WebSocket: NSObject, WebSocketProtocol, URLSessionWebSocketDelegate
         case closed(Errors)
     }
     
+    public var isOpen: Bool { get { _queue.sync {
+        guard case .open = _state else { return false }
+        return true
+    } } }
+    
+    public var isClosed: Bool { get { _queue.sync {
+        guard case .closed = _state else { return false }
+        return true
+    } } }
+    
     private let _url: URL
     private var _state: State
     
@@ -50,8 +60,7 @@ public class WebSocket: NSObject, WebSocketProtocol, URLSessionWebSocketDelegate
     }
     
     private func buildWebSocketSessionAndTask() {
-        // TODO: accept pre-prepared URLSession as init arg
-        let _session = URLSession(configuration: .background(withIdentifier: "Phoenix.Websocket"), delegate: self, delegateQueue: _delegateQueue)
+        let _session = URLSession(configuration: .default, delegate: self, delegateQueue: _delegateQueue)
         
         let task = _session.webSocketTask(with: _url)
         task.receive { result in self.subject.send(result) }
