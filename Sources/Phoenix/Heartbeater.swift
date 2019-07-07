@@ -47,6 +47,8 @@ class Heartbeater: Subscriber {
         if let ref = input.ref, ref.rawValue == lastRef {
             lastReceivedAt = Date()
             count += 1
+        } else {
+            fatalError()
         }
         
         return .unlimited

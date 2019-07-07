@@ -1,7 +1,7 @@
 import Foundation
 
 struct OutgoingMessage {
-    let joinRef: Ref
+    let joinRef: Ref?
     let ref: Ref
     let push: Push
     let sentAt: Date = Date()
@@ -14,7 +14,7 @@ struct OutgoingMessage {
         return try JSONSerialization.data(withJSONObject: asArray(), options: [])
     }
     
-    private func asArray() -> Array<Any?> {
+    private func asArray() -> [Any?] {
         return [
             joinRef,
             ref,

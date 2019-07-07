@@ -1,6 +1,6 @@
 import Foundation
 
-internal struct IncomingMessage {
+public struct IncomingMessage {
     enum DecodingError: Error {
         case invalidType(Any?)
         case missingValue(String)
@@ -11,7 +11,7 @@ internal struct IncomingMessage {
     let ref: Ref?
     let topic: String
     let event: Event
-    let payload: Dictionary<String, Any>
+    let payload: [String: Any]
 
     init(data: Data) throws {
         let jsonArray = try JSONSerialization.jsonObject(with: data, options: [])

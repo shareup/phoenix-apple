@@ -11,7 +11,7 @@ config :example, ExampleWeb.Endpoint,
   check_origin: false,
   watchers: []
 
-config :logger, :console, format: "[$level] $message\n"
+config :logger, :console, format: "[$level] $message\n", level: :debug
 
 config :phoenix, :stacktrace_depth, 20
 

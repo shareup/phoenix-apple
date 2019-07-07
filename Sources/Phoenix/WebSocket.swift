@@ -5,6 +5,7 @@ public class WebSocket: NSObject, WebSocketProtocol {
     public typealias Message = URLSessionWebSocketTask.Message
     
     public enum Errors: Error {
+        case unopened
         case invalidURL(URL)
         case invalidURLComponents(URLComponents)
         case notOpen
@@ -31,7 +32,7 @@ public class WebSocket: NSObject, WebSocketProtocol {
     private let _url: URL
     private var _state: State
     
-    private var _subscriptions: [SocketSubscription] = []
+    private var _subscriptions: [WebSocketSubscription] = []
     
     private let _delegateQueue: OperationQueue = OperationQueue()
     
@@ -60,19 +61,23 @@ public class WebSocket: NSObject, WebSocketProtocol {
         }
         
         _url = url
-        _state = .connecting
+        _state = .closed(.unopened)
         
         super.init()
         
-        buildWebSocketSessionAndTask()
+        connect()
     }
     
-    private func buildWebSocketSessionAndTask() {
-        let _session = URLSession(configuration: .default, delegate: self, delegateQueue: _delegateQueue)
-        
-        let task = _session.webSocketTask(with: _url)
-        task.receive { result in self.publish(result) }
-        task.resume()
+    private func connect() {
+        sync {
+            guard case .closed = _state else { return }
+            
+            let _session = URLSession(configuration: .default, delegate: self, delegateQueue: _delegateQueue)
+            
+            let task = _session.webSocketTask(with: _url)
+            task.receive { result in self.publish(result) }
+            task.resume()
+        }
     }
     
     public func send(_ message: Message, completionHandler: @escaping (Error?) -> Void) throws {
@@ -88,26 +93,9 @@ public class WebSocket: NSObject, WebSocketProtocol {
     public func close() {
         sync {
             guard case .open(let task) = _state else { return }
+            
             task.cancel(with: .normalClosure, reason: nil)
             _state = .closing
-        }
-    }
-}
-
-extension WebSocket {
-    class SocketSubscription: Subscription {
-        let subscriber: AnySubscriber<Result<Message, Error>, Error>
-        var demand: Subscribers.Demand? = nil
-        
-        init(subscriber: AnySubscriber<Result<Message, Error>, Error>) {
-            self.subscriber = subscriber
-        }
-
-        func request(_ demand: Subscribers.Demand) {
-            self.demand = demand
-        }
-        
-        func cancel() {
         }
     }
 }
@@ -118,7 +106,7 @@ extension WebSocket: Publisher {
     
     public func receive<S>(subscriber: S) where S : Subscriber, WebSocket.Failure == S.Failure, WebSocket.Output == S.Input {
         sync {
-            let subscription = SocketSubscription(subscriber: subscriber.eraseToAnySubscriber())
+            let subscription = WebSocketSubscription(subscriber: AnySubscriber(subscriber))
             subscriber.receive(subscription: subscription)
             _subscriptions.append(subscription)
         }
