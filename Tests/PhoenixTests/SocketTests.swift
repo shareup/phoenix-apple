@@ -3,13 +3,10 @@ import XCTest
 
 class SocketTests: XCTestCase {
     var gen = Ref.Generator()
-    
-    var helper: TestHelper!
+    let helper = TestHelper()
     
     override func setUp() {
         super.setUp()
-        
-        helper = TestHelper()
         
         try! helper.bootExample()
     }

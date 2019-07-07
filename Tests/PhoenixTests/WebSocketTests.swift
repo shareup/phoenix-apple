@@ -3,6 +3,7 @@ import XCTest
 
 class WebSocketTests: XCTestCase {
     var gen = Ref.Generator()
+    var helper = TestHelper()
     
     var proc: Process? = nil
 
@@ -40,7 +41,7 @@ class WebSocketTests: XCTestCase {
         proc?.waitUntilExit()
     }
     
-    func testConnectAfterInit() {
+    func testConnectAfterInit() throws {
         let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
         
         let webSocket: WebSocket
@@ -51,14 +52,16 @@ class WebSocketTests: XCTestCase {
             return XCTFail()
         }
         
-        wait { webSocket.isOpen }
+        helper.wait { webSocket.isOpen }
+        XCTAssert(webSocket.isOpen)
         
         webSocket.close()
         
-        wait { webSocket.isClosed }
+        helper.wait { webSocket.isClosed }
+        XCTAssert(webSocket.isClosed)
     }
     
-    func testJoinLobby() {
+    func testJoinLobby() throws {
         let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
         
         let webSocket: WebSocket
@@ -69,9 +72,8 @@ class WebSocketTests: XCTestCase {
             return XCTFail("Making a socket failed \(error)")
         }
         
-        wait("Should be open") {
-            webSocket.isOpen
-        }
+        helper.wait { webSocket.isOpen }
+        XCTAssert(webSocket.isOpen)
         
         let joinRef = gen.advance().rawValue
         let ref = gen.current.rawValue
@@ -79,7 +81,7 @@ class WebSocketTests: XCTestCase {
         let event = "phx_join"
         let payload: Payload = [:]
         
-        let message = serialize([
+        let message = helper.serialize([
             joinRef,
             ref,
             topic,
@@ -115,13 +117,14 @@ class WebSocketTests: XCTestCase {
             case .data(_):
                 XCTFail("Received a data response, which is wrong")
             case .string(let string):
-                reply = self.deserialize(string.data(using: .utf8)!)!
+                reply = self.helper.deserialize(string.data(using: .utf8)!)!
             @unknown default:
                 XCTFail("Received an unknown response type")
             }
         }
         
-        wait("Should receive reply") { hasReplied }
+        helper.wait { hasReplied }
+        XCTAssert(hasReplied)
         
         if reply.count == 5 {
             XCTAssertEqual(reply[0] as! UInt64, joinRef)
@@ -139,51 +142,49 @@ class WebSocketTests: XCTestCase {
         
         webSocket.close()
         
-        wait("Should be closed") {
-            webSocket.isClosed
-        }
+        helper.wait { webSocket.isClosed }
+        XCTAssert(webSocket.isClosed)
     }
     
     func testEcho() {
         let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
-        
+
         let webSocket: WebSocket
-        
+
         do {
             webSocket = try WebSocket(url: url)
         } catch {
             return XCTFail("Making a socket failed \(error)")
         }
-        
-        wait("Should be open") {
-            webSocket.isOpen
-        }
-        
+
+        helper.wait { webSocket.isOpen }
+        XCTAssert(webSocket.isOpen)
+
         let joinRef = gen.advance().rawValue
         let ref = gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
         let payload: Payload = [:]
-        
-        let message = serialize([
+
+        let message = helper.serialize([
             joinRef,
             ref,
             topic,
             event,
             payload
         ])!
-        
+
         try! webSocket.send(.data(message)) { error in
             if let error = error {
                 XCTFail("Sending data down the socket failed \(error)")
             }
         }
-        
+
         var replies = [IncomingMessage]()
-        
+
         let _ = webSocket.sink { result in
             let message: WebSocket.Message
-            
+
             switch result {
             case .success(let _message):
                 message = _message
@@ -191,7 +192,7 @@ class WebSocketTests: XCTestCase {
                 XCTFail("Received an error \(error)")
                 return
             }
-            
+
             switch message {
             case .data(_):
                 XCTFail("Received a data response, which is wrong")
@@ -202,7 +203,7 @@ class WebSocketTests: XCTestCase {
             @unknown default:
                 XCTFail("Received an unknown response type")
             }
-            
+
             if replies.count == 1 {
                 let nextRef = self.gen.advance().rawValue
                 let repeatEvent = "repeat"
@@ -210,61 +211,32 @@ class WebSocketTests: XCTestCase {
                     "echo": "hello",
                     "amount": 5
                 ]
-                
-                let message = self.serialize([
+
+                let message = self.helper.serialize([
                     joinRef,
                     nextRef,
                     topic,
                     repeatEvent,
                     repeatPayload
                 ])!
-                
+
                 try! webSocket.send(.data(message)) { error in
                     if let error = error {
                         XCTFail("Sending data down the socket failed \(error)")
                     }
                 }
-            
+
             }
-            
+
             return
         }
-        
-        wait("Should receive reply") { replies.count > 6 }
-        
+
+        helper.wait { replies.count > 6 }
+        XCTAssert(replies.count > 6)
+
         webSocket.close()
-        
-        wait("Should be closed") {
-            webSocket.isClosed
-        }
-    }
-}
 
-extension WebSocketTests {
-    func deserialize(_ data: Data) -> [Any?]? {
-        return try? JSONSerialization.jsonObject(with: data, options: []) as? [Any?]
-    }
-    
-    func serialize(_ stuff: [Any?]) -> Data? {
-        return try? JSONSerialization.data(withJSONObject: stuff, options: [])
-    }
-    
-    func wait(_ test: () -> Bool) {
-        wait("", test: test)
-    }
-    
-    func wait(_ message: String, test: () -> Bool) {
-        let start = CFAbsoluteTimeGetCurrent()
-        let max = start + 0.2
-
-        while CFAbsoluteTimeGetCurrent() < max {
-            if test() {
-                return
-            } else {
-                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
-            }
-        }
-
-        XCTFail(message)
+        helper.wait { webSocket.isClosed }
+        XCTAssert(webSocket.isClosed)
     }
 }

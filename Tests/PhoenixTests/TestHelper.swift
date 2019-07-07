@@ -50,4 +50,12 @@ final class TestHelper {
         proc?.terminate()
         proc?.waitUntilExit()
     }
+    
+    func deserialize(_ data: Data) -> [Any?]? {
+        return try? JSONSerialization.jsonObject(with: data, options: []) as? [Any?]
+    }
+
+    func serialize(_ stuff: [Any?]) -> Data? {
+        return try? JSONSerialization.data(withJSONObject: stuff, options: [])
+    }
 }
