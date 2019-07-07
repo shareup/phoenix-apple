@@ -1,7 +1,8 @@
 import Foundation
 import Combine
+import Synchronized
 
-public class WebSocket: NSObject, WebSocketProtocol {
+public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     public typealias Message = URLSessionWebSocketTask.Message
     
     public enum Errors: Error {
@@ -19,15 +20,15 @@ public class WebSocket: NSObject, WebSocketProtocol {
         case closed(Errors)
     }
     
-    public var isOpen: Bool { get { sync {
+    public var isOpen: Bool { sync {
         guard case .open = _state else { return false }
         return true
-    } } }
+    } }
     
-    public var isClosed: Bool { get { sync {
+    public var isClosed: Bool { sync {
         guard case .closed = _state else { return false }
         return true
-    } } }
+    } }
     
     private let _url: URL
     private var _state: State
@@ -35,14 +36,6 @@ public class WebSocket: NSObject, WebSocketProtocol {
     private var _subscriptions: [WebSocketSubscription] = []
     
     private let _delegateQueue: OperationQueue = OperationQueue()
-    
-    private lazy var _synchronizationQueue: DispatchQueue = {
-        let queue = DispatchQueue(label: "Phoenix.WebSocket._synchronizationQueue")
-        queue.setSpecific(key: self._queueKey, value: self._queueContext)
-        return queue
-    }()
-    private let _queueKey = DispatchSpecificKey<Int>()
-    private lazy var _queueContext: Int = unsafeBitCast(self, to: Int.self)
     
     public required init(url original: URL) throws {
         let appended = original.appendingPathComponent("websocket")
@@ -75,8 +68,34 @@ public class WebSocket: NSObject, WebSocketProtocol {
             let _session = URLSession(configuration: .default, delegate: self, delegateQueue: _delegateQueue)
             
             let task = _session.webSocketTask(with: _url)
-            task.receive { result in self.publish(result) }
             task.resume()
+            task.receive(completionHandler: receiveFromWebSocket(result:))
+        }
+    }
+    
+    private func receiveFromWebSocket(result: Result<URLSessionWebSocketTask.Message, Error>) {
+        switch result {
+        case .success(let message):
+            switch message {
+            case .string(let string):
+                Swift.print("Received on webSocket: \(string)")
+            case .data(let data):
+                let string = String(data: data, encoding: .utf8)!
+                Swift.print("Received data on webSocket: \(string)")
+            default:
+                break
+            }
+        default:
+            break
+        }
+        
+        publish(result)
+        
+        sync {
+            if case .open(let task) = _state,
+                case .running = task.state {
+                task.receive(completionHandler: receiveFromWebSocket(result:))
+            }
         }
     }
     
@@ -119,7 +138,7 @@ extension WebSocket: Publisher {
                 guard demand > 0 else { return }
                 
                 let newDemand = subscription.subscriber.receive(output)
-                subscription.demand = newDemand
+                subscription.request(newDemand)
             }
         }
     }
@@ -164,31 +183,5 @@ extension WebSocket: URLSessionWebSocketDelegate {
         sync {
             _state = .open(webSocketTask)
         }
-    }
-}
-
-extension WebSocket {
-    private func sync<T>(_ block: () throws -> T) rethrows -> T {
-        if isSynced {
-            return try block()
-        } else {
-            return try _synchronizationQueue.sync(execute: block)
-        }
-    }
-    
-    private func sync(_ block: () throws -> Void) rethrows {
-        if isSynced {
-            try block()
-        } else {
-            try _synchronizationQueue.sync(execute: block)
-        }
-    }
-    
-    private var isSynced: Bool {
-        return DispatchQueue.getSpecific(key: _queueKey) == _queueContext
-    }
-    
-    private func async(_ block: @escaping () -> Void) {
-        _synchronizationQueue.async(execute: block)
     }
 }

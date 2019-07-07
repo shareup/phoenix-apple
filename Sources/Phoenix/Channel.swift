@@ -1,16 +1,9 @@
 import Foundation
 import Combine
+import Synchronized
 
 public final class Channel {
     private var _subscription: Subscription? = nil
-    
-    private lazy var _synchronizationQueue: DispatchQueue = {
-        let queue = DispatchQueue(label: "Phoenix.WebSocket._synchronizationQueue")
-        queue.setSpecific(key: self._queueKey, value: self._queueContext)
-        return queue
-    }()
-    private let _queueKey = DispatchSpecificKey<Int>()
-    private lazy var _queueContext: Int = unsafeBitCast(self, to: Int.self)
     
     enum State {
         case closed
@@ -75,6 +68,8 @@ public final class Channel {
     }
 }
 
+extension Channel: Synchronized {}
+
 extension Channel {
     public func push(_ eventString: String, payload: Payload, completionHandler: @escaping Push.Callback) {
         // let event = Event.custom(eventString)
@@ -104,31 +99,5 @@ extension Channel: Subscriber {
     
     public func receive(completion: Subscribers.Completion<Error>) {
         _subscription = nil
-    }
-}
-
-extension Channel {
-    private func sync<T>(_ block: () throws -> T) rethrows -> T {
-        if isSynced {
-            return try block()
-        } else {
-            return try _synchronizationQueue.sync(execute: block)
-        }
-    }
-    
-    private func sync(_ block: () throws -> Void) rethrows {
-        if isSynced {
-            try block()
-        } else {
-            try _synchronizationQueue.sync(execute: block)
-        }
-    }
-    
-    private var isSynced: Bool {
-        return DispatchQueue.getSpecific(key: _queueKey) == _queueContext
-    }
-    
-    private func async(_ block: @escaping () -> Void) {
-        _synchronizationQueue.async(execute: block)
     }
 }

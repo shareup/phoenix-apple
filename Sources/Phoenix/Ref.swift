@@ -1,4 +1,5 @@
 import Foundation
+import Synchronized
 
 public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
     let rawValue: UInt64
@@ -21,34 +22,16 @@ public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
 }
 
 extension Ref {
-    final class Generator {
-        var current: Phoenix.Ref {
-            let ref: Phoenix.Ref
-            os_unfair_lock_lock(_lock)
-            ref = _current
-            os_unfair_lock_unlock(_lock)
-            return ref
-        }
+    final class Generator: Synchronized {
+        var current: Phoenix.Ref { sync { _current } }
 
         private var _current: Phoenix.Ref = Phoenix.Ref(0)
-        private var _lock: UnsafeMutablePointer<os_unfair_lock>
-
-        init() {
-            _lock = UnsafeMutablePointer<os_unfair_lock>.allocate(capacity: 1)
-            _lock.initialize(to: os_unfair_lock())
-        }
-
-        deinit {
-            _lock.deallocate()
-        }
 
         func advance() -> Phoenix.Ref {
-            let next: Phoenix.Ref
-            os_unfair_lock_lock(_lock)
-            next = Phoenix.Ref(_current.rawValue + 1)
-            _current = next
-            os_unfair_lock_unlock(_lock)
-            return next
+            return sync {
+                _current = Phoenix.Ref(_current.rawValue + 1)
+                return _current
+            }
         }
     }
 }

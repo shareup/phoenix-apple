@@ -10,13 +10,16 @@ let package = Package(
             name: "Phoenix",
             targets: ["Phoenix"]),
     ],
-    dependencies: [ ],
+    dependencies: [
+        .package(url: "https://github.com/shareup/synchronized.git", .upToNextMajor(from: "1.0.0")),
+        .package(url: "https://github.com/shareup/forever.git", .upToNextMajor(from: "0.0.0")),
+    ],
     targets: [
         .target(
             name: "Phoenix",
-            dependencies: []),
+            dependencies: ["Synchronized"]),
         .testTarget(
             name: "PhoenixTests",
-            dependencies: ["Phoenix"]),
+            dependencies: ["Phoenix", "Forever"]),
     ]
 )

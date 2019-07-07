@@ -1,5 +1,6 @@
 import XCTest
 @testable import Phoenix
+import Forever
 
 class WebSocketTests: XCTestCase {
     var gen = Ref.Generator()
@@ -181,8 +182,10 @@ class WebSocketTests: XCTestCase {
         }
 
         var replies = [IncomingMessage]()
-
-        let _ = webSocket.sink { result in
+        
+        let forever = webSocket.forever(receiveCompletion: {
+            completion in print("$$$ Websocket publishing complete")
+        }) { result in
             let message: WebSocket.Message
 
             switch result {
@@ -225,14 +228,21 @@ class WebSocketTests: XCTestCase {
                         XCTFail("Sending data down the socket failed \(error)")
                     }
                 }
-
             }
-
-            return
         }
+        
+        var hasCancelled = false
 
-        helper.wait { replies.count > 6 }
-        XCTAssert(replies.count > 6)
+        helper.wait {
+            if replies.count == 4 && !hasCancelled {
+                forever.cancel()
+                hasCancelled = true
+            }
+            
+            return replies.count >= 6
+        }
+        
+        XCTAssert(replies.count >= 6, "Only received \(replies.count) replies")
 
         webSocket.close()
 

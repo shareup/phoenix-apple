@@ -8,7 +8,7 @@ final class TestHelper {
     
     let deafultURL = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
     
-    func wait(for duration: Double = 0.2, test: () -> Bool) {
+    func wait(for duration: Double = 0.5, test: () -> Bool) {
         let start = CFAbsoluteTimeGetCurrent()
         let max = start + duration
         

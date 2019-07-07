@@ -1,0 +1,25 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "Forever",
+        "repositoryURL": "https://github.com/shareup/forever.git",
+        "state": {
+          "branch": null,
+          "revision": "3100f13f50861653ad42e70f425b47b7a32a9aec",
+          "version": "0.0.1"
+        }
+      },
+      {
+        "package": "Synchronized",
+        "repositoryURL": "https://github.com/shareup/synchronized.git",
+        "state": {
+          "branch": null,
+          "revision": "19fded102af16a9b47fcdbbb4fd6963b72a830fb",
+          "version": "1.1.0"
+        }
+      }
+    ]
+  },
+  "version": 1
+}

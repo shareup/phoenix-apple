@@ -1,16 +1,17 @@
 import Foundation
+import Synchronized
 
-final class PushTracker {
+final class PushTracker: Synchronized {
     private let _queue = DispatchQueue(label: "Phoenix.PushTracker._queue")
     private var _pendingPushes: [Push] = []
     private var _inProgressMessages: [Ref: OutgoingMessage] = [:]
     
     func push(_ push: Push) {
-        _queue.sync { _pendingPushes.append(push) }
+        sync { _pendingPushes.append(push) }
     }
     
     func process(cb: (Push) -> OutgoingMessage?) {
-        _queue.sync {
+        sync {
             let workingArray = _pendingPushes
             _pendingPushes.removeAll()
             
@@ -28,7 +29,7 @@ final class PushTracker {
     func find(related: IncomingMessage) -> OutgoingMessage? {
         guard let id = related.ref else { return nil }
         
-        return _queue.sync {
+        return sync {
             return _inProgressMessages[id]
         }
     }
@@ -36,9 +37,8 @@ final class PushTracker {
     func cleanup(related: IncomingMessage) {
         guard let id = related.ref else { return }
         
-        _queue.sync {
+        sync {
             _inProgressMessages[id] = nil
         }
     }
 }
-
