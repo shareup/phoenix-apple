@@ -87,7 +87,15 @@ public final class Channel: Synchronized {
 // MARK: Writing
 
 extension Channel {
-    public func push(_ eventString: String, payload: Payload, callback: @escaping (Channel.Reply) -> Void) {
+    public func push(_ eventString: String) {
+        push(eventString, payload: [String: Any]())
+    }
+    
+    public func push(_ eventString: String, payload: Payload) {
+        push(eventString, payload: payload, callback: nil)
+    }
+    
+    public func push(_ eventString: String, payload: Payload, callback: ((Channel.Reply) -> Void)?) {
         let event = PhxEvent.custom(eventString)
         let push = Channel.Push(channel: self, event: event, payload: payload, callback: callback)
         
@@ -194,6 +202,10 @@ extension Channel {
         let ref = socket.generator.advance()
         let message = OutgoingMessage(push, ref: ref)
         
+        sync {
+            trackedPushes[ref] = (message, push)
+        }
+        
         socket.send(message) { error in
             if let error = error {
                 self.change(to: .errored(error))
@@ -220,11 +232,21 @@ extension Channel: Subscriber {
         // TODO: where to send this?
         Swift.print("input: \(String(describing: input))")
         
-        if let reply = Channel.Reply(incomingMessage: input) {
-            handle(reply)
-        } else {
+        switch input.event {
+        case .custom:
             let message = Channel.Message(incomingMessage: input)
             handle(message)
+            break
+        case .reply:
+            if let reply = Channel.Reply(incomingMessage: input) {
+                handle(reply)
+            } else {
+                assertionFailure("Got an unreadable reply")
+            }
+            break
+        default:
+            Swift.print("Need to handle \(input.event) types of events soon")
+            break
         }
         
         return .unlimited
@@ -286,6 +308,13 @@ extension Channel {
     }
     
     private func handle(_ message: Channel.Message) {
-        Swift.print("Would have published out \(message)")
+        sync {
+            guard case .joined = state else {
+                assertionFailure("Shouldn't be getting messages when not joined: \(message)")
+                return
+            }
+        }
+        
+        publish(.success(.message(message)))
     }
 }
