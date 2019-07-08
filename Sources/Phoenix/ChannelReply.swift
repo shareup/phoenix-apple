@@ -15,7 +15,8 @@ extension Channel {
         public let response: [String: Any]
         
         init?(incomingMessage: IncomingMessage) {
-            guard let ref = incomingMessage.ref,
+            guard incomingMessage.event == .reply,
+                let ref = incomingMessage.ref,
                 let status = incomingMessage.payload["status"] as? String,
                 let response = incomingMessage.payload["response"] as? [String: Any] else {
                     return nil
