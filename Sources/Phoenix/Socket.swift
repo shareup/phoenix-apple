@@ -10,14 +10,18 @@ final class Socket: Synchronized {
     
     var generator = Ref.Generator()
     
-    private let _ws: WebSocket
+    private let ws: WebSocket
+    
+    public var isOpen: Bool { ws.isOpen }
+    public var isClosed: Bool { ws.isClosed }
     
     public init(url: URL) throws {
-        self._ws = try WebSocket(url: url)
+        self.ws = try WebSocket(url: url)
     }
     
-    public var isOpen: Bool { _ws.isOpen }
-    public var isClosed: Bool { _ws.isClosed }
+    public func close() {
+        ws.close()
+    }
 }
 
 extension Socket {
@@ -40,27 +44,26 @@ extension Socket {
             return
         }
         
-        let encoder = JSONEncoder()
         let data: Data
         
         do {
-            data = try encoder.encode(message)
+            data = try message.encoded()
         } catch {
             fatalError("Could not serialize OutgoingMessage \(error)")
         }
 
-        _ws.send(.data(data)) { error in
+        ws.send(data) { error in
             completionHandler(error)
             
             if let error = error {
                 print("Error writing to WebSocket: \(error)")
-                self._ws.close(.abnormalClosure)
+                self.ws.close(.abnormalClosure)
             }
         }
     }
     
     private func incomingMessagePublisher() -> AnyPublisher<IncomingMessage, Error> {
-        return _ws
+        return ws
             .compactMap { result -> WebSocket.Message? in
                 switch result {
                 case .failure: return nil
@@ -75,7 +78,7 @@ extension Socket {
                 case .string(let string):
                     guard let data = string.data(using: .utf8) else { return nil }
                     return try IncomingMessage(data: data)
-                @unknown default:
+                case .open:
                     return nil
                 }
             }

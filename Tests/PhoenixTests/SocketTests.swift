@@ -17,8 +17,13 @@ class SocketTests: XCTestCase {
     
     func testWebSocketInit() throws {
         let socket = try Socket(url: helper.deafultURL)
+        
         helper.wait { socket.isOpen }
         XCTAssert(socket.isOpen, "Socket should have been open")
+        
+        socket.close()
+        helper.wait { socket.isClosed }
+        XCTAssert(socket.isClosed, "Socket should have closed")
     }
     
     func testChannelJoin() throws {

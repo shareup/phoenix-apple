@@ -5,7 +5,7 @@ struct OutgoingMessage {
     let ref: Ref
     let topic: String
     let event: Event
-    let payload: [String: Codable]
+    let payload: Payload
     let sentAt: Date = Date()
     
     init(_ push: Channel.Push, ref: Ref) {
@@ -23,15 +23,16 @@ struct OutgoingMessage {
         self.event = push.event
         self.payload = push.payload
     }
-}
-
-extension OutgoingMessage: Encodable {
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.unkeyedContainer()
-        try container.encode(joinRef)
-        try container.encode(ref)
-        try container.encode(topic)
-        try container.encode(event)
-        try container.encode(try payload.validPayload())
+    
+    func encoded() throws -> Data {
+        let array: [Any?] = [
+            joinRef?.rawValue,
+            ref.rawValue,
+            topic,
+            event.stringValue,
+            payload
+        ]
+        
+        return try JSONSerialization.data(withJSONObject: array, options: [])
     }
 }

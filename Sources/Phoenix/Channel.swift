@@ -21,6 +21,7 @@ public final class Channel: Synchronized {
     private var willFlushLater: Bool = false
     
     let topic: String
+    
     private var state: State
     private let socket: Socket
     
@@ -82,7 +83,7 @@ public final class Channel: Synchronized {
 }
 
 extension Channel {
-    public func push(_ eventString: String, payload: [String: Codable], callback: @escaping (Channel.Reply) -> Void) {
+    public func push(_ eventString: String, payload: Payload, callback: @escaping (Channel.Reply) -> Void) {
         let event = Event.custom(eventString)
         let push = Channel.Push(channel: self, event: event, payload: payload, callback: callback)
         

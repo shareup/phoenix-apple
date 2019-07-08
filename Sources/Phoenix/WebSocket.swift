@@ -3,8 +3,6 @@ import Combine
 import Synchronized
 
 public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
-    public typealias Message = URLSessionWebSocketTask.Message
-    
     public enum Errors: Error {
         case unopened
         case invalidURL(URL)
@@ -21,20 +19,20 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
     
     public var isOpen: Bool { sync {
-        guard case .open = _state else { return false }
+        guard case .open = state else { return false }
         return true
     } }
     
     public var isClosed: Bool { sync {
-        guard case .closed = _state else { return false }
+        guard case .closed = state else { return false }
         return true
     } }
     
-    private let _url: URL
-    private var _state: State
+    private let url: URL
+    private var state: State
     
-    private var _subscriptions: [WebSocketSubscription] = []
-    private let _delegateQueue: OperationQueue = OperationQueue()
+    private var subscriptions: [WebSocketSubscription] = []
+    private let delegateQueue: OperationQueue = OperationQueue()
     
     public required init(url original: URL) throws {
         let appended = original.appendingPathComponent("websocket")
@@ -52,8 +50,8 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
             throw Errors.invalidURLComponents(components)
         }
         
-        _url = url
-        _state = .closed(.unopened)
+        self.url = url
+        state = .closed(.unopened)
         
         super.init()
         
@@ -61,75 +59,98 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
     
     private func connect() {
+        var task: URLSessionWebSocketTask? = nil
+        
         sync {
-            guard case .closed = _state else { return }
+            guard case .closed = state else { return }
             
-            let _session = URLSession(configuration: .default, delegate: self, delegateQueue: _delegateQueue)
-            
-            let task = _session.webSocketTask(with: _url)
-            task.resume()
-            task.receive(completionHandler: receiveFromWebSocket(result:))
+            let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
+            task = session.webSocketTask(with: url)
         }
+        
+        task!.resume()
+        task!.receive(completionHandler: receiveFromWebSocket(result:))
     }
     
     private func receiveFromWebSocket(result: Result<URLSessionWebSocketTask.Message, Error>) {
+        let _result = result.map { WebSocket.Message($0) }
         
-        publish(result)
+        publish(_result)
         
         sync {
-            if case .open(let task) = _state,
+            if case .open(let task) = state,
                 case .running = task.state {
                 task.receive(completionHandler: receiveFromWebSocket(result:))
             }
         }
     }
     
-    public func send(_ message: Message, completionHandler: @escaping (Error?) -> Void) {
+    public func send(_ string: String, completionHandler: @escaping (Error?) -> Void) {
+        send(.string(string), completionHandler: completionHandler)
+    }
+    
+    public func send(_ data: Data, completionHandler: @escaping (Error?) -> Void) {
+        send(.data(data), completionHandler: completionHandler)
+    }
+    
+    private func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping (Error?) -> Void) {
+        var _task: URLSessionWebSocketTask? = nil
+        
         sync {
-            guard case .open(let task) = _state else {
+            guard case .open(let task) = state else {
                 completionHandler(Errors.notOpen)
                 return
             }
-            
-            task.send(message, completionHandler: completionHandler)
+            _task = task
         }
+        
+        _task!.send(message, completionHandler: completionHandler)
     }
     
     public func close() {
         close(.normalClosure)
     }
     
+    // TODO: make a list of close codes to expose publicly instead of depending on URLSessionWebSocketTask.CloseCode
     public func close(_ closeCode:  URLSessionWebSocketTask.CloseCode) {
+        var _task: URLSessionWebSocketTask? = nil
+        
         sync {
-            guard case .open(let task) = _state else { return }
-            
-            task.cancel(with: closeCode, reason: nil)
-            _state = .closing
+            guard case .open(let task) = state else { return }
+            state = .closing
+            _task = task
         }
+        
+        _task!.cancel(with: closeCode, reason: nil)
     }
 }
 
 extension WebSocket: Publisher {
-    public typealias Output = Result<Message, Error>
+    public typealias Output = Result<WebSocket.Message, Error>
     public typealias Failure = Error
     
     public func receive<S>(subscriber: S) where S : Subscriber, WebSocket.Failure == S.Failure, WebSocket.Output == S.Input {
+        let subscription = WebSocketSubscription(subscriber: AnySubscriber(subscriber))
+        subscriber.receive(subscription: subscription)
+        
         sync {
-            let subscription = WebSocketSubscription(subscriber: AnySubscriber(subscriber))
-            subscriber.receive(subscription: subscription)
-            _subscriptions.append(subscription)
+            subscriptions.append(subscription)
         }
     }
     
     private func publish(_ output: Output) {
+        var subscriptions: [WebSocketSubscription] = []
+        
         sync {
-            for subscription in _subscriptions {
-                guard let demand = subscription.demand else { return }
-                guard demand > 0 else { return }
-                
-                let newDemand = subscription.subscriber.receive(output)
-                subscription.request(newDemand)
-            }
+            subscriptions = self.subscriptions
+        }
+        
+        for subscription in subscriptions {
+            guard let demand = subscription.demand else { continue }
+            guard demand > 0 else { continue }
+            
+            let newDemand = subscription.subscriber.receive(output)
+            subscription.request(newDemand)
         }
     }
     
@@ -142,11 +163,15 @@ extension WebSocket: Publisher {
     }
     
     private func complete(_ failure: Subscribers.Completion<Failure>) {
+        var subscriptions: [WebSocketSubscription] = []
+        
         sync {
-            for subscription in _subscriptions {
-                subscription.subscriber.receive(completion: failure)
-            }
-            _subscriptions.removeAll()
+            subscriptions = self.subscriptions
+            self.subscriptions.removeAll()
+        }
+        
+        for subscription in subscriptions {
+            subscription.subscriber.receive(completion: failure)
         }
     }
 }
@@ -157,13 +182,13 @@ extension WebSocket: URLSessionWebSocketDelegate {
                            didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
                            reason: Data?) {
         sync {
-            _state = .closed(Errors.closed(closeCode, reason))
-            
-            if closeCode == .normalClosure {
-                complete()
-            } else {
-                complete(Errors.closed(closeCode, reason))
-            }
+            state = .closed(Errors.closed(closeCode, reason))
+        }
+        
+        if closeCode == .normalClosure {
+            complete()
+        } else {
+            complete(Errors.closed(closeCode, reason))
         }
     }
     
@@ -171,7 +196,9 @@ extension WebSocket: URLSessionWebSocketDelegate {
                            webSocketTask: URLSessionWebSocketTask,
                            didOpenWithProtocol protocol: String?) {
         sync {
-            _state = .open(webSocketTask)
+            state = .open(webSocketTask)
         }
+        
+        publish(.success(.open))
     }
 }

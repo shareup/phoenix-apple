@@ -21,19 +21,6 @@ public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
     }
 }
 
-extension Ref: Codable {
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let int = try container.decode(UInt64.self)
-        self.init(int)
-    }
-    
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        try container.encode(rawValue)
-    }
-}
-
 extension Ref {
     final class Generator: Synchronized {
         var current: Phoenix.Ref { sync { _current } }

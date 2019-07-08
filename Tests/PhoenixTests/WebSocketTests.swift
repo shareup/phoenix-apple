@@ -3,52 +3,23 @@ import XCTest
 import Forever
 
 class WebSocketTests: XCTestCase {
-    var gen = Ref.Generator()
     var helper = TestHelper()
-    
-    var proc: Process? = nil
 
     override func setUp() {
         super.setUp()
         
-        let _proc = Process()
-        proc = _proc
-        
-        _proc.launchPath = "/usr/local/bin/mix"
-        _proc.arguments = ["phx.server"]
-        
-        let PATH = ProcessInfo.processInfo.environment["PATH"]!
-        
-        var env = ProcessInfo.processInfo.environment
-        env["PATH"] = "\(PATH):/usr/local/bin/"
-        
-        _proc.environment = env
-        
-        _proc.currentDirectoryURL = URL(fileURLWithPath: #file).appendingPathComponent("../example/")
-        
-        try! _proc.run()
-        
-        sleep(1)
+        try! helper.bootExample()
     }
     
     override func tearDown() {
-        super.tearDown()
-        
-        proc?.interrupt()
-        sleep(1)
-        proc?.interrupt()
-        sleep(1)
-        proc?.terminate()
-        proc?.waitUntilExit()
+        try! helper.quitExample()
     }
     
     func testConnectAfterInit() throws {
-        let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
-        
         let webSocket: WebSocket
         
         do {
-          webSocket = try WebSocket(url: url)
+          webSocket = try WebSocket(url: helper.deafultURL)
         } catch {
             return XCTFail()
         }
@@ -62,13 +33,40 @@ class WebSocketTests: XCTestCase {
         XCTAssert(webSocket.isClosed)
     }
     
-    func testJoinLobby() throws {
-        let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
-        
+    func testReceiveOpenEvent() throws {
         let webSocket: WebSocket
         
         do {
-            webSocket = try WebSocket(url: url)
+            webSocket = try WebSocket(url: helper.deafultURL)
+        } catch {
+            return XCTFail()
+        }
+        
+        let completeEx = XCTestExpectation(description: "WebSocket pipeline is complete")
+        let openEx = XCTestExpectation(description: "WebSocket is open")
+        
+        let _ = webSocket.forever(receiveCompletion: { completion in
+            if case .finished = completion {
+                completeEx.fulfill()
+            }
+        }) { result in
+            if case .success(.open) = result {
+                openEx.fulfill()
+            }
+        }
+        
+        wait(for: [openEx], timeout: 0.25)
+        
+        webSocket.close()
+        
+        wait(for: [completeEx], timeout: 0.25)
+    }
+    
+    func testJoinLobby() throws {
+        let webSocket: WebSocket
+        
+        do {
+            webSocket = try WebSocket(url: helper.deafultURL)
         } catch {
             return XCTFail("Making a socket failed \(error)")
         }
@@ -76,8 +74,8 @@ class WebSocketTests: XCTestCase {
         helper.wait { webSocket.isOpen }
         XCTAssert(webSocket.isOpen)
         
-        let joinRef = gen.advance().rawValue
-        let ref = gen.current.rawValue
+        let joinRef = helper.gen.advance().rawValue
+        let ref = helper.gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
         let payload = [String: String]()
@@ -90,7 +88,7 @@ class WebSocketTests: XCTestCase {
             payload
         ])!
 
-        webSocket.send(.data(message)) { error in
+        webSocket.send(message) { error in
             if let error = error {
                 XCTFail("Sending data down the socket failed \(error)")
             }
@@ -99,7 +97,7 @@ class WebSocketTests: XCTestCase {
         var hasReplied = false
         var reply: [Any?] = []
         
-        let _ = webSocket.sink { result in
+        let _ = webSocket.forever { result in
             guard !hasReplied else { return }
 
             let message: WebSocket.Message
@@ -119,8 +117,8 @@ class WebSocketTests: XCTestCase {
                 XCTFail("Received a data response, which is wrong")
             case .string(let string):
                 reply = self.helper.deserialize(string.data(using: .utf8)!)!
-            @unknown default:
-                XCTFail("Received an unknown response type")
+            case .open:
+                XCTFail("Received an open event")
             }
         }
         
@@ -147,11 +145,6 @@ class WebSocketTests: XCTestCase {
         XCTAssert(webSocket.isClosed)
     }
     
-    struct RepeatPayload {
-        let echo: String
-        let amount: UInt64
-    }
-    
     func testEcho() {
         let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
 
@@ -166,8 +159,8 @@ class WebSocketTests: XCTestCase {
         helper.wait { webSocket.isOpen }
         XCTAssert(webSocket.isOpen)
 
-        let joinRef = gen.advance().rawValue
-        let ref = gen.current.rawValue
+        let joinRef = helper.gen.advance().rawValue
+        let ref = helper.gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
         let payload = [String: String]()
@@ -180,7 +173,7 @@ class WebSocketTests: XCTestCase {
             payload
         ])!
 
-        webSocket.send(.data(message)) { error in
+        webSocket.send(message) { error in
             if let error = error {
                 XCTFail("Sending data down the socket failed \(error)")
             }
@@ -188,7 +181,7 @@ class WebSocketTests: XCTestCase {
 
         var replies = [IncomingMessage]()
         
-        let forever = webSocket.forever(receiveCompletion: {
+        let _ = webSocket.forever(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
         }) { result in
             let message: WebSocket.Message
@@ -208,14 +201,17 @@ class WebSocketTests: XCTestCase {
                 let reply = try! IncomingMessage(data: string.data(using: .utf8)!)
                 replies.append(reply)
                 print("reply: \(reply)")
-            @unknown default:
-                XCTFail("Received an unknown response type")
+            case .open:
+                XCTFail("Received an open event")
             }
 
             if replies.count == 1 {
-                let nextRef = self.gen.advance().rawValue
+                let nextRef = self.helper.gen.advance().rawValue
                 let repeatEvent = "repeat"
-                let repeatPayload = RepeatPayload(echo: "hello", amount: 5)
+                let repeatPayload: [String: Any] = [
+                    "echo": "hello",
+                    "amount": 5
+                ]
 
                 let message = self.helper.serialize([
                     joinRef,
@@ -225,7 +221,7 @@ class WebSocketTests: XCTestCase {
                     repeatPayload
                 ])!
 
-                webSocket.send(.data(message)) { error in
+                webSocket.send(message) { error in
                     if let error = error {
                         XCTFail("Sending data down the socket failed \(error)")
                     }
@@ -233,14 +229,7 @@ class WebSocketTests: XCTestCase {
             }
         }
         
-        var hasCancelled = false
-
         helper.wait {
-            if replies.count == 4 && !hasCancelled {
-                forever.cancel()
-                hasCancelled = true
-            }
-            
             return replies.count >= 6
         }
         

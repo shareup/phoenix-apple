@@ -6,7 +6,7 @@ extension Channel {
         
         let channel: Channel
         let event: Event
-        let payload: [String: Codable]
+        let payload: Payload
         let timeout: Double = 5.0 // in seconds
         let callback: Callback?
         
@@ -14,7 +14,7 @@ extension Channel {
             self.init(channel: channel, event: event, payload: [String: String](), callback: callback)
         }
         
-        init(channel: Channel, event: Event, payload: [String: Codable], callback: Callback? = nil) {
+        init(channel: Channel, event: Event, payload: Payload, callback: Callback? = nil) {
             self.channel = channel
             self.event = event
             self.payload = payload

@@ -11,11 +11,12 @@ public struct IncomingMessage {
     let ref: Ref?
     let topic: String
     let event: Event
-    let payload: [String: Codable]
+    let payload: Payload
 
     init(data: Data) throws {
         let jsonArray = try JSONSerialization.jsonObject(with: data, options: [])
-        guard let arr = jsonArray as? Array<Any?> else {
+
+        guard let arr = jsonArray as? [Any?] else {
             throw DecodingError.invalidType(jsonArray)
         }
 
@@ -32,7 +33,7 @@ public struct IncomingMessage {
 
         let event = Phoenix.Event(eventName)
 
-        guard let payload = arr[4] as? [String: Codable] else {
+        guard let payload = arr[4] as? Payload else {
             throw DecodingError.invalidTypeForValue("payload", arr[4])
         }
 
@@ -45,26 +46,12 @@ public struct IncomingMessage {
         )
     }
 
-    init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: Event, payload: [String: Codable] = [:]) {
+    init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: Event, payload: Payload = [:]) {
         self.joinRef = joinRef
         self.ref = ref
         self.topic = topic
         self.event = event
         self.payload = payload
-    }
-
-    func encoded() throws -> Data {
-        return try JSONSerialization.data(withJSONObject: asArray(), options: [])
-    }
-
-    func asArray() -> Array<Any?> {
-        return [
-            joinRef?.rawValue,
-            ref?.rawValue,
-            topic,
-            event.stringValue,
-            payload
-        ]
     }
 }
 
