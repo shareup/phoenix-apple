@@ -3,24 +3,35 @@ import Foundation
 struct OutgoingMessage {
     let joinRef: Ref?
     let ref: Ref
-    let push: Push
+    let topic: String
+    let event: Event
+    let payload: [String: Codable]
     let sentAt: Date = Date()
     
-    var topic: String { push.topic }
-    var event: Event { push.event }
-    var payload: Payload { push.payload }
-    
-    func encoded() throws -> Data {
-        return try JSONSerialization.data(withJSONObject: asArray(), options: [])
+    init(_ push: Channel.Push, ref: Ref) {
+        self.joinRef = push.channel.joinRef
+        self.ref = ref
+        self.topic = push.channel.topic
+        self.event = push.event
+        self.payload = push.payload
     }
     
-    private func asArray() -> [Any?] {
-        return [
-            joinRef,
-            ref,
-            topic,
-            event.stringValue,
-            payload
-        ]
+    init(_ push: Socket.Push, ref: Ref) {
+        self.joinRef = nil
+        self.ref = ref
+        self.topic = push.topic
+        self.event = push.event
+        self.payload = push.payload
+    }
+}
+
+extension OutgoingMessage: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.unkeyedContainer()
+        try container.encode(joinRef)
+        try container.encode(ref)
+        try container.encode(topic)
+        try container.encode(event)
+        try container.encode(try payload.validPayload())
     }
 }

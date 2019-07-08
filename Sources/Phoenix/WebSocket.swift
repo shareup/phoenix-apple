@@ -34,7 +34,6 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     private var _state: State
     
     private var _subscriptions: [WebSocketSubscription] = []
-    
     private let _delegateQueue: OperationQueue = OperationQueue()
     
     public required init(url original: URL) throws {
@@ -74,20 +73,6 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
     
     private func receiveFromWebSocket(result: Result<URLSessionWebSocketTask.Message, Error>) {
-        switch result {
-        case .success(let message):
-            switch message {
-            case .string(let string):
-                Swift.print("Received on webSocket: \(string)")
-            case .data(let data):
-                let string = String(data: data, encoding: .utf8)!
-                Swift.print("Received data on webSocket: \(string)")
-            default:
-                break
-            }
-        default:
-            break
-        }
         
         publish(result)
         
@@ -99,10 +84,11 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
         }
     }
     
-    public func send(_ message: Message, completionHandler: @escaping (Error?) -> Void) throws {
-        try sync {
+    public func send(_ message: Message, completionHandler: @escaping (Error?) -> Void) {
+        sync {
             guard case .open(let task) = _state else {
-                throw Errors.notOpen
+                completionHandler(Errors.notOpen)
+                return
             }
             
             task.send(message, completionHandler: completionHandler)
@@ -110,10 +96,14 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
     
     public func close() {
+        close(.normalClosure)
+    }
+    
+    public func close(_ closeCode:  URLSessionWebSocketTask.CloseCode) {
         sync {
             guard case .open(let task) = _state else { return }
             
-            task.cancel(with: .normalClosure, reason: nil)
+            task.cancel(with: closeCode, reason: nil)
             _state = .closing
         }
     }

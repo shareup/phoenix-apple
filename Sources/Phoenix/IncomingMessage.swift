@@ -11,7 +11,7 @@ public struct IncomingMessage {
     let ref: Ref?
     let topic: String
     let event: Event
-    let payload: [String: Any]
+    let payload: [String: Codable]
 
     init(data: Data) throws {
         let jsonArray = try JSONSerialization.jsonObject(with: data, options: [])
@@ -32,7 +32,7 @@ public struct IncomingMessage {
 
         let event = Phoenix.Event(eventName)
 
-        guard let payload = arr[4] as? Payload else {
+        guard let payload = arr[4] as? [String: Codable] else {
             throw DecodingError.invalidTypeForValue("payload", arr[4])
         }
 
@@ -45,7 +45,7 @@ public struct IncomingMessage {
         )
     }
 
-    init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: Event, payload: Dictionary<String, Any> = [:]) {
+    init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: Event, payload: [String: Codable] = [:]) {
         self.joinRef = joinRef
         self.ref = ref
         self.topic = topic
