@@ -12,6 +12,8 @@ final class Socket: Synchronized {
     
     private let ws: WebSocket
     
+    private var channels = [String: WeakChannel]()
+    
     public var isOpen: Bool { ws.isOpen }
     public var isClosed: Bool { ws.isClosed }
     
@@ -27,9 +29,17 @@ final class Socket: Synchronized {
 extension Socket {
     public func join(_ topic: String) -> Channel {
         sync {
+            if let weakChannel = channels[topic],
+                let channel = weakChannel.channel {
+                return channel
+            }
+            
             let channel = Channel(topic: topic, socket: self)
-            channelPublisher(for: topic).subscribe(channel)
+            
+            channels[topic] = WeakChannel(channel)
+            subscribe(channel)
             channel.join()
+            
             return channel
         }
     }
@@ -62,32 +72,36 @@ extension Socket {
         }
     }
     
-    private func incomingMessagePublisher() -> AnyPublisher<IncomingMessage, Error> {
-        return ws
-            .compactMap { result -> WebSocket.Message? in
-                switch result {
-                case .failure: return nil
-                case .success(let message): return message
-                }
+    private func subscribe(_ channel: Channel) {
+        ws
+        .compactMap { result -> WebSocket.Message? in
+            switch result {
+            case .failure: return nil
+            case .success(let message): return message
             }
-            .tryCompactMap { message -> IncomingMessage? in
-                switch message {
-                case .data:
-                    // TODO: Are we going to use data frames from the server for anything?
-                    return nil
-                case .string(let string):
-                    guard let data = string.data(using: .utf8) else { return nil }
-                    return try IncomingMessage(data: data)
-                case .open:
-                    return nil
-                }
+        }.tryCompactMap { message -> IncomingMessage? in
+            switch message {
+            case .data:
+                // TODO: Are we going to use data frames from the server for anything?
+                return nil
+            case .string(let string):
+                guard let data = string.data(using: .utf8) else { return nil }
+                return try IncomingMessage(data: data)
+            case .open:
+                return nil
             }
-            .eraseToAnyPublisher()
+        }
+        .filter { $0.topic == channel.topic }
+        .subscribe(channel)
     }
-    
-    private func channelPublisher(for topic: String) -> AnyPublisher<IncomingMessage, Error> {
-        return incomingMessagePublisher()
-            .filter { $0.topic == topic }
-            .eraseToAnyPublisher()
+}
+
+extension Socket {
+    final class WeakChannel {
+        weak var channel: Channel?
+        
+        init(_ channel: Channel) {
+            self.channel = channel
+        }
     }
 }

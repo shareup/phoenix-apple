@@ -31,8 +31,9 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     private let url: URL
     private var state: State
     
-    private var subscriptions: [WebSocketSubscription] = []
-    private let delegateQueue: OperationQueue = OperationQueue()
+    private let delegateQueue = OperationQueue()
+    
+    var subscriptions = [SimpleSubscription<Output, Failure>]()
     
     public required init(url original: URL) throws {
         let appended = original.appendingPathComponent("websocket")
@@ -125,53 +126,16 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
 }
 
-extension WebSocket: Publisher {
+extension WebSocket: SimplePublisher {
     public typealias Output = Result<WebSocket.Message, Error>
     public typealias Failure = Error
     
-    public func receive<S>(subscriber: S) where S : Subscriber, WebSocket.Failure == S.Failure, WebSocket.Output == S.Input {
-        let subscription = WebSocketSubscription(subscriber: AnySubscriber(subscriber))
+    public func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
+        let subscription = SimpleSubscription(subscriber: AnySubscriber(subscriber))
         subscriber.receive(subscription: subscription)
         
         sync {
             subscriptions.append(subscription)
-        }
-    }
-    
-    private func publish(_ output: Output) {
-        var subscriptions: [WebSocketSubscription] = []
-        
-        sync {
-            subscriptions = self.subscriptions
-        }
-        
-        for subscription in subscriptions {
-            guard let demand = subscription.demand else { continue }
-            guard demand > 0 else { continue }
-            
-            let newDemand = subscription.subscriber.receive(output)
-            subscription.request(newDemand)
-        }
-    }
-    
-    private func complete() {
-        complete(.finished)
-    }
-    
-    private func complete(_ failure: Failure) {
-        complete(.failure(failure))
-    }
-    
-    private func complete(_ failure: Subscribers.Completion<Failure>) {
-        var subscriptions: [WebSocketSubscription] = []
-        
-        sync {
-            subscriptions = self.subscriptions
-            self.subscriptions.removeAll()
-        }
-        
-        for subscription in subscriptions {
-            subscription.subscriber.receive(completion: failure)
         }
     }
 }

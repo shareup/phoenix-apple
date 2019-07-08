@@ -10,7 +10,7 @@ public struct IncomingMessage {
     let joinRef: Ref?
     let ref: Ref?
     let topic: String
-    let event: Event
+    let event: PhxEvent
     let payload: Payload
 
     init(data: Data) throws {
@@ -31,7 +31,7 @@ public struct IncomingMessage {
             throw DecodingError.missingValue("event")
         }
 
-        let event = Phoenix.Event(eventName)
+        let event = PhxEvent(eventName)
 
         guard let payload = arr[4] as? Payload else {
             throw DecodingError.invalidTypeForValue("payload", arr[4])
@@ -46,7 +46,7 @@ public struct IncomingMessage {
         )
     }
 
-    init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: Event, payload: Payload = [:]) {
+    init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: PhxEvent, payload: Payload = [:]) {
         self.joinRef = joinRef
         self.ref = ref
         self.topic = topic

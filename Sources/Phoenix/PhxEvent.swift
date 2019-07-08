@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Event: Equatable, ExpressibleByStringLiteral {
+public enum PhxEvent: Equatable, ExpressibleByStringLiteral {
     case join
     case leave
     case close
@@ -51,7 +51,7 @@ public enum Event: Equatable, ExpressibleByStringLiteral {
         }
     }
 
-    public static func == (lhs: Event, rhs: Event) -> Bool {
+    public static func == (lhs: PhxEvent, rhs: PhxEvent) -> Bool {
         return lhs.stringValue == rhs.stringValue
     }
 }

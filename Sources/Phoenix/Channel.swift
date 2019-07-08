@@ -20,6 +20,8 @@ public final class Channel: Synchronized {
     private var trackedPushes: [Ref: (OutgoingMessage, Channel.Push)] = [:]
     private var willFlushLater: Bool = false
     
+    var subscriptions = [SimpleSubscription<Output, Failure>]()
+    
     let topic: String
     
     private var state: State
@@ -31,7 +33,7 @@ public final class Channel: Synchronized {
         self.socket = socket
     }
     
-    var joinRef: Ref? {
+    var joinRef: Ref? { sync {
         switch state {
         case .joining(let ref):
             return ref
@@ -42,7 +44,7 @@ public final class Channel: Synchronized {
         default:
             return nil
         }
-    }
+    } }
     
     var joinPush: Channel.Push {
         Channel.Push(channel: self, event: .join)
@@ -82,12 +84,16 @@ public final class Channel: Synchronized {
     } }
 }
 
+// MARK: Writing
+
 extension Channel {
     public func push(_ eventString: String, payload: Payload, callback: @escaping (Channel.Reply) -> Void) {
-        let event = Event.custom(eventString)
+        let event = PhxEvent.custom(eventString)
         let push = Channel.Push(channel: self, event: event, payload: payload, callback: callback)
         
-        pendingPushes.append(push)
+        sync {
+            pendingPushes.append(push)
+        }
 
         DispatchQueue.global().async { self.flush() }
     }
@@ -103,17 +109,17 @@ extension Channel {
                 assertionFailure("Socket isn't open, cannot attempt to join")
                 return
             }
-            
-            let ref = socket.generator.advance()
-            
-            change(to: .joining(ref))
-            
-            let message = OutgoingMessage(joinPush, ref: ref)
-            
-            socket.send(message) { error in
-                if let error = error {
-                    self.change(to: .errored(error))
-                }
+        }
+        
+        let ref = socket.generator.advance()
+        
+        change(to: .joining(ref))
+        
+        let message = OutgoingMessage(joinPush, ref: ref)
+        
+        socket.send(message) { error in
+            if let error = error {
+                self.change(to: .errored(error))
             }
         }
     }
@@ -124,17 +130,17 @@ extension Channel {
                 assertionFailure("Can only leave if we are joining or joined")
                 return
             }
-            
-            let ref = socket.generator.advance()
-            
-            change(to: .leaving(ref))
-            
-            let message = OutgoingMessage(leavePush, ref: ref)
-            
-            socket.send(message) { error in
-                if let error = error {
-                    self.change(to: .errored(error))
-                }
+        }
+        
+        let ref = socket.generator.advance()
+        
+        change(to: .leaving(ref))
+        
+        let message = OutgoingMessage(leavePush, ref: ref)
+        
+        socket.send(message) { error in
+            if let error = error {
+                self.change(to: .errored(error))
             }
         }
     }
@@ -145,6 +151,7 @@ extension Channel {
             willFlushLater = true
         }
         
+        // TODO: make deadline smart
         let deadline = DispatchTime.now().advanced(by: .seconds(2))
         
         DispatchQueue.global().asyncAfter(deadline: deadline) {
@@ -153,9 +160,11 @@ extension Channel {
     }
     
     private func flush() {
-        guard isJoined else {
-            flushLater()
-            return
+        sync {
+            guard isJoined else {
+                flushLater()
+                return
+            }
         }
         
         var pending: [Channel.Push] = []
@@ -180,18 +189,20 @@ extension Channel {
                 pendingPushes.append(push) // re-insert
                 return
             }
-
-            let ref = socket.generator.advance()
-            let message = OutgoingMessage(push, ref: ref)
-            
-            socket.send(message) { error in
-                if let error = error {
-                    self.change(to: .errored(error))
-                }
+        }
+        
+        let ref = socket.generator.advance()
+        let message = OutgoingMessage(push, ref: ref)
+        
+        socket.send(message) { error in
+            if let error = error {
+                self.change(to: .errored(error))
             }
         }
     }
 }
+
+// MARK: :Subscriber
 
 extension Channel: Subscriber {
     public typealias Input = IncomingMessage
@@ -199,12 +210,15 @@ extension Channel: Subscriber {
     
     public func receive(subscription: Subscription) {
         subscription.request(.unlimited)
-        self.subscription = subscription
+        
+        sync {
+            self.subscription = subscription
+        }
     }
     
     public func receive(_ input: IncomingMessage) -> Subscribers.Demand {
         // TODO: where to send this?
-        print("input: \(String(describing: input))")
+        Swift.print("input: \(String(describing: input))")
         
         if let reply = Channel.Reply(incomingMessage: input) {
             handle(reply)
@@ -217,9 +231,19 @@ extension Channel: Subscriber {
     }
     
     public func receive(completion: Subscribers.Completion<Error>) {
-        self.subscription = nil
+        sync {
+            self.subscription = nil
+        }
     }
 }
+
+// MARK: :Publisher
+
+extension Channel: SimplePublisher {
+    public typealias Output = Result<Channel.Event, Error>
+}
+
+// MARK: input handlers
 
 extension Channel {
     private func handle(_ reply: Channel.Reply) {
@@ -232,6 +256,7 @@ extension Channel {
                 }
                 
                 change(to: .joined(joinRef))
+                publish(.success(.join))
                 
             case .joined(let joinRef):
                 guard let (_, push) = trackedPushes[reply.ref],
@@ -239,7 +264,10 @@ extension Channel {
                     break
                 }
                 
-                push.callback?(reply)
+                DispatchQueue.global().async {
+                    push.callback?(reply)
+                }
+                
                 trackedPushes[reply.ref] = nil
                 
             case .leaving(let ref):
@@ -248,6 +276,7 @@ extension Channel {
                 }
                 
                 change(to: .closed)
+                publish(.success(.leave))
                 
             default:
                 // sorry, not processing replies in other states
@@ -257,6 +286,6 @@ extension Channel {
     }
     
     private func handle(_ message: Channel.Message) {
-        print("Would have published out \(message)")
+        Swift.print("Would have published out \(message)")
     }
 }

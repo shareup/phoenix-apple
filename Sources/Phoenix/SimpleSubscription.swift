@@ -2,11 +2,11 @@ import Foundation
 import Combine
 import Synchronized
 
-class WebSocketSubscription: Subscription, Synchronized {
-    let subscriber: AnySubscriber<Result<WebSocket.Message, Error>, Error>
+class SimpleSubscription<Input, Failure: Error>: Subscription, Synchronized {
+    let subscriber: AnySubscriber<Input, Failure>
     var demand: Subscribers.Demand? = nil
     
-    init(subscriber: AnySubscriber<Result<WebSocket.Message, Error>, Error>) {
+    init(subscriber: AnySubscriber<Input, Failure>) {
         self.subscriber = subscriber
     }
     

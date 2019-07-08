@@ -4,7 +4,7 @@ struct OutgoingMessage {
     let joinRef: Ref?
     let ref: Ref
     let topic: String
-    let event: Event
+    let event: PhxEvent
     let payload: Payload
     let sentAt: Date = Date()
     
