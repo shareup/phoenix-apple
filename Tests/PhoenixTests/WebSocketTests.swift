@@ -80,7 +80,7 @@ class WebSocketTests: XCTestCase {
         let ref = gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
-        let payload: Payload = [:]
+        let payload = [String: String]()
         
         let message = helper.serialize([
             joinRef,
@@ -90,7 +90,7 @@ class WebSocketTests: XCTestCase {
             payload
         ])!
 
-        try! webSocket.send(.data(message)) { error in
+        webSocket.send(.data(message)) { error in
             if let error = error {
                 XCTFail("Sending data down the socket failed \(error)")
             }
@@ -147,6 +147,11 @@ class WebSocketTests: XCTestCase {
         XCTAssert(webSocket.isClosed)
     }
     
+    struct RepeatPayload {
+        let echo: String
+        let amount: UInt64
+    }
+    
     func testEcho() {
         let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
 
@@ -165,7 +170,7 @@ class WebSocketTests: XCTestCase {
         let ref = gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
-        let payload: Payload = [:]
+        let payload = [String: String]()
 
         let message = helper.serialize([
             joinRef,
@@ -175,7 +180,7 @@ class WebSocketTests: XCTestCase {
             payload
         ])!
 
-        try! webSocket.send(.data(message)) { error in
+        webSocket.send(.data(message)) { error in
             if let error = error {
                 XCTFail("Sending data down the socket failed \(error)")
             }
@@ -210,10 +215,7 @@ class WebSocketTests: XCTestCase {
             if replies.count == 1 {
                 let nextRef = self.gen.advance().rawValue
                 let repeatEvent = "repeat"
-                let repeatPayload: Payload = [
-                    "echo": "hello",
-                    "amount": 5
-                ]
+                let repeatPayload = RepeatPayload(echo: "hello", amount: 5)
 
                 let message = self.helper.serialize([
                     joinRef,
@@ -223,7 +225,7 @@ class WebSocketTests: XCTestCase {
                     repeatPayload
                 ])!
 
-                try! webSocket.send(.data(message)) { error in
+                webSocket.send(.data(message)) { error in
                     if let error = error {
                         XCTFail("Sending data down the socket failed \(error)")
                     }
