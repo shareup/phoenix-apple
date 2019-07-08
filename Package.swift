@@ -17,9 +17,9 @@ let package = Package(
     targets: [
         .target(
             name: "Phoenix",
-            dependencies: ["Synchronized"]),
+            dependencies: ["Synchronized", "Forever"]),
         .testTarget(
             name: "PhoenixTests",
-            dependencies: ["Phoenix", "Forever"]),
+            dependencies: ["Phoenix"]),
     ]
 )
