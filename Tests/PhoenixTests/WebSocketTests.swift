@@ -7,11 +7,11 @@ class WebSocketTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        
         try! helper.bootExample()
     }
     
     override func tearDown() {
+        super.tearDown()
         try! helper.quitExample()
     }
     

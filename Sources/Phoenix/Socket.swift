@@ -85,18 +85,6 @@ extension Socket {
             .eraseToAnyPublisher()
     }
     
-//    private func repliesPublisher() -> AnyPublisher<Channel.Reply, Error> {
-//        return incomingMessagePublisher()
-//            .filter {
-//                guard case .reply = $0.event else { return false }
-//                return true
-//            }
-//            .compactMap { message -> Channel.Reply? in
-//                Channel.Reply(incomingMessage: message)
-//            }
-//            .eraseToAnyPublisher()
-//    }
-    
     private func channelPublisher(for topic: String) -> AnyPublisher<IncomingMessage, Error> {
         return incomingMessagePublisher()
             .filter { $0.topic == topic }

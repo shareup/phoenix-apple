@@ -2,16 +2,15 @@ import XCTest
 @testable import Phoenix
 
 class SocketTests: XCTestCase {
-    var gen = Ref.Generator()
     let helper = TestHelper()
     
     override func setUp() {
         super.setUp()
-        
         try! helper.bootExample()
     }
     
     override func tearDown() {
+        super.tearDown()
         try! helper.quitExample()
     }
     
