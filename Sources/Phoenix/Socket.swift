@@ -8,6 +8,7 @@ final class Socket: Synchronized {
         case closed
     }
     
+    var shouldReconnect = true
     var generator = Ref.Generator()
     
     private let ws: WebSocket
@@ -23,6 +24,9 @@ final class Socket: Synchronized {
     
     public func close() {
         ws.close()
+        self.shouldReconnect = false
+    }
+}
 
 extension Socket {
     static func webSocketURLV2(url original: URL) throws -> URL {
