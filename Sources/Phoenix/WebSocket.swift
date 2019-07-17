@@ -35,22 +35,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     
     var subscriptions = [SimpleSubscription<Output, Failure>]()
     
-    public required init(url original: URL) throws {
-        let appended = original.appendingPathComponent("websocket")
-        
-        guard var components = URLComponents(url: appended, resolvingAgainstBaseURL: false) else {
-            throw Errors.invalidURL(appended)
-        }
-        
-        var query = components.queryItems ?? []
-        query.append(URLQueryItem(name: "vsn", value: "2.0.0"))
-        
-        components.queryItems = query
-        
-        guard let url = components.url else {
-            throw Errors.invalidURLComponents(components)
-        }
-        
+    public required init(url: URL) throws {
         self.url = url
         state = .closed(.unopened)
         

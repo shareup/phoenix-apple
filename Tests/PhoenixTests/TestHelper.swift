@@ -6,7 +6,12 @@ final class TestHelper {
     
     var proc: Process? = nil
     
-    let deafultURL = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
+    let defaultURL = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
+    let defaultWebSocketURL: URL
+    
+    init() {
+        self.defaultWebSocketURL = try! Socket.webSocketURLV2(url: defaultURL)
+    }
     
     func wait(for duration: Double = 0.5, test: () -> Bool) {
         let start = CFAbsoluteTimeGetCurrent()

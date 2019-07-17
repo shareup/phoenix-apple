@@ -23,6 +23,12 @@ final class Socket: Synchronized {
     
     public func close() {
         ws.close()
+
+extension Socket {
+    static func webSocketURLV2(url original: URL) throws -> URL {
+        return original
+            .appendingPathComponent("websocket")
+            .appendingQueryItems(["vsn": "2.0.0"])
     }
 }
 

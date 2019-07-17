@@ -19,7 +19,7 @@ class WebSocketTests: XCTestCase {
         let webSocket: WebSocket
         
         do {
-          webSocket = try WebSocket(url: helper.deafultURL)
+          webSocket = try WebSocket(url: helper.defaultWebSocketURL)
         } catch {
             return XCTFail()
         }
@@ -37,7 +37,7 @@ class WebSocketTests: XCTestCase {
         let webSocket: WebSocket
         
         do {
-            webSocket = try WebSocket(url: helper.deafultURL)
+            webSocket = try WebSocket(url: helper.defaultWebSocketURL)
         } catch {
             return XCTFail()
         }
@@ -66,7 +66,7 @@ class WebSocketTests: XCTestCase {
         let webSocket: WebSocket
         
         do {
-            webSocket = try WebSocket(url: helper.deafultURL)
+            webSocket = try WebSocket(url: helper.defaultWebSocketURL)
         } catch {
             return XCTFail("Making a socket failed \(error)")
         }
