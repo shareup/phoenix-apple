@@ -34,4 +34,19 @@ class SocketTests: XCTestCase {
         helper.wait { channel.isJoined }
         XCTAssert(channel.isJoined, "Channel should have been joined")
     }
+    
+    func testSocketReconnect() {
+        // special disconnect query item to set a time to auto-disconnect from inside the example server
+        let disconnectURL = helper.defaultWebSocketURL.appendingQueryItems(["disconnect": "soon"])
+        
+        let socket = try! Socket(url: disconnectURL)
+        helper.wait { socket.isOpen }
+        XCTAssert(socket.isOpen, "Socket should have been open")
+        
+        let closeMessageEx = XCTestExpectation(description: "Should have received a close message")
+        
+        // TODO: we need to publish out Socket messages that I can consume here to then fullfill the above expectation
+        
+        wait(for: [closeMessageEx], timeout: 0.5)
+    }
 }
