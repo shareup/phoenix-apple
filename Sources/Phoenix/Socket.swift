@@ -10,22 +10,49 @@ final class Socket: Synchronized {
     
     var shouldReconnect = true
     var generator = Ref.Generator()
+    var subscriptions = [SimpleSubscription<Output, Failure>]()
     
-    private let ws: WebSocket
+    private var ws: WebSocket?
+    private var forever: Subscribers.Forever<WebSocket>?
     
     private var channels = [String: WeakChannel]()
     
-    public var isOpen: Bool { ws.isOpen }
-    public var isClosed: Bool { ws.isClosed }
+    public let url: URL
+    
+    public var isOpen: Bool { ws?.isOpen ?? false }
+    public var isClosed: Bool { ws?.isClosed ?? true }
     
     public init(url: URL) throws {
-        self.ws = try WebSocket(url: url)
+        self.url = try Self.webSocketURLV2(url: url)
+        try connect()
     }
     
     public func close() {
-        ws.close()
+        ws?.close()
         self.shouldReconnect = false
     }
+    
+    private func connect() throws {
+        self.ws = try WebSocket(url: url)
+    
+        self.forever = ws!.forever(receiveCompletion: { completion in
+            self.publish(.closed)
+            
+            self.ws = nil
+            self.forever = nil
+        }, receiveValue: { _ in })
+    }
+}
+
+extension Socket {
+    enum Message {
+        case closed
+    }
+}
+
+extension Socket: SimplePublisher {
+    typealias Output = Socket.Message
+    typealias Failure = Error
 }
 
 extension Socket {
@@ -59,7 +86,7 @@ extension Socket {
     }
     
     func send(_ message: OutgoingMessage, completionHandler: @escaping (Error?) -> Void) {
-        guard isOpen else {
+        guard let ws = ws, isOpen else {
             completionHandler(Errors.closed)
             return
         }
@@ -69,6 +96,7 @@ extension Socket {
         do {
             data = try message.encoded()
         } catch {
+            // TODO: make this throw instead
             fatalError("Could not serialize OutgoingMessage \(error)")
         }
 
@@ -76,15 +104,19 @@ extension Socket {
             completionHandler(error)
             
             if let error = error {
-                print("Error writing to WebSocket: \(error)")
-                self.ws.close(.abnormalClosure)
+                Swift.print("Error writing to WebSocket: \(error)")
+                ws.close(.abnormalClosure)
             }
         }
     }
     
     private func subscribe(_ channel: Channel) {
-        ws
-        .compactMap { result -> WebSocket.Message? in
+        guard let ws = ws else {
+            // TODO: what do we do here?
+            fatalError()
+        }
+        
+        ws.compactMap { result -> WebSocket.Message? in
             switch result {
             case .failure: return nil
             case .success(let message): return message
