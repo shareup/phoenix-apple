@@ -15,7 +15,7 @@ class ChannelTests: XCTestCase {
     }
     
     func testJoinAndLeaveEvents() throws {
-        let socket = try Socket(url: helper.defaultWebSocketURL)
+        let socket = try Socket(url: helper.defaultURL)
         helper.wait { socket.isOpen }
         XCTAssert(socket.isOpen, "Socket should have been open")
         
@@ -49,7 +49,7 @@ class ChannelTests: XCTestCase {
     }
     
     func testPushCallback() throws {
-        let socket = try Socket(url: helper.defaultWebSocketURL)
+        let socket = try Socket(url: helper.defaultURL)
         helper.wait { socket.isOpen }
         XCTAssert(socket.isOpen, "Socket should have been open")
         
@@ -92,7 +92,7 @@ class ChannelTests: XCTestCase {
     }
     
     func testReceiveMessages() throws {
-        let socket = try Socket(url: helper.defaultWebSocketURL)
+        let socket = try Socket(url: helper.defaultURL)
         helper.wait { socket.isOpen }
         XCTAssert(socket.isOpen, "Socket should have been open")
         
@@ -134,11 +134,11 @@ class ChannelTests: XCTestCase {
     }
     
     func testMultipleSocketsCollaborating() throws {
-        let socket1 = try Socket(url: helper.defaultWebSocketURL)
+        let socket1 = try Socket(url: helper.defaultURL)
         helper.wait { socket1.isOpen }
         XCTAssert(socket1.isOpen, "Socket should have been open")
         
-        let socket2 = try Socket(url: helper.defaultWebSocketURL)
+        let socket2 = try Socket(url: helper.defaultURL)
         helper.wait { socket2.isOpen }
         XCTAssert(socket2.isOpen, "Socket should have been open")
         
