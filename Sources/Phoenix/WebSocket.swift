@@ -99,15 +99,11 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     
     // TODO: make a list of close codes to expose publicly instead of depending on URLSessionWebSocketTask.CloseCode
     public func close(_ closeCode:  URLSessionWebSocketTask.CloseCode) {
-        var _task: URLSessionWebSocketTask? = nil
-        
         sync {
             guard case .open(let task) = state else { return }
             state = .closing
-            _task = task
+            task.cancel(with: closeCode, reason: nil)
         }
-        
-        _task!.cancel(with: closeCode, reason: nil)
     }
 }
 
