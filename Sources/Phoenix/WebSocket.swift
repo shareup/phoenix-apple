@@ -45,17 +45,14 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
     
     private func connect() {
-        var task: URLSessionWebSocketTask? = nil
-        
         sync {
             guard case .closed = state else { return }
             
             let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
-            task = session.webSocketTask(with: url)
+            let task = session.webSocketTask(with: url)
+            task.resume()
+            task.receive(completionHandler: receiveFromWebSocket(result:))
         }
-        
-        task!.resume()
-        task!.receive(completionHandler: receiveFromWebSocket(result:))
     }
     
     private func receiveFromWebSocket(result: Result<URLSessionWebSocketTask.Message, Error>) {
@@ -80,17 +77,14 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
     
     private func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping (Error?) -> Void) {
-        var _task: URLSessionWebSocketTask? = nil
-        
         sync {
             guard case .open(let task) = state else {
                 completionHandler(Errors.notOpen)
                 return
             }
-            _task = task
+            
+            task.send(message, completionHandler: completionHandler)
         }
-        
-        _task!.send(message, completionHandler: completionHandler)
     }
     
     public func close() {
