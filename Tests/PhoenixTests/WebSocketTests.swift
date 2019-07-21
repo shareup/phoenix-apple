@@ -146,12 +146,10 @@ class WebSocketTests: XCTestCase {
     }
     
     func testEcho() {
-        let url = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
-
         let webSocket: WebSocket
 
         do {
-            webSocket = try WebSocket(url: url)
+            webSocket = try WebSocket(url: helper.defaultWebSocketURL)
         } catch {
             return XCTFail("Making a socket failed \(error)")
         }
