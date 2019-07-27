@@ -1,9 +1,9 @@
 import Foundation
 
 extension Channel {
-    struct Push {
-        typealias Callback = (Channel.Reply) -> ()
-        
+    public typealias Callback = (Result<Channel.Reply, Error>) -> ()
+
+    struct Push {    
         let channel: Channel
         let event: PhxEvent
         let payload: Payload
@@ -19,6 +19,12 @@ extension Channel {
             self.event = event
             self.payload = payload
             self.callback = callback
+        }
+
+        func asyncCallback(result: Result<Channel.Reply, Error>) {
+            if let cb = callback {
+                DispatchQueue.global().async { cb(result) }
+            }
         }
     }
 }

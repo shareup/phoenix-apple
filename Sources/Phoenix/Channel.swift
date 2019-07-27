@@ -13,24 +13,24 @@ public final class Channel: Synchronized {
     
     enum Errors: Error {
         case invalidJoinReply(Channel.Reply)
+        case isClosed
     }
     
     private var subscription: Subscription? = nil
-    private var pendingPushes: [Channel.Push] = []
-    private var trackedPushes: [Ref: (OutgoingMessage, Channel.Push)] = [:]
-    private var willFlushLater: Bool = false
+    // TODO: sweep this dictionary periodically
+    private var tracked: [Ref: Channel.Push] = [:]
     
     var subscriptions = [SimpleSubscription<Output, Failure>]()
     
     let topic: String
     
     private var state: State
-    private let socket: Socket
+    private let pusher: Pusher
     
-    init(topic: String, socket: Socket) {
+    init(topic: String, pusher: Pusher) {
         self.topic = topic
         self.state = .closed
-        self.socket = socket
+        self.pusher = pusher
     }
     
     var joinRef: Ref? { sync {
@@ -46,12 +46,20 @@ public final class Channel: Synchronized {
         }
     } }
     
-    var joinPush: Channel.Push {
-        Channel.Push(channel: self, event: .join)
+    var joinPush: Socket.Push {
+        Socket.Push(topic: topic, event: .join, payload: [:]) { error in
+            if let error = error {
+                self.change(to: .errored(error))
+            }
+        }
     }
     
-    var leavePush: Channel.Push {
-        Channel.Push(channel: self, event: .leave)
+    var leavePush: Socket.Push {
+        Socket.Push(topic: topic, event: .leave, payload: [:]) { error in
+            if let error = error {
+                self.change(to: .errored(error))
+            }
+        }
     }
     
     public var isClosed: Bool { sync {
@@ -87,49 +95,16 @@ public final class Channel: Synchronized {
 // MARK: Writing
 
 extension Channel {
-    public func push(_ eventString: String) {
-        push(eventString, payload: [String: Any]())
-    }
-    
-    public func push(_ eventString: String, payload: Payload) {
-        push(eventString, payload: payload, callback: nil)
-    }
-    
-    public func push(_ eventString: String, payload: Payload, callback: ((Channel.Reply) -> Void)?) {
-        let event = PhxEvent.custom(eventString)
-        let push = Channel.Push(channel: self, event: event, payload: payload, callback: callback)
-        
-        sync {
-            pendingPushes.append(push)
-        }
-
-        DispatchQueue.global().async { self.flush() }
-    }
-    
     public func join() {
         sync {
             guard isClosed || isErrored else {
                 assertionFailure("Can't join unless we are closed or errored")
                 return
             }
-            
-            guard socket.isOpen else {
-                assertionFailure("Socket isn't open, cannot attempt to join")
-                return
-            }
         }
-        
-        let ref = socket.generator.advance()
-        
+
+        let ref = pusher.send(joinPush)
         change(to: .joining(ref))
-        
-        let message = OutgoingMessage(joinPush, ref: ref)
-        
-        socket.send(message) { error in
-            if let error = error {
-                self.change(to: .errored(error))
-            }
-        }
     }
     
     public func leave() {
@@ -140,77 +115,26 @@ extension Channel {
             }
         }
         
-        let ref = socket.generator.advance()
-        
+        let ref = pusher.send(leavePush)
         change(to: .leaving(ref))
-        
-        let message = OutgoingMessage(leavePush, ref: ref)
-        
-        socket.send(message) { error in
-            if let error = error {
-                self.change(to: .errored(error))
-            }
-        }
     }
-    
-    private func flushLater() {
-        sync {
-            guard !willFlushLater else { return }
-            willFlushLater = true
-        }
-        
-        // TODO: make deadline smart
-        let deadline = DispatchTime.now().advanced(by: .seconds(2))
-        
-        DispatchQueue.global().asyncAfter(deadline: deadline) {
-            self.flush()
-        }
+
+    public func push(_ eventString: String) {
+        push(eventString, payload: [String: Any]())
     }
-    
-    private func flush() {
-        sync {
-            guard isJoined else {
-                flushLater()
-                return
-            }
-        }
-        
-        var pending: [Channel.Push] = []
-        
-        sync {
-            pending = pendingPushes
-            pendingPushes.removeAll()
-        }
-        
-        for push in pending { flushOne(push) }
-        
-        sync {
-            if pendingPushes.count > 1 {
-                flushLater()
-            }
-        }
+
+    public func push(_ eventString: String, payload: Payload) {
+        push(eventString, payload: payload, callback: nil)
     }
-    
-    private func flushOne(_ push: Channel.Push) {
-        sync {
-            guard isJoined else {
-                pendingPushes.append(push) // re-insert
-                return
-            }
-        }
-        
-        let ref = socket.generator.advance()
-        let message = OutgoingMessage(push, ref: ref)
-        
-        sync {
-            trackedPushes[ref] = (message, push)
-        }
-        
-        socket.send(message) { error in
-            if let error = error {
-                self.change(to: .errored(error))
-            }
-        }
+
+    public func push(_ eventString: String, payload: Payload, callback: Channel.Callback?) {
+        let push = Channel.Push(channel: self, event: PhxEvent(eventString), payload: payload, callback: callback)
+
+        // NOTE: the new contract is that when one "sends to the pusher"
+        //       one gets back the ref so one can track replies later
+        //       and one can assume the push is sent very soon
+        let ref = pusher.send(push)
+        tracked[ref] = push
     }
 }
 
@@ -218,7 +142,6 @@ extension Channel {
 
 extension Channel: Subscriber {
     public typealias Input = IncomingMessage
-    public typealias Failure = Error
     
     public func receive(subscription: Subscription) {
         subscription.request(.unlimited)
@@ -259,10 +182,11 @@ extension Channel: Subscriber {
     }
 }
 
-// MARK: :Publisher
+// MARK: :SimplePublisher
 
 extension Channel: SimplePublisher {
     public typealias Output = Result<Channel.Event, Error>
+    public typealias Failure = Error
 }
 
 // MARK: input handlers
@@ -281,16 +205,13 @@ extension Channel {
                 publish(.success(.join))
                 
             case .joined(let joinRef):
-                guard let (_, push) = trackedPushes[reply.ref],
+                guard let push = tracked[reply.ref],
                     reply.joinRef == joinRef else {
                     break
                 }
-                
-                DispatchQueue.global().async {
-                    push.callback?(reply)
-                }
-                
-                trackedPushes[reply.ref] = nil
+
+                push.asyncCallback(result: .success(reply))
+                tracked[reply.ref] = nil
                 
             case .leaving(let ref):
                 guard reply.ref == ref else {

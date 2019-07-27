@@ -68,7 +68,12 @@ class ChannelTests: XCTestCase {
         let repliedOKEx = XCTestExpectation(description: "Received OK reply")
         let repliedErrorEx = XCTestExpectation(description: "Received errro reply")
         
-        channel.push("echo", payload: ["echo": "hello"]) { reply in
+        channel.push("echo", payload: ["echo": "hello"]) { result in
+            guard case .success(let reply) = result else {
+                XCTFail()
+                return
+            }
+
             XCTAssert(reply.isOk, "Reply should have been OK")
             
             let echo = reply.response["echo"] as? String
@@ -78,7 +83,12 @@ class ChannelTests: XCTestCase {
             repliedOKEx.fulfill()
         }
         
-        channel.push("echo_error", payload: ["error": "whatever"]) { reply in
+        channel.push("echo_error", payload: ["error": "whatever"]) { result in
+            guard case .success(let reply) = result else {
+                XCTFail()
+                return
+            }
+
             XCTAssert(reply.isNotOk, "Reply should have been not OK")
             
             let error = reply.response["error"] as? String

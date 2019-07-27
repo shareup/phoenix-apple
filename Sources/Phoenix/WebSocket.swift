@@ -51,11 +51,11 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
             let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
             let task = session.webSocketTask(with: url)
             task.resume()
-            task.receive(completionHandler: receiveFromWebSocket(result:))
+            task.receive(completionHandler: receiveFromWebSocket(_:))
         }
     }
     
-    private func receiveFromWebSocket(result: Result<URLSessionWebSocketTask.Message, Error>) {
+    private func receiveFromWebSocket(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
         let _result = result.map { WebSocket.Message($0) }
         
         publish(_result)
@@ -63,7 +63,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
         sync {
             if case .open(let task) = state,
                 case .running = task.state {
-                task.receive(completionHandler: receiveFromWebSocket(result:))
+                task.receive(completionHandler: receiveFromWebSocket(_:))
             }
         }
     }
@@ -101,6 +101,8 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
 }
 
+// MARK: :SimplePublisher
+
 extension WebSocket: SimplePublisher {
     public typealias Output = Result<WebSocket.Message, Error>
     public typealias Failure = Error
@@ -114,6 +116,8 @@ extension WebSocket: SimplePublisher {
         }
     }
 }
+
+// MARK: :URLSessionWebSocketDelegate
 
 extension WebSocket: URLSessionWebSocketDelegate {
     public func urlSession(_ session: URLSession,

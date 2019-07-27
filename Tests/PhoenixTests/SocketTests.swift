@@ -42,13 +42,17 @@ class SocketTests: XCTestCase {
         let socket = try! Socket(url: disconnectURL)
         helper.wait { socket.isOpen }
         XCTAssert(socket.isOpen, "Socket should have been open")
-        
+
+        let openMesssageEx = XCTestExpectation(description: "Should have received an opened")
         let closeMessageEx = XCTestExpectation(description: "Should have received a close message")
         
         let _ = socket.forever { message in
             switch message {
+            case .opened:
+                openMesssageEx.fulfill()
             case .closed:
                 closeMessageEx.fulfill()
+            case .incomingMessage(_):
                 break
             }
         }
