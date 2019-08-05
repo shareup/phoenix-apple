@@ -101,10 +101,10 @@ extension Channel {
                 assertionFailure("Can't join unless we are closed or errored")
                 return
             }
+            
+            let ref = pusher.send(joinPush)
+            change(to: .joining(ref))
         }
-
-        let ref = pusher.send(joinPush)
-        change(to: .joining(ref))
     }
     
     public func leave() {
@@ -113,10 +113,10 @@ extension Channel {
                 assertionFailure("Can only leave if we are joining or joined")
                 return
             }
+            
+            let ref = pusher.send(leavePush)
+            change(to: .leaving(ref))
         }
-        
-        let ref = pusher.send(leavePush)
-        change(to: .leaving(ref))
     }
 
     public func push(_ eventString: String) {
@@ -128,13 +128,15 @@ extension Channel {
     }
 
     public func push(_ eventString: String, payload: Payload, callback: Channel.Callback?) {
-        let push = Channel.Push(channel: self, event: PhxEvent(eventString), payload: payload, callback: callback)
+        sync {
+            let push = Channel.Push(channel: self, event: PhxEvent(eventString), payload: payload, callback: callback)
 
-        // NOTE: the new contract is that when one "sends to the pusher"
-        //       one gets back the ref so one can track replies later
-        //       and one can assume the push is sent very soon
-        let ref = pusher.send(push)
-        tracked[ref] = push
+            // NOTE: the new contract is that when one "sends to the pusher"
+            //       one gets back the ref so one can track replies later
+            //       and one can assume the push is sent very soon
+            let ref = pusher.send(push)
+            self.tracked[ref] = push
+        }
     }
 }
 
@@ -234,8 +236,8 @@ extension Channel {
                 assertionFailure("Shouldn't be getting messages when not joined: \(message)")
                 return
             }
+            
+            publish(.success(.message(message)))
         }
-        
-        publish(.success(.message(message)))
     }
 }
