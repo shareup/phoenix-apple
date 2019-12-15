@@ -15,7 +15,7 @@ class ChannelTests: XCTestCase {
     }
     
     func testJoinAndLeaveEvents() throws {
-        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: helper.defaultURL)
         
@@ -25,10 +25,10 @@ class ChannelTests: XCTestCase {
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
-        let channelJoinedEx = XCTestExpectation(description: "Channel joined")
-        let channelLeftEx = XCTestExpectation(description: "Channel left")
+        let channelJoinedEx = expectation(description: "Channel joined")
+        let channelLeftEx = expectation(description: "Channel left")
         
-        let channelCompletedEx = XCTestExpectation(description: "Channel pipeline completed")
+        let channelCompletedEx = expectation(description: "Channel pipeline should not complete")
         channelCompletedEx.isInverted = true
         
         let channel = socket.join("room:lobby")
@@ -52,10 +52,11 @@ class ChannelTests: XCTestCase {
         channel.leave()
         
         wait(for: [channelLeftEx], timeout: 0.25)
+        waitForExpectations(timeout: 0.25)
     }
     
     func testPushCallback() throws {
-        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: helper.defaultURL)
         
@@ -65,7 +66,7 @@ class ChannelTests: XCTestCase {
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
-        let channelJoinedEx = XCTestExpectation(description: "Channel joined")
+        let channelJoinedEx = expectation(description: "Channel joined")
         
         let channel = socket.join("room:lobby")
         
@@ -77,8 +78,8 @@ class ChannelTests: XCTestCase {
         
         wait(for: [channelJoinedEx], timeout: 0.25)
         
-        let repliedOKEx = XCTestExpectation(description: "Received OK reply")
-        let repliedErrorEx = XCTestExpectation(description: "Received errro reply")
+        let repliedOKEx = expectation(description: "Received OK reply")
+        let repliedErrorEx = expectation(description: "Received errro reply")
         
         channel.push("echo", payload: ["echo": "hello"]) { result in
             guard case .success(let reply) = result else {
@@ -114,7 +115,7 @@ class ChannelTests: XCTestCase {
     }
     
     func testReceiveMessages() throws {
-        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: helper.defaultURL)
         
@@ -124,8 +125,8 @@ class ChannelTests: XCTestCase {
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
-        let channelJoinedEx = XCTestExpectation(description: "Channel joined")
-        let messageRepeatedEx = XCTestExpectation(description: "Message repeated correctly")
+        let channelJoinedEx = expectation(description: "Channel joined")
+        let messageRepeatedEx = expectation(description: "Message repeated correctly")
         let echoText = "This should be repeated"
         
         let channel = socket.join("room:lobby")
@@ -162,8 +163,8 @@ class ChannelTests: XCTestCase {
     }
     
     func testMultipleSocketsCollaborating() throws {
-        let openMesssageEx1 = XCTestExpectation(description: "Should have received an open message for socket 1")
-        let openMesssageEx2 = XCTestExpectation(description: "Should have received an open message for socket 2")
+        let openMesssageEx1 = expectation(description: "Should have received an open message for socket 1")
+        let openMesssageEx2 = expectation(description: "Should have received an open message for socket 2")
         
         let socket1 = try Socket(url: helper.defaultURL)
         let socket2 = try Socket(url: helper.defaultURL)
@@ -178,10 +179,10 @@ class ChannelTests: XCTestCase {
         
         let messageText = "This should get broadcasted 😎"
         
-        let channel1JoinedEx = XCTestExpectation(description: "Channel 1 joined")
-        let channel2JoinedEx = XCTestExpectation(description: "Channel 2 joined")
-        let channel1ReceivedMessageEx = XCTestExpectation(description: "Channel 1 received the message")
-        let channel2ReceivedMessageEx = XCTestExpectation(description: "Channel 2 received the message which was not right")
+        let channel1JoinedEx = expectation(description: "Channel 1 joined")
+        let channel2JoinedEx = expectation(description: "Channel 2 joined")
+        let channel1ReceivedMessageEx = expectation(description: "Channel 1 received the message")
+        let channel2ReceivedMessageEx = expectation(description: "Channel 2 received the message which was not right")
         channel2ReceivedMessageEx.isInverted = true
         
         let _ = channel1.forever { result in
@@ -213,5 +214,6 @@ class ChannelTests: XCTestCase {
         channel2.push("insert_message", payload: ["text": messageText])
         
         wait(for: [channel1ReceivedMessageEx], timeout: 0.25)
+        waitForExpectations(timeout: 0.25)
     }
 }

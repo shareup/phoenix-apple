@@ -13,7 +13,7 @@ defmodule ExampleWeb.RoomChannel do
   end
 
   def handle_in("insert_message", %{"text" => text}, socket) do
-    broadcast!(socket, "message", %{text: text})
+    broadcast_from!(socket, "message", %{text: text})
     {:noreply, socket}
   end
 

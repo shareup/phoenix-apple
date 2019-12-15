@@ -24,8 +24,8 @@ class WebSocketTests: XCTestCase {
             return XCTFail()
         }
         
-        let completeEx = XCTestExpectation(description: "WebSocket pipeline is complete")
-        let openEx = XCTestExpectation(description: "WebSocket is open")
+        let completeEx = expectation(description: "WebSocket pipeline is complete")
+        let openEx = expectation(description: "WebSocket is open")
         
         let _ = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {
@@ -45,8 +45,8 @@ class WebSocketTests: XCTestCase {
     }
     
     func testJoinLobby() throws {
-        let completeEx = XCTestExpectation(description: "WebSocket pipeline is complete")
-        let openEx = XCTestExpectation(description: "WebSocket should be open")
+        let completeEx = expectation(description: "WebSocket pipeline is complete")
+        let openEx = expectation(description: "WebSocket should be open")
         
         let webSocket: WebSocket
         
@@ -88,7 +88,7 @@ class WebSocketTests: XCTestCase {
         }
         
         var hasReplied = false
-        let hasRepliedEx = XCTestExpectation(description: "Should have replied")
+        let hasRepliedEx = expectation(description: "Should have replied")
         var reply: [Any?] = []
         
         let _ = webSocket.forever { result in
@@ -142,8 +142,8 @@ class WebSocketTests: XCTestCase {
     }
     
     func testEcho() {
-        let completeEx = XCTestExpectation(description: "WebSocket pipeline is complete")
-        let openEx = XCTestExpectation(description: "WebSocket should be open")
+        let completeEx = expectation(description: "WebSocket pipeline is complete")
+        let openEx = expectation(description: "WebSocket should be open")
         
         let webSocket: WebSocket
 
@@ -185,7 +185,7 @@ class WebSocketTests: XCTestCase {
         }
 
         var replies = [IncomingMessage]()
-        let repliesEx = XCTestExpectation(description: "Should receive 6 replies")
+        let repliesEx = expectation(description: "Should receive 6 replies")
         
         let _ = webSocket.forever(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")

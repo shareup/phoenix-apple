@@ -121,6 +121,12 @@ extension Socket: Subscriber {
         }
         
         publish(.closed)
+        
+        if shouldReconnect {
+            Swift.print("We should reconnect now, since it wasn't closed on purpose")
+        } else {
+            complete()
+        }
     }
 }
 

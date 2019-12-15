@@ -17,8 +17,8 @@ class SocketTests: XCTestCase {
     func testWebSocketInit() {
         let socket = try! Socket(url: helper.defaultURL)
 
-        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
-        let closeMessageEx = XCTestExpectation(description: "Should have received a close message")
+        let openMesssageEx = expectation(description: "Should have received an open message")
+        let closeMessageEx = expectation(description: "Should have received a close message")
         
         let _ = socket.forever { message in
             switch message {
@@ -39,8 +39,8 @@ class SocketTests: XCTestCase {
     }
     
     func testChannelJoin() {
-        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
-        let channelJoinedEx = XCTestExpectation(description: "Channel joined")
+        let openMesssageEx = expectation(description: "Should have received an open message")
+        let channelJoinedEx = expectation(description: "Channel joined")
         
         let socket = try! Socket(url: helper.defaultURL)
         
@@ -65,10 +65,17 @@ class SocketTests: XCTestCase {
         
         let socket = try! Socket(url: disconnectURL)
 
-        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
-        let closeMessageEx = XCTestExpectation(description: "Should have received a close message")
+        let openMesssageEx = expectation(description: "Should have received an open message")
+//        openMesssageEx.expectedFulfillmentCount = 2
         
-        let _ = socket.forever { message in
+        let closeMessageEx = expectation(description: "Should have received a close message")
+        
+        let completeMessageEx = expectation(description: "Should not complete the publishing since it was not closed on purpose")
+        completeMessageEx.isInverted = true
+        
+        let _ = socket.forever(receiveCompletion: { _ in
+            completeMessageEx.fulfill()
+        }) { message in
             switch message {
             case .opened:
                 openMesssageEx.fulfill()
@@ -79,7 +86,6 @@ class SocketTests: XCTestCase {
             }
         }
         
-        wait(for: [openMesssageEx], timeout: 0.5)
-        wait(for: [closeMessageEx], timeout: 0.5)
+        waitForExpectations(timeout: 0.5)
     }
 }
