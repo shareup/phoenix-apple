@@ -16,13 +16,7 @@ class WebSocketTests: XCTestCase {
     }
     
     func testReceiveOpenEvent() throws {
-        let webSocket: WebSocket
-        
-        do {
-            webSocket = try WebSocket(url: helper.defaultWebSocketURL)
-        } catch {
-            return XCTFail()
-        }
+        let webSocket = WebSocket(url: helper.defaultWebSocketURL)
         
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket is open")
@@ -48,13 +42,7 @@ class WebSocketTests: XCTestCase {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket should be open")
         
-        let webSocket: WebSocket
-        
-        do {
-            webSocket = try WebSocket(url: helper.defaultWebSocketURL)
-        } catch {
-            return XCTFail("Making a socket failed \(error)")
-        }
+        let webSocket = WebSocket(url: helper.defaultWebSocketURL)
         
         let _ = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {
@@ -145,13 +133,7 @@ class WebSocketTests: XCTestCase {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket should be open")
         
-        let webSocket: WebSocket
-
-        do {
-            webSocket = try WebSocket(url: helper.defaultWebSocketURL)
-        } catch {
-            return XCTFail("Making a socket failed \(error)")
-        }
+        let webSocket = WebSocket(url: helper.defaultWebSocketURL)
         
         let _ = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {

@@ -37,8 +37,8 @@ final class Socket: Synchronized {
     
     public init(url: URL) throws {
         self.url = try Self.webSocketURLV2(url: url)
-        try connect()
-        try! pusher.receiveBatch(callback: receiveFromPusher(_:))
+        connect()
+        try? pusher.receiveBatch(callback: receiveFromPusher(_:))
     }
 
     private func change(to newState: State) {
@@ -52,8 +52,8 @@ final class Socket: Synchronized {
         self.shouldReconnect = false
     }
     
-    private func connect() throws {
-        self.ws = try WebSocket(url: url)
+    private func connect() {
+        self.ws = WebSocket(url: url)
         ws!.subscribe(self)
     }
 }
@@ -123,7 +123,9 @@ extension Socket: Subscriber {
         publish(.closed)
         
         if shouldReconnect {
-            Swift.print("We should reconnect now, since it wasn't closed on purpose")
+            DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
+                self.connect()
+            }
         } else {
             complete()
         }

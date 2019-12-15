@@ -12,7 +12,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/shareup/synchronized.git", .upToNextMajor(from: "1.2.0")),
-        .package(url: "https://github.com/shareup/forever.git", .upToNextMajor(from: "0.0.0")),
+//        .package(url: "https://github.com/shareup/forever.git", .upToNextMajor(from: "0.0.0")),
+        .package(path: "/Users/myobie/src/github.com/shareup/forever")
     ],
     targets: [
         .target(

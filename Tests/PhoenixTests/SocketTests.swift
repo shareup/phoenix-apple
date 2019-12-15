@@ -1,18 +1,9 @@
 import XCTest
 @testable import Phoenix
+import Combine
 
 class SocketTests: XCTestCase {
     let helper = TestHelper()
-    
-    override func setUp() {
-        super.setUp()
-        try! helper.bootExample()
-    }
-    
-    override func tearDown() {
-        super.tearDown()
-        try! helper.quitExample()
-    }
     
     func testWebSocketInit() {
         let socket = try! Socket(url: helper.defaultURL)
@@ -66,7 +57,7 @@ class SocketTests: XCTestCase {
         let socket = try! Socket(url: disconnectURL)
 
         let openMesssageEx = expectation(description: "Should have received an open message")
-//        openMesssageEx.expectedFulfillmentCount = 2
+        openMesssageEx.expectedFulfillmentCount = 2
         
         let closeMessageEx = expectation(description: "Should have received a close message")
         

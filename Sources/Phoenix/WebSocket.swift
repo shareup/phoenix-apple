@@ -35,7 +35,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     
     var subscriptions = [SimpleSubscription<Output, Failure>]()
     
-    public required init(url: URL) throws {
+    public required init(url: URL) {
         self.url = url
         state = .closed(.unopened)
         
@@ -106,15 +106,6 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
 extension WebSocket: SimplePublisher {
     public typealias Output = Result<WebSocket.Message, Error>
     public typealias Failure = Error
-    
-    public func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
-        let subscription = SimpleSubscription(subscriber: AnySubscriber(subscriber))
-        subscriber.receive(subscription: subscription)
-        
-        sync {
-            subscriptions.append(subscription)
-        }
-    }
 }
 
 // MARK: :URLSessionWebSocketDelegate
