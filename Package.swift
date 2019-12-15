@@ -11,7 +11,7 @@ let package = Package(
             targets: ["Phoenix"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/shareup/synchronized.git", .branch("Anthony/RecursiveMutex")),
+        .package(url: "https://github.com/shareup/synchronized.git", .upToNextMajor(from: "1.2.0")),
         .package(url: "https://github.com/shareup/forever.git", .upToNextMajor(from: "0.0.0")),
     ],
     targets: [

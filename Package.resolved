@@ -14,9 +14,9 @@
         "package": "Synchronized",
         "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {
-          "branch": "Anthony/RecursiveMutex",
-          "revision": "1bbbb79a18f7d534f76901cbb107ab139cb7e494",
-          "version": null
+          "branch": null,
+          "revision": "3084d4ac37ef2726058e990f62d1e1110862975d",
+          "version": "1.2.0"
         }
       }
     ]
