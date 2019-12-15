@@ -5,5 +5,7 @@ extension Socket {
         case closed
         case opened
         case incomingMessage(IncomingMessage)
+        case unreadableMessage(String)
+        case websocketError(Error)
     }
 }

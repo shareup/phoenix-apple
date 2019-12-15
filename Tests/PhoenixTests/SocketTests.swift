@@ -74,7 +74,7 @@ class SocketTests: XCTestCase {
                 openMesssageEx.fulfill()
             case .closed:
                 closeMessageEx.fulfill()
-            case .incomingMessage(_):
+            default:
                 break
             }
         }

@@ -102,10 +102,12 @@ extension Socket: Subscriber {
                 } catch {
                     Swift.print("Could not decode the WebSocket message data: \(error)")
                     Swift.print("Message data: \(string)")
+                    publish(.unreadableMessage(string))
                 }
             }
         case .failure(let error):
             Swift.print("WebSocket error, but we are not closed: \(error)")
+            publish(.websocketError(error))
         }
 
         return .unlimited
