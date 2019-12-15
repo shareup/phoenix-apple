@@ -3,10 +3,6 @@ import XCTest
 
 final class TestHelper {
     let gen = Ref.Generator()
-
-    #if os(macOS)
-        var proc: Process? = nil
-    #endif
     
     let defaultURL = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
     let defaultWebSocketURL: URL
@@ -29,37 +25,9 @@ final class TestHelper {
     }
     
     func bootExample() throws {
-        #if os(macOS)
-            let _proc = Process()
-            proc = _proc
-
-            _proc.launchPath = "/usr/local/bin/mix"
-            _proc.arguments = ["phx.server"]
-
-            let PATH = ProcessInfo.processInfo.environment["PATH"]!
-
-            var env = ProcessInfo.processInfo.environment
-            env["PATH"] = "\(PATH):/usr/local/bin/"
-
-            _proc.environment = env
-
-            _proc.currentDirectoryURL = URL(fileURLWithPath: #file).appendingPathComponent("../example/")
-
-            try _proc.run()
-
-            sleep(1)
-        #endif
     }
     
     func quitExample() throws {
-        #if os(macOS)
-            proc?.interrupt()
-            sleep(1)
-            proc?.interrupt()
-            sleep(1)
-            proc?.terminate()
-            proc?.waitUntilExit()
-        #endif
     }
     
     func deserialize(_ data: Data) -> [Any?]? {
