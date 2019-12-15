@@ -15,24 +15,6 @@ class WebSocketTests: XCTestCase {
         try! helper.quitExample()
     }
     
-    func testConnectAfterInit() throws {
-        let webSocket: WebSocket
-        
-        do {
-          webSocket = try WebSocket(url: helper.defaultWebSocketURL)
-        } catch {
-            return XCTFail()
-        }
-        
-        helper.wait { webSocket.isOpen }
-        XCTAssert(webSocket.isOpen)
-        
-        webSocket.close()
-        
-        helper.wait { webSocket.isClosed }
-        XCTAssert(webSocket.isClosed)
-    }
-    
     func testReceiveOpenEvent() throws {
         let webSocket: WebSocket
         
@@ -63,6 +45,9 @@ class WebSocketTests: XCTestCase {
     }
     
     func testJoinLobby() throws {
+        let completeEx = XCTestExpectation(description: "WebSocket pipeline is complete")
+        let openEx = XCTestExpectation(description: "WebSocket should be open")
+        
         let webSocket: WebSocket
         
         do {
@@ -71,7 +56,15 @@ class WebSocketTests: XCTestCase {
             return XCTFail("Making a socket failed \(error)")
         }
         
-        helper.wait { webSocket.isOpen }
+        let _ = webSocket.forever(receiveCompletion: { completion in
+            if case .finished = completion {
+                completeEx.fulfill()
+            }
+        }) {
+            if case .success(.open) = $0 { return openEx.fulfill() }
+        }
+        
+        wait(for: [openEx], timeout: 0.5)
         XCTAssert(webSocket.isOpen)
         
         let joinRef = helper.gen.advance().rawValue
@@ -95,6 +88,7 @@ class WebSocketTests: XCTestCase {
         }
         
         var hasReplied = false
+        let hasRepliedEx = XCTestExpectation(description: "Should have replied")
         var reply: [Any?] = []
         
         let _ = webSocket.forever { result in
@@ -120,9 +114,11 @@ class WebSocketTests: XCTestCase {
             case .open:
                 XCTFail("Received an open event")
             }
+            
+            hasRepliedEx.fulfill()
         }
         
-        helper.wait { hasReplied }
+        wait(for: [hasRepliedEx], timeout: 0.5)
         XCTAssert(hasReplied)
         
         if reply.count == 5 {
@@ -141,11 +137,14 @@ class WebSocketTests: XCTestCase {
         
         webSocket.close()
         
-        helper.wait { webSocket.isClosed }
+        wait(for: [completeEx], timeout: 0.5)
         XCTAssert(webSocket.isClosed)
     }
     
     func testEcho() {
+        let completeEx = XCTestExpectation(description: "WebSocket pipeline is complete")
+        let openEx = XCTestExpectation(description: "WebSocket should be open")
+        
         let webSocket: WebSocket
 
         do {
@@ -153,8 +152,16 @@ class WebSocketTests: XCTestCase {
         } catch {
             return XCTFail("Making a socket failed \(error)")
         }
-
-        helper.wait { webSocket.isOpen }
+        
+        let _ = webSocket.forever(receiveCompletion: { completion in
+            if case .finished = completion {
+                completeEx.fulfill()
+            }
+        }) {
+            if case .success(.open) = $0 { return openEx.fulfill() }
+        }
+        
+        wait(for: [openEx], timeout: 0.5)
         XCTAssert(webSocket.isOpen)
 
         let joinRef = helper.gen.advance().rawValue
@@ -178,6 +185,7 @@ class WebSocketTests: XCTestCase {
         }
 
         var replies = [IncomingMessage]()
+        let repliesEx = XCTestExpectation(description: "Should receive 6 replies")
         
         let _ = webSocket.forever(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
@@ -224,18 +232,16 @@ class WebSocketTests: XCTestCase {
                         XCTFail("Sending data down the socket failed \(error)")
                     }
                 }
+            } else if replies.count >= 6 {
+                repliesEx.fulfill()
             }
         }
         
-        helper.wait {
-            return replies.count >= 6
-        }
-        
-        XCTAssert(replies.count >= 6, "Only received \(replies.count) replies")
+        wait(for: [repliesEx], timeout: 0.5)
 
         webSocket.close()
 
-        helper.wait { webSocket.isClosed }
+        wait(for: [completeEx], timeout: 0.5)
         XCTAssert(webSocket.isClosed)
     }
 }

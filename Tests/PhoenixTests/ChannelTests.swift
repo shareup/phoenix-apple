@@ -15,9 +15,15 @@ class ChannelTests: XCTestCase {
     }
     
     func testJoinAndLeaveEvents() throws {
+        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        
         let socket = try Socket(url: helper.defaultURL)
-        helper.wait { socket.isOpen }
-        XCTAssert(socket.isOpen, "Socket should have been open")
+        
+        let _ = socket.forever {
+            if case .opened = $0 { openMesssageEx.fulfill() }
+        }
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
         
         let channelJoinedEx = XCTestExpectation(description: "Channel joined")
         let channelLeftEx = XCTestExpectation(description: "Channel left")
@@ -49,9 +55,15 @@ class ChannelTests: XCTestCase {
     }
     
     func testPushCallback() throws {
+        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        
         let socket = try Socket(url: helper.defaultURL)
-        helper.wait { socket.isOpen }
-        XCTAssert(socket.isOpen, "Socket should have been open")
+        
+        let _ = socket.forever {
+            if case .opened = $0 { openMesssageEx.fulfill() }
+        }
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
         
         let channelJoinedEx = XCTestExpectation(description: "Channel joined")
         
@@ -102,9 +114,15 @@ class ChannelTests: XCTestCase {
     }
     
     func testReceiveMessages() throws {
+        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        
         let socket = try Socket(url: helper.defaultURL)
-        helper.wait { socket.isOpen }
-        XCTAssert(socket.isOpen, "Socket should have been open")
+        
+        let _ = socket.forever {
+            if case .opened = $0 { openMesssageEx.fulfill() }
+        }
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
         
         let channelJoinedEx = XCTestExpectation(description: "Channel joined")
         let messageRepeatedEx = XCTestExpectation(description: "Message repeated correctly")
@@ -144,13 +162,16 @@ class ChannelTests: XCTestCase {
     }
     
     func testMultipleSocketsCollaborating() throws {
-        let socket1 = try Socket(url: helper.defaultURL)
-        helper.wait { socket1.isOpen }
-        XCTAssert(socket1.isOpen, "Socket should have been open")
+        let openMesssageEx1 = XCTestExpectation(description: "Should have received an open message for socket 1")
+        let openMesssageEx2 = XCTestExpectation(description: "Should have received an open message for socket 2")
         
+        let socket1 = try Socket(url: helper.defaultURL)
         let socket2 = try Socket(url: helper.defaultURL)
-        helper.wait { socket2.isOpen }
-        XCTAssert(socket2.isOpen, "Socket should have been open")
+        
+        let _ = socket1.forever { if case .opened = $0 { openMesssageEx1.fulfill() } }
+        let _ = socket2.forever { if case .opened = $0 { openMesssageEx2.fulfill() } }
+        
+        wait(for: [openMesssageEx1, openMesssageEx2], timeout: 0.5)
         
         let channel1 = socket1.join("room:lobby")
         let channel2 = socket2.join("room:lobby")
@@ -172,9 +193,8 @@ class ChannelTests: XCTestCase {
                 let text = message.payload["text"] as? String
                 
                 if message.event == "message" && text == messageText {
-                    channel1ReceivedMessageEx.fulfill()
+                    return channel1ReceivedMessageEx.fulfill()
                 }
-                return
             }
         }
         
@@ -184,7 +204,7 @@ class ChannelTests: XCTestCase {
             }
             
             if case .success(.message(_)) = result {
-                channel2ReceivedMessageEx.fulfill()
+                return channel2ReceivedMessageEx.fulfill()
             }
         }
         

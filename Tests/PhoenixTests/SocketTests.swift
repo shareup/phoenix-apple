@@ -16,23 +16,47 @@ class SocketTests: XCTestCase {
     
     func testWebSocketInit() {
         let socket = try! Socket(url: helper.defaultURL)
+
+        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        let closeMessageEx = XCTestExpectation(description: "Should have received a close message")
         
-        helper.wait { socket.isOpen }
-        XCTAssert(socket.isOpen, "Socket should have been open")
+        let _ = socket.forever { message in
+            switch message {
+            case .opened:
+                openMesssageEx.fulfill()
+            case .closed:
+                closeMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
         
         socket.close()
-        helper.wait { socket.isClosed }
-        XCTAssert(socket.isClosed, "Socket should have closed")
+        
+        wait(for: [closeMessageEx], timeout: 0.5)
     }
     
     func testChannelJoin() {
+        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
+        let channelJoinedEx = XCTestExpectation(description: "Channel joined")
+        
         let socket = try! Socket(url: helper.defaultURL)
-        helper.wait { socket.isOpen }
-        XCTAssert(socket.isOpen, "Socket should have been open")
+        
+        let _ = socket.forever {
+            if case .opened = $0 { openMesssageEx.fulfill() }
+        }
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
         
         let channel = socket.join("room:lobby")
-        helper.wait { channel.isJoined }
-        XCTAssert(channel.isJoined, "Channel should have been joined")
+        
+        let _ = channel.forever {
+            if case .success(.join) = $0 { channelJoinedEx.fulfill() }
+        }
+        
+        wait(for: [channelJoinedEx], timeout: 0.5)
     }
     
     func testSocketReconnect() {
@@ -40,10 +64,8 @@ class SocketTests: XCTestCase {
         let disconnectURL = helper.defaultURL.appendingQueryItems(["disconnect": "soon"])
         
         let socket = try! Socket(url: disconnectURL)
-        helper.wait { socket.isOpen }
-        XCTAssert(socket.isOpen, "Socket should have been open")
 
-        let openMesssageEx = XCTestExpectation(description: "Should have received an opened")
+        let openMesssageEx = XCTestExpectation(description: "Should have received an open message")
         let closeMessageEx = XCTestExpectation(description: "Should have received a close message")
         
         let _ = socket.forever { message in
@@ -57,6 +79,7 @@ class SocketTests: XCTestCase {
             }
         }
         
+        wait(for: [openMesssageEx], timeout: 0.5)
         wait(for: [closeMessageEx], timeout: 0.5)
     }
 }

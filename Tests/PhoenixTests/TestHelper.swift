@@ -11,19 +11,6 @@ final class TestHelper {
         self.defaultWebSocketURL = try! Socket.webSocketURLV2(url: defaultURL)
     }
     
-    func wait(for duration: Double = 0.5, test: () -> Bool) {
-        let start = CFAbsoluteTimeGetCurrent()
-        let max = start + duration
-        
-        while CFAbsoluteTimeGetCurrent() < max {
-            if test() {
-                return
-            } else {
-                RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.01))
-            }
-        }
-    }
-    
     func bootExample() throws {
     }
     
