@@ -1,10 +1,9 @@
 import Foundation
 import Combine
 import Synchronized
-import SimplePublisher
 
-public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
-    public enum Errors: Error {
+public class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
+    public enum WebSocketError: Error {
         case unopened
         case invalidURL(URL)
         case invalidURLComponents(URLComponents)
@@ -16,7 +15,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
         case connecting
         case open(URLSessionWebSocketTask)
         case closing
-        case closed(Errors)
+        case closed(WebSocketError)
     }
     
     public var isOpen: Bool { sync {
@@ -35,8 +34,13 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     private let delegateQueue = OperationQueue()
     
     public typealias Output = Result<WebSocket.Message, Error>
-    public typealias Failure = Error
-    public var coordinator = SimpleCoordinator<Output, Failure>()
+    public typealias Failure = WebSocketError
+
+    var subject = PassthroughSubject<Output, Failure>()
+
+    public func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
+        subject.receive(subscriber: subscriber)
+    }
     
     public required init(url: URL) {
         self.url = url
@@ -60,8 +64,8 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     
     private func receiveFromWebSocket(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
         let _result = result.map { WebSocket.Message($0) }
-        
-        coordinator.receive(_result)
+
+        subject.send(_result)
         
         sync {
             if case .open(let task) = state,
@@ -82,7 +86,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     private func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping (Error?) -> Void) {
         sync {
             guard case .open(let task) = state else {
-                completionHandler(Errors.notOpen)
+                completionHandler(WebSocketError.notOpen)
                 return
             }
             
@@ -112,13 +116,13 @@ extension WebSocket: URLSessionWebSocketDelegate {
                            didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
                            reason: Data?) {
         sync {
-            state = .closed(Errors.closed(closeCode, reason))
+            state = .closed(WebSocketError.closed(closeCode, reason))
         }
         
         if closeCode == .normalClosure {
-            coordinator.complete()
+            subject.send(completion: .finished)
         } else {
-            coordinator.complete(Errors.closed(closeCode, reason))
+            subject.send(completion: .failure(WebSocketError.closed(closeCode, reason)))
         }
     }
     
@@ -128,7 +132,7 @@ extension WebSocket: URLSessionWebSocketDelegate {
         sync {
             state = .open(webSocketTask)
         }
-        
-        coordinator.receive(.success(.open))
+
+        subject.send(.success(.open))
     }
 }

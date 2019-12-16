@@ -2,10 +2,9 @@ import Foundation
 import Combine
 import Synchronized
 import Forever
-import SimplePublisher
 
-final class Socket: Synchronized, SimplePublisher {
-    enum Errors: Error {
+final class Socket: Synchronized, Publisher {
+    enum SocketError: Error {
         case closed
     }
 
@@ -17,8 +16,12 @@ final class Socket: Synchronized, SimplePublisher {
     var shouldReconnect = true
 
     typealias Output = Socket.Message
-    typealias Failure = Error
-    var coordinator = SimpleCoordinator<Output, Failure>()
+    typealias Failure = SocketError
+    var subject = PassthroughSubject<Output, Failure>()
+
+    func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
+        subject.receive(subscriber: subscriber)
+    }
     
     private var subscription: Subscription? = nil
     private var ws: WebSocket?
@@ -94,7 +97,7 @@ extension Socket: Subscriber {
             switch message {
             case .open:
                 change(to: .open)
-                coordinator.receive(.opened)
+                subject.send(.opened)
             case .data:
                 // TODO: Are we going to use data frames from the server for anything?
                 assertionFailure("We are not currently expecting any data frames from the server")
@@ -102,36 +105,36 @@ extension Socket: Subscriber {
             case .string(let string):
                 do {
                     let message = try IncomingMessage(data: Data(string.utf8))
-                    coordinator.receive(.incomingMessage(message))
+                    subject.send(.incomingMessage(message))
                 } catch {
                     Swift.print("Could not decode the WebSocket message data: \(error)")
                     Swift.print("Message data: \(string)")
-                    coordinator.receive(.unreadableMessage(string))
+                    subject.send(.unreadableMessage(string))
                 }
             }
         case .failure(let error):
             Swift.print("WebSocket error, but we are not closed: \(error)")
-            coordinator.receive(.websocketError(error))
+            subject.send(.websocketError(error))
         }
 
         return .unlimited
     }
 
-    func receive(completion: Subscribers.Completion<Error>) {
+    func receive(completion: Subscribers.Completion<SocketError>) {
         sync {
             self.ws = nil
             self.subscription = nil
             change(to: .closed)
         }
-        
-        coordinator.receive(.closed)
+
+        subject.send(.closed)
         
         if shouldReconnect {
             DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
                 self.connect()
             }
         } else {
-            coordinator.complete()
+            subject.send(completion: .finished)
         }
     }
 }
@@ -182,7 +185,7 @@ extension Socket {
     
     private func send(_ message: OutgoingMessage, completionHandler: @escaping (Error?) -> Void) {
         guard let ws = ws, isOpen else {
-            completionHandler(Errors.closed)
+            completionHandler(SocketError.closed)
             return
         }
         

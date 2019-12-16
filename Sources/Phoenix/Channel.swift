@@ -1,9 +1,8 @@
 import Foundation
 import Combine
 import Synchronized
-import SimplePublisher
 
-public final class Channel: SimplePublisher, Synchronized {
+public final class Channel: Publisher, Synchronized {
     enum State {
         case closed
         case joining(Ref)
@@ -12,7 +11,7 @@ public final class Channel: SimplePublisher, Synchronized {
         case errored(Error)
     }
     
-    enum Errors: Error {
+    public enum ChannelError: Error {
         case invalidJoinReply(Channel.Reply)
         case isClosed
     }
@@ -20,10 +19,15 @@ public final class Channel: SimplePublisher, Synchronized {
     private var subscription: Subscription? = nil
     // TODO: sweep this dictionary periodically
     private var tracked: [Ref: Channel.Push] = [:]
-    
-    public var coordinator = SimpleCoordinator<Output, Failure>()
+
     public typealias Output = Result<Channel.Event, Error>
-    public typealias Failure = Error
+    public typealias Failure = ChannelError
+
+    var subject = PassthroughSubject<Output, Failure>()
+
+    public func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
+        subject.receive(subscriber: subscriber)
+    }
     
     let topic: String
     
@@ -195,12 +199,12 @@ extension Channel {
             switch state {
             case .joining(let joinRef):
                 guard reply.ref == joinRef && reply.joinRef == joinRef else {
-                    change(to: .errored(Errors.invalidJoinReply(reply)))
+                    change(to: .errored(ChannelError.invalidJoinReply(reply)))
                     break
                 }
                 
                 change(to: .joined(joinRef))
-                coordinator.receive(.success(.join))
+                subject.send(.success(.join))
                 
             case .joined(let joinRef):
                 guard let push = tracked[reply.ref],
@@ -217,7 +221,7 @@ extension Channel {
                 }
                 
                 change(to: .closed)
-                coordinator.receive(.success(.leave))
+                subject.send(.success(.leave))
                 
             default:
                 // sorry, not processing replies in other states
@@ -232,8 +236,8 @@ extension Channel {
                 assertionFailure("Shouldn't be getting messages when not joined: \(message)")
                 return
             }
-            
-            coordinator.receive(.success(.message(message)))
+
+            subject.send(.success(.message(message)))
         }
     }
 }

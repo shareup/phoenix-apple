@@ -11,15 +11,6 @@
         }
       },
       {
-        "package": "SimplePublisher",
-        "repositoryURL": "https://github.com/shareup/simple-publisher.git",
-        "state": {
-          "branch": null,
-          "revision": "8f449d6269dfff1d95555dd0d40b6fe6622fda4e",
-          "version": "1.0.0"
-        }
-      },
-      {
         "package": "Synchronized",
         "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {
