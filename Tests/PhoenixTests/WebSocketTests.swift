@@ -4,16 +4,6 @@ import Forever
 
 class WebSocketTests: XCTestCase {
     var helper = TestHelper()
-
-    override func setUp() {
-        super.setUp()
-        try! helper.bootExample()
-    }
-    
-    override func tearDown() {
-        super.tearDown()
-        try! helper.quitExample()
-    }
     
     func testReceiveOpenEvent() throws {
         let webSocket = WebSocket(url: helper.defaultWebSocketURL)
@@ -21,7 +11,7 @@ class WebSocketTests: XCTestCase {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket is open")
         
-        let _ = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -30,6 +20,7 @@ class WebSocketTests: XCTestCase {
                 openEx.fulfill()
             }
         }
+        defer { sub.cancel() }
         
         wait(for: [openEx], timeout: 0.25)
         
@@ -44,13 +35,14 @@ class WebSocketTests: XCTestCase {
         
         let webSocket = WebSocket(url: helper.defaultWebSocketURL)
         
-        let _ = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
         }) {
             if case .success(.open) = $0 { return openEx.fulfill() }
         }
+        defer { sub.cancel() }
         
         wait(for: [openEx], timeout: 0.5)
         XCTAssert(webSocket.isOpen)
@@ -79,7 +71,7 @@ class WebSocketTests: XCTestCase {
         let hasRepliedEx = expectation(description: "Should have replied")
         var reply: [Any?] = []
         
-        let _ = webSocket.forever { result in
+        let sub2 = webSocket.forever { result in
             guard !hasReplied else { return }
 
             let message: WebSocket.Message
@@ -105,6 +97,7 @@ class WebSocketTests: XCTestCase {
             
             hasRepliedEx.fulfill()
         }
+        defer { sub2.cancel() }
         
         wait(for: [hasRepliedEx], timeout: 0.5)
         XCTAssert(hasReplied)
@@ -135,13 +128,14 @@ class WebSocketTests: XCTestCase {
         
         let webSocket = WebSocket(url: helper.defaultWebSocketURL)
         
-        let _ = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
         }) {
             if case .success(.open) = $0 { return openEx.fulfill() }
         }
+        defer { sub.cancel() }
         
         wait(for: [openEx], timeout: 0.5)
         XCTAssert(webSocket.isOpen)
@@ -169,7 +163,7 @@ class WebSocketTests: XCTestCase {
         var replies = [IncomingMessage]()
         let repliesEx = expectation(description: "Should receive 6 replies")
         
-        let _ = webSocket.forever(receiveCompletion: {
+        let sub2 = webSocket.forever(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
         }) { result in
             let message: WebSocket.Message
@@ -218,6 +212,7 @@ class WebSocketTests: XCTestCase {
                 repliesEx.fulfill()
             }
         }
+        defer { sub2.cancel() }
         
         wait(for: [repliesEx], timeout: 0.5)
 

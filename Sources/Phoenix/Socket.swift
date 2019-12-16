@@ -2,8 +2,9 @@ import Foundation
 import Combine
 import Synchronized
 import Forever
+import SimplePublisher
 
-final class Socket: Synchronized {
+final class Socket: Synchronized, SimplePublisher {
     enum Errors: Error {
         case closed
     }
@@ -14,8 +15,11 @@ final class Socket: Synchronized {
     }
     
     var shouldReconnect = true
-    var subscriptions = [SimpleSubscription<Output, Failure>]()
 
+    typealias Output = Socket.Message
+    typealias Failure = Error
+    var coordinator = SimpleCoordinator<Output, Failure>()
+    
     private var subscription: Subscription? = nil
     private var ws: WebSocket?
     
@@ -89,8 +93,8 @@ extension Socket: Subscriber {
         case .success(let message):
             switch message {
             case .open:
-                self.change(to: .open)
-                self.publish(.opened)
+                change(to: .open)
+                coordinator.receive(.opened)
             case .data:
                 // TODO: Are we going to use data frames from the server for anything?
                 assertionFailure("We are not currently expecting any data frames from the server")
@@ -98,16 +102,16 @@ extension Socket: Subscriber {
             case .string(let string):
                 do {
                     let message = try IncomingMessage(data: Data(string.utf8))
-                    publish(.incomingMessage(message))
+                    coordinator.receive(.incomingMessage(message))
                 } catch {
                     Swift.print("Could not decode the WebSocket message data: \(error)")
                     Swift.print("Message data: \(string)")
-                    publish(.unreadableMessage(string))
+                    coordinator.receive(.unreadableMessage(string))
                 }
             }
         case .failure(let error):
             Swift.print("WebSocket error, but we are not closed: \(error)")
-            publish(.websocketError(error))
+            coordinator.receive(.websocketError(error))
         }
 
         return .unlimited
@@ -120,23 +124,16 @@ extension Socket: Subscriber {
             change(to: .closed)
         }
         
-        publish(.closed)
+        coordinator.receive(.closed)
         
         if shouldReconnect {
             DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
                 self.connect()
             }
         } else {
-            complete()
+            coordinator.complete()
         }
     }
-}
-
-// MARK: :SimplePublisher
-
-extension Socket: SimplePublisher {
-    typealias Output = Socket.Message
-    typealias Failure = Error
 }
 
 // MARK: Join and send

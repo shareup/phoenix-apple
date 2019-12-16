@@ -1,8 +1,9 @@
 import Foundation
 import Combine
 import Synchronized
+import SimplePublisher
 
-public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
+public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     public enum Errors: Error {
         case unopened
         case invalidURL(URL)
@@ -33,7 +34,9 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     
     private let delegateQueue = OperationQueue()
     
-    var subscriptions = [SimpleSubscription<Output, Failure>]()
+    public typealias Output = Result<WebSocket.Message, Error>
+    public typealias Failure = Error
+    public var coordinator = SimpleCoordinator<Output, Failure>()
     
     public required init(url: URL) {
         self.url = url
@@ -58,7 +61,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     private func receiveFromWebSocket(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
         let _result = result.map { WebSocket.Message($0) }
         
-        publish(_result)
+        coordinator.receive(_result)
         
         sync {
             if case .open(let task) = state,
@@ -101,13 +104,6 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized {
     }
 }
 
-// MARK: :SimplePublisher
-
-extension WebSocket: SimplePublisher {
-    public typealias Output = Result<WebSocket.Message, Error>
-    public typealias Failure = Error
-}
-
 // MARK: :URLSessionWebSocketDelegate
 
 extension WebSocket: URLSessionWebSocketDelegate {
@@ -120,9 +116,9 @@ extension WebSocket: URLSessionWebSocketDelegate {
         }
         
         if closeCode == .normalClosure {
-            complete()
+            coordinator.complete()
         } else {
-            complete(Errors.closed(closeCode, reason))
+            coordinator.complete(Errors.closed(closeCode, reason))
         }
     }
     
@@ -133,6 +129,6 @@ extension WebSocket: URLSessionWebSocketDelegate {
             state = .open(webSocketTask)
         }
         
-        publish(.success(.open))
+        coordinator.receive(.success(.open))
     }
 }

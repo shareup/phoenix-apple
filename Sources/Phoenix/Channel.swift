@@ -1,8 +1,9 @@
 import Foundation
 import Combine
 import Synchronized
+import SimplePublisher
 
-public final class Channel: Synchronized {
+public final class Channel: SimplePublisher, Synchronized {
     enum State {
         case closed
         case joining(Ref)
@@ -20,7 +21,9 @@ public final class Channel: Synchronized {
     // TODO: sweep this dictionary periodically
     private var tracked: [Ref: Channel.Push] = [:]
     
-    var subscriptions = [SimpleSubscription<Output, Failure>]()
+    public var coordinator = SimpleCoordinator<Output, Failure>()
+    public typealias Output = Result<Channel.Event, Error>
+    public typealias Failure = Error
     
     let topic: String
     
@@ -184,13 +187,6 @@ extension Channel: Subscriber {
     }
 }
 
-// MARK: :SimplePublisher
-
-extension Channel: SimplePublisher {
-    public typealias Output = Result<Channel.Event, Error>
-    public typealias Failure = Error
-}
-
 // MARK: input handlers
 
 extension Channel {
@@ -204,7 +200,7 @@ extension Channel {
                 }
                 
                 change(to: .joined(joinRef))
-                publish(.success(.join))
+                coordinator.receive(.success(.join))
                 
             case .joined(let joinRef):
                 guard let push = tracked[reply.ref],
@@ -221,7 +217,7 @@ extension Channel {
                 }
                 
                 change(to: .closed)
-                publish(.success(.leave))
+                coordinator.receive(.success(.leave))
                 
             default:
                 // sorry, not processing replies in other states
@@ -237,7 +233,7 @@ extension Channel {
                 return
             }
             
-            publish(.success(.message(message)))
+            coordinator.receive(.success(.message(message)))
         }
     }
 }

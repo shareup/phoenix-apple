@@ -2,6 +2,24 @@
   "object": {
     "pins": [
       {
+        "package": "Forever",
+        "repositoryURL": "https://github.com/shareup/forever.git",
+        "state": {
+          "branch": null,
+          "revision": "2046d987986a43ae31c25f0e02ff9a2448cc45fb",
+          "version": "0.0.2"
+        }
+      },
+      {
+        "package": "SimplePublisher",
+        "repositoryURL": "https://github.com/shareup/simple-publisher.git",
+        "state": {
+          "branch": null,
+          "revision": "8f449d6269dfff1d95555dd0d40b6fe6622fda4e",
+          "version": "1.0.0"
+        }
+      },
+      {
         "package": "Synchronized",
         "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {

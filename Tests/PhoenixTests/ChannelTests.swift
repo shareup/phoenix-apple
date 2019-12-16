@@ -4,24 +4,16 @@ import XCTest
 class ChannelTests: XCTestCase {
     let helper = TestHelper()
     
-    override func setUp() {
-        super.setUp()
-        try! helper.bootExample()
-    }
-    
-    override func tearDown() {
-        super.tearDown()
-        try! helper.quitExample()
-    }
-    
     func testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: helper.defaultURL)
+        defer { socket.close() }
         
-        let _ = socket.forever {
+        let sub = socket.forever {
             if case .opened = $0 { openMesssageEx.fulfill() }
         }
+        defer { sub.cancel() }
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
@@ -33,7 +25,7 @@ class ChannelTests: XCTestCase {
         
         let channel = socket.join("room:lobby")
         
-        let _ = channel.forever(receiveCompletion: { completion in
+        let sub2 = channel.forever(receiveCompletion: { completion in
             channelCompletedEx.fulfill()
         }) { result in
             if case .success(.join) = result {
@@ -46,6 +38,7 @@ class ChannelTests: XCTestCase {
                 return
             }
         }
+        defer { sub2.cancel() }
         
         wait(for: [channelJoinedEx], timeout: 0.25)
         
@@ -59,10 +52,12 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: helper.defaultURL)
+        defer { socket.close() }
         
-        let _ = socket.forever {
+        let sub = socket.forever {
             if case .opened = $0 { openMesssageEx.fulfill() }
         }
+        defer { sub.cancel() }
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
@@ -70,11 +65,12 @@ class ChannelTests: XCTestCase {
         
         let channel = socket.join("room:lobby")
         
-        let _ = channel.forever { result in
+        let sub2 = channel.forever { result in
             if case .success(.join) = result {
                 return channelJoinedEx.fulfill()
             }
         }
+        defer { sub2.cancel() }
         
         wait(for: [channelJoinedEx], timeout: 0.25)
         
@@ -118,10 +114,12 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: helper.defaultURL)
+        defer { socket.close() }
         
-        let _ = socket.forever {
+        let sub = socket.forever {
             if case .opened = $0 { openMesssageEx.fulfill() }
         }
+        defer { sub.cancel() }
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
@@ -132,7 +130,7 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         var messageCounter = 0
         
-        let _ = channel.forever { result in
+        let sub2 = channel.forever { result in
             if case .success(.join) = result {
                 return channelJoinedEx.fulfill()
             }
@@ -152,6 +150,7 @@ class ChannelTests: XCTestCase {
                 return
             }
         }
+        defer { sub2.cancel() }
         
         wait(for: [channelJoinedEx], timeout: 0.25)
         
@@ -168,9 +167,17 @@ class ChannelTests: XCTestCase {
         
         let socket1 = try Socket(url: helper.defaultURL)
         let socket2 = try Socket(url: helper.defaultURL)
+        defer {
+            socket1.close()
+            socket2.close()
+        }
         
-        let _ = socket1.forever { if case .opened = $0 { openMesssageEx1.fulfill() } }
-        let _ = socket2.forever { if case .opened = $0 { openMesssageEx2.fulfill() } }
+        let sub1 = socket1.forever { if case .opened = $0 { openMesssageEx1.fulfill() } }
+        let sub2 = socket2.forever { if case .opened = $0 { openMesssageEx2.fulfill() } }
+        defer {
+            sub1.cancel()
+            sub2.cancel()
+        }
         
         wait(for: [openMesssageEx1, openMesssageEx2], timeout: 0.5)
         
@@ -185,7 +192,7 @@ class ChannelTests: XCTestCase {
         let channel2ReceivedMessageEx = expectation(description: "Channel 2 received the message which was not right")
         channel2ReceivedMessageEx.isInverted = true
         
-        let _ = channel1.forever { result in
+        let sub3 = channel1.forever { result in
             if case .success(.join) = result {
                 return channel1JoinedEx.fulfill()
             }
@@ -198,8 +205,9 @@ class ChannelTests: XCTestCase {
                 }
             }
         }
+        defer { sub3.cancel() }
         
-        let _ = channel2.forever { result in
+        let sub4 = channel2.forever { result in
             if case .success(.join) = result {
                 return channel2JoinedEx.fulfill()
             }
@@ -208,6 +216,7 @@ class ChannelTests: XCTestCase {
                 return channel2ReceivedMessageEx.fulfill()
             }
         }
+        defer { sub4.cancel() }
         
         wait(for: [channel1JoinedEx, channel2JoinedEx], timeout: 0.25)
         

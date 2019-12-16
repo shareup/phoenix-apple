@@ -11,7 +11,7 @@ class SocketTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message")
         let closeMessageEx = expectation(description: "Should have received a close message")
         
-        let _ = socket.forever { message in
+        let sub = socket.forever { message in
             switch message {
             case .opened:
                 openMesssageEx.fulfill()
@@ -21,6 +21,7 @@ class SocketTests: XCTestCase {
                 break
             }
         }
+        defer { sub.cancel() }
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
@@ -35,17 +36,19 @@ class SocketTests: XCTestCase {
         
         let socket = try! Socket(url: helper.defaultURL)
         
-        let _ = socket.forever {
+        let sub = socket.forever {
             if case .opened = $0 { openMesssageEx.fulfill() }
         }
+        defer { sub.cancel() }
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
         let channel = socket.join("room:lobby")
         
-        let _ = channel.forever {
+        let sub2 = channel.forever {
             if case .success(.join) = $0 { channelJoinedEx.fulfill() }
         }
+        defer { sub2.cancel() }
         
         wait(for: [channelJoinedEx], timeout: 0.5)
     }
@@ -64,7 +67,7 @@ class SocketTests: XCTestCase {
         let completeMessageEx = expectation(description: "Should not complete the publishing since it was not closed on purpose")
         completeMessageEx.isInverted = true
         
-        let _ = socket.forever(receiveCompletion: { _ in
+        let sub = socket.forever(receiveCompletion: { _ in
             completeMessageEx.fulfill()
         }) { message in
             switch message {
@@ -76,6 +79,7 @@ class SocketTests: XCTestCase {
                 break
             }
         }
+        defer { sub.cancel() }
         
         waitForExpectations(timeout: 0.5)
     }
