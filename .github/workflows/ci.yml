@@ -10,8 +10,7 @@ jobs:
           - 4000:4000
         volumes:
           - ./Tests/PhoenixTests/example:/app
-        options:
-          entrypoint: /app/start
+        options: --entrypoint=/app/start
     steps:
       - uses: actions/checkout@v1
       - name: Switch Xcode to 11.3
