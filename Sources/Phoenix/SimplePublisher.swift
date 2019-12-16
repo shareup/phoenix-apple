@@ -17,18 +17,14 @@ extension SimplePublisher {
     }
     
     func publish(_ output: Output) {
-        var subscriptions = [SimpleSubscription<Output, Failure>]()
-        
         sync {
-            subscriptions = self.subscriptions
-        }
-        
-        for subscription in subscriptions {
-            guard let demand = subscription.demand else { continue }
-            guard demand > 0 else { continue }
-            
-            let newDemand = subscription.subscriber.receive(output)
-            subscription.request(newDemand)
+            for subscription in subscriptions {
+                guard let demand = subscription.demand else { continue }
+                guard demand > 0 else { continue }
+                
+                let newDemand = subscription.subscriber.receive(output)
+                subscription.request(newDemand)
+            }
         }
     }
     
@@ -41,15 +37,11 @@ extension SimplePublisher {
     }
     
     func complete(_ failure: Subscribers.Completion<Failure>) {
-        var subscriptions = [SimpleSubscription<Output, Failure>]()
-        
         sync {
-            subscriptions = self.subscriptions
+            for subscription in subscriptions {
+                subscription.subscriber.receive(completion: failure)
+            }
             self.subscriptions.removeAll()
-        }
-        
-        for subscription in subscriptions {
-            subscription.subscriber.receive(completion: failure)
         }
     }
 }
