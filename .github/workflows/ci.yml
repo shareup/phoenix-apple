@@ -21,8 +21,6 @@ jobs:
       - name: Build the example app
         run: mix compile
         working-directory: ./Tests/PhoenixTests/example
-        env:
-          MIX_ENV: test
       - name: Test
         run: |
           cd Tests/PhoenixTests/example
