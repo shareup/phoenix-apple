@@ -18,9 +18,15 @@ jobs:
       - name: Get dependencies for example phoenix app
         run: mix deps.get
         working-directory: ./Tests/PhoenixTests/example
+      - name: Build the example app
+        run: mix compile
+        working-directory: ./Tests/PhoenixTests/example
+        env:
+          MIX_ENV: test
       - name: Test
         run: |
           cd Tests/PhoenixTests/example
           ( mix phx.server )
           cd -
+          sleep 1
           swift test --skip-update
