@@ -3,19 +3,22 @@ on: push
 jobs:
   test:
     runs-on: macOS-10.14
-    services:
-      example_server:
-        image: elixir
-        ports:
-          - 4000:4000
-        volumes:
-          - ./Tests/PhoenixTests/example:/app
-        options: --entrypoint=/app/start
     steps:
       - uses: actions/checkout@v1
       - name: Switch Xcode to 11.3
         run: xcversion select 11.3
       - name: Resolve package dependencies
         run: swift package resolve
+      - name: Install elixir
+        run: brew install elixir
+      - name: Install hex
+        run: mix local.hex
+      - name: Get dependencies for example phoenix app
+        run: mix deps.get
+        working-directory: ./Tests/PhoenixTests/example
       - name: Test
-        run: swift test --skip-update
+        run: |
+          cd Tests/PhoenixTests/example
+          ( mix phx.server )
+          cd -
+          swift test --skip-update
