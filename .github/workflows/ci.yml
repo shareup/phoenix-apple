@@ -26,7 +26,7 @@ jobs:
       - name: Test
         run: |
           cd Tests/PhoenixTests/example
-          ( mix phx.server )
+          ( mix phx.server & )
           cd -
           sleep 1
           swift test --skip-update
