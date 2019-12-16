@@ -12,7 +12,7 @@ jobs:
       - name: Install elixir
         run: brew install elixir
       - name: Install hex
-        run: mix local.hex
+        run: mix local.hex --force
       - name: Get dependencies for example phoenix app
         run: mix deps.get
         working-directory: ./Tests/PhoenixTests/example
