@@ -126,7 +126,7 @@ class Pusher: Synchronized {
 
                 guard message.joinRef != nil else {
                     guard retries < Pusher.maximumRetries else {
-                        push.asyncCallback(result: .failure(Channel.Errors.isClosed))
+                        push.asyncCallback(result: .failure(Channel.ChannelError.isClosed))
                         break
                     }
 
