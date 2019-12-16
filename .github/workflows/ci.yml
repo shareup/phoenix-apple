@@ -3,6 +3,15 @@ on: push
 jobs:
   test:
     runs-on: macOS-10.14
+    services:
+      example_server:
+        image: elixir
+        ports:
+          - 4000:4000
+        volumes:
+          - ./Tests/PhoenixTests/example:/app
+        options:
+          entrypoint: /app/start
     steps:
       - uses: actions/checkout@v1
       - name: Switch Xcode to 11.3
