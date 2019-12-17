@@ -186,6 +186,7 @@ extension Channel: Subscriber {
             break
         default:
             Swift.print("Need to handle \(input.event) types of events soon")
+            Swift.print("> \(input)")
             break
         }
         
