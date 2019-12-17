@@ -2,12 +2,10 @@ import XCTest
 @testable import Phoenix
 
 class ChannelTests: XCTestCase {
-    let helper = TestHelper()
-    
     func testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
-        let socket = try Socket(url: helper.defaultURL)
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.close() }
         
         let sub = socket.forever {
@@ -51,7 +49,7 @@ class ChannelTests: XCTestCase {
     func testPushCallback() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
-        let socket = try Socket(url: helper.defaultURL)
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.close() }
         
         let sub = socket.forever {
@@ -113,7 +111,7 @@ class ChannelTests: XCTestCase {
     func testReceiveMessages() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
-        let socket = try Socket(url: helper.defaultURL)
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.close() }
         
         let sub = socket.forever {
@@ -165,8 +163,8 @@ class ChannelTests: XCTestCase {
         let openMesssageEx1 = expectation(description: "Should have received an open message for socket 1")
         let openMesssageEx2 = expectation(description: "Should have received an open message for socket 2")
         
-        let socket1 = try Socket(url: helper.defaultURL)
-        let socket2 = try Socket(url: helper.defaultURL)
+        let socket1 = try Socket(url: testHelper.defaultURL)
+        let socket2 = try Socket(url: testHelper.defaultURL)
         defer {
             socket1.close()
             socket2.close()

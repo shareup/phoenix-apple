@@ -3,10 +3,8 @@ import XCTest
 import Forever
 
 class WebSocketTests: XCTestCase {
-    var helper = TestHelper()
-    
     func testReceiveOpenEvent() throws {
-        let webSocket = WebSocket(url: helper.defaultWebSocketURL)
+        let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket is open")
@@ -33,7 +31,7 @@ class WebSocketTests: XCTestCase {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket should be open")
         
-        let webSocket = WebSocket(url: helper.defaultWebSocketURL)
+        let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
         let sub = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {
@@ -47,13 +45,13 @@ class WebSocketTests: XCTestCase {
         wait(for: [openEx], timeout: 0.5)
         XCTAssert(webSocket.isOpen)
         
-        let joinRef = helper.gen.advance().rawValue
-        let ref = helper.gen.current.rawValue
+        let joinRef = testHelper.gen.advance().rawValue
+        let ref = testHelper.gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
         let payload = [String: String]()
         
-        let message = helper.serialize([
+        let message = testHelper.serialize([
             joinRef,
             ref,
             topic,
@@ -90,7 +88,7 @@ class WebSocketTests: XCTestCase {
             case .data(_):
                 XCTFail("Received a data response, which is wrong")
             case .string(let string):
-                reply = self.helper.deserialize(string.data(using: .utf8)!)!
+                reply = testHelper.deserialize(string.data(using: .utf8)!)!
             case .open:
                 XCTFail("Received an open event")
             }
@@ -126,7 +124,7 @@ class WebSocketTests: XCTestCase {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket should be open")
         
-        let webSocket = WebSocket(url: helper.defaultWebSocketURL)
+        let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
         let sub = webSocket.forever(receiveCompletion: { completion in
             if case .finished = completion {
@@ -140,16 +138,16 @@ class WebSocketTests: XCTestCase {
         wait(for: [openEx], timeout: 0.5)
         XCTAssert(webSocket.isOpen)
 
-        let joinRef = helper.gen.advance().rawValue
-        let ref = helper.gen.current.rawValue
+        let joinRef = testHelper.gen.advance().rawValue
+        let ref = testHelper.gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
         let payload = [String: String]()
         
         // for later
-        let nextRef = self.helper.gen.advance().rawValue
+        let nextRef = testHelper.gen.advance().rawValue
 
-        let message = helper.serialize([
+        let message = testHelper.serialize([
             joinRef,
             ref,
             topic,
@@ -205,7 +203,7 @@ class WebSocketTests: XCTestCase {
                         "amount": 5
                     ]
 
-                    let message = self.helper.serialize([
+                    let message = testHelper.serialize([
                         joinRef,
                         nextRef,
                         topic,

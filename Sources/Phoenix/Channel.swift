@@ -87,6 +87,7 @@ public final class Channel: SimplePublisher, Synchronized {
     } }
     
     func change(to state: State) { sync {
+        // TODO: stop using this method and always validate the current state before transitioning
         self.state = state
     } }
 }

@@ -5,6 +5,7 @@ import SimplePublisher
 
 public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     private enum State {
+        case unopened
         case connecting
         case open(URLSessionWebSocketTask)
         case closing
@@ -22,7 +23,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     } }
     
     private let url: URL
-    private var state: State
+    private var state: State = .unopened
     
     private let delegateQueue = OperationQueue()
     
@@ -33,7 +34,6 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     
     public required init(url: URL) {
         self.url = url
-        state = .closed(.unopened)
         
         super.init()
         
@@ -42,12 +42,15 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     
     private func connect() {
         sync {
-            guard case .closed = state else { return }
-            
-            let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
-            let task = session.webSocketTask(with: url)
-            task.resume()
-            task.receive(completionHandler: receiveFromWebSocket(_:))
+            switch (state) {
+            case .closed, .unopened:
+                let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
+                let task = session.webSocketTask(with: url)
+                task.resume()
+                task.receive(completionHandler: receiveFromWebSocket(_:))
+            default:
+                return
+            }
         }
     }
     
@@ -84,7 +87,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     }
     
     public func close() {
-        close(.normalClosure)
+        close(.goingAway)
     }
     
     // TODO: make a list of close codes to expose publicly instead of depending on URLSessionWebSocketTask.CloseCode
@@ -99,16 +102,19 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
 
 // MARK: :URLSessionWebSocketDelegate
 
+let normalCloseCodes: [URLSessionWebSocketTask.CloseCode] = [.goingAway, .normalClosure]
+
 extension WebSocket: URLSessionWebSocketDelegate {
     public func urlSession(_ session: URLSession,
                            webSocketTask: URLSessionWebSocketTask,
                            didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
                            reason: Data?) {
         sync {
+            if case .closed = state { return } // Apple will double close or I would do an assertion failure...
             state = .closed(WebSocketError.closed(closeCode, reason))
         }
         
-        if closeCode == .normalClosure {
+        if normalCloseCodes.contains(closeCode) {
             subject.send(completion: .finished)
         } else {
             subject.send(completion: .failure(WebSocketError.closed(closeCode, reason)))
@@ -119,6 +125,9 @@ extension WebSocket: URLSessionWebSocketDelegate {
                            webSocketTask: URLSessionWebSocketTask,
                            didOpenWithProtocol protocol: String?) {
         sync {
+            if case .open = state {
+                assertionFailure("Received an open event from the networking library, but I think I'm already open")
+            }
             state = .open(webSocketTask)
         }
 

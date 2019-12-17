@@ -3,13 +3,10 @@ import XCTest
 
 final class TestHelper {
     let gen = Ref.Generator()
+    let userIDGen = Ref.Generator()
     
-    let defaultURL = URL(string: "ws://0.0.0.0:4000/socket?user_id=1")!
-    let defaultWebSocketURL: URL
-    
-    init() {
-        self.defaultWebSocketURL = try! Socket.webSocketURLV2(url: defaultURL)
-    }
+    var defaultURL: URL { URL(string: "ws://0.0.0.0:4000/socket?user_id=\(userIDGen.advance().rawValue)")! }
+    var defaultWebSocketURL: URL { try! Socket.webSocketURLV2(url: defaultURL) }
     
     func deserialize(_ data: Data) -> [Any?]? {
         return try? JSONSerialization.jsonObject(with: data, options: []) as? [Any?]
@@ -19,3 +16,5 @@ final class TestHelper {
         return try? JSONSerialization.data(withJSONObject: stuff, options: [])
     }
 }
+
+let testHelper = TestHelper()

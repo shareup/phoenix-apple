@@ -3,6 +3,7 @@ import Combine
 import Synchronized
 import Forever
 import SimplePublisher
+import Atomic
 
 final class Socket: Synchronized, SimplePublisher {
     enum SocketError: Error {
@@ -14,7 +15,7 @@ final class Socket: Synchronized, SimplePublisher {
         case closed
     }
     
-    var shouldReconnect = true
+    @Atomic(true) var shouldReconnect: Bool
 
     typealias Output = Socket.Message
     typealias Failure = Error
@@ -23,8 +24,9 @@ final class Socket: Synchronized, SimplePublisher {
     private var subscription: Subscription? = nil
     private var ws: WebSocket?
     
+    private var state: State = .closed
+    
     private var channels = [String: WeakChannel]()
-    private var state = State.closed
     private var pusher = Pusher()
     
     public let url: URL
@@ -43,12 +45,6 @@ final class Socket: Synchronized, SimplePublisher {
         self.url = try Self.webSocketURLV2(url: url)
         connect()
         try? pusher.receiveBatch(callback: receiveFromPusher(_:))
-    }
-
-    private func change(to newState: State) {
-        sync {
-            self.state = newState
-        }
     }
     
     public func close() {
@@ -86,19 +82,16 @@ extension Socket: Subscriber {
     }
 
     func receive(_ input: Result<WebSocket.Message, Error>) -> Subscribers.Demand {
-        // TODO: where to send this?
-        Swift.print("input: \(String(describing: input))")
-
         switch input {
         case .success(let message):
             switch message {
             case .open:
-                change(to: .open)
+                // TODO: check if we are already open
+                self.state = .open
                 subject.send(.opened)
             case .data:
                 // TODO: Are we going to use data frames from the server for anything?
                 assertionFailure("We are not currently expecting any data frames from the server")
-                break
             case .string(let string):
                 do {
                     let message = try IncomingMessage(data: Data(string.utf8))
@@ -118,10 +111,12 @@ extension Socket: Subscriber {
     }
 
     func receive(completion: Subscribers.Completion<Error>) {
+        // TODO: check if we are already closed
+        
         sync {
             self.ws = nil
             self.subscription = nil
-            change(to: .closed)
+            self.state = .closed
         }
 
         subject.send(.closed)
