@@ -241,8 +241,6 @@ class ChannelTests: XCTestCase {
         let channelJoinedEx = expectation(description: "Channel should have joined twice (one after disconnecting)")
         channelJoinedEx.expectedFulfillmentCount = 2
         
-        let channelLeftEx = expectation(description: "Channel should have left (after disconnect)")
-        
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever {
