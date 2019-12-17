@@ -248,6 +248,6 @@ class ChannelTests: XCTestCase {
         }
         defer { sub2.cancel() }
         
-        waitForExpectations(timeout: 0.8)
+        waitForExpectations(timeout: 1)
     }
 }
