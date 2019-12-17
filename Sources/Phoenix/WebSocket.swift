@@ -3,14 +3,6 @@ import Combine
 import Synchronized
 
 public class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
-    public enum WebSocketError: Error {
-        case unopened
-        case invalidURL(URL)
-        case invalidURLComponents(URLComponents)
-        case notOpen
-        case closed(URLSessionWebSocketTask.CloseCode, Data?)
-    }
-    
     private enum State {
         case connecting
         case open(URLSessionWebSocketTask)
@@ -34,7 +26,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
     private let delegateQueue = OperationQueue()
     
     public typealias Output = Result<WebSocket.Message, Error>
-    public typealias Failure = WebSocketError
+    public typealias Failure = Error
 
     var subject = PassthroughSubject<Output, Failure>()
 

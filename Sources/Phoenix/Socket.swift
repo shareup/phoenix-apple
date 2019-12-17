@@ -16,7 +16,7 @@ final class Socket: Synchronized, Publisher {
     var shouldReconnect = true
 
     typealias Output = Socket.Message
-    typealias Failure = SocketError
+    typealias Failure = Error
     var subject = PassthroughSubject<Output, Failure>()
 
     func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
@@ -120,7 +120,7 @@ extension Socket: Subscriber {
         return .unlimited
     }
 
-    func receive(completion: Subscribers.Completion<SocketError>) {
+    func receive(completion: Subscribers.Completion<Error>) {
         sync {
             self.ws = nil
             self.subscription = nil

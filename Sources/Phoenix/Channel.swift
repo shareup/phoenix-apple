@@ -11,22 +11,18 @@ public final class Channel: Publisher, Synchronized {
         case errored(Error)
     }
     
-    public enum ChannelError: Error {
-        case invalidJoinReply(Channel.Reply)
-        case isClosed
-    }
-    
     private var subscription: Subscription? = nil
     // TODO: sweep this dictionary periodically
     private var tracked: [Ref: Channel.Push] = [:]
 
     public typealias Output = Result<Channel.Event, Error>
-    public typealias Failure = ChannelError
+    public typealias Failure = Error
 
     var subject = PassthroughSubject<Output, Failure>()
 
-    public func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
-        subject.receive(subscriber: subscriber)
+    public func receive<S>(subscriber: S)
+        where S : Subscriber, Failure == S.Failure, Output == S.Input {
+            subject.receive(subscriber: subscriber)
     }
     
     let topic: String

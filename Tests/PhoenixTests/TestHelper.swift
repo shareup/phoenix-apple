@@ -11,12 +11,6 @@ final class TestHelper {
         self.defaultWebSocketURL = try! Socket.webSocketURLV2(url: defaultURL)
     }
     
-    func bootExample() throws {
-    }
-    
-    func quitExample() throws {
-    }
-    
     func deserialize(_ data: Data) -> [Any?]? {
         return try? JSONSerialization.jsonObject(with: data, options: []) as? [Any?]
     }
