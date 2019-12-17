@@ -162,6 +162,7 @@ class WebSocketTests: XCTestCase {
 
         var replies = [IncomingMessage]()
         let repliesEx = expectation(description: "Should receive 6 replies")
+        repliesEx.expectedFulfillmentCount = 6
         
         let sub2 = webSocket.forever(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
@@ -186,6 +187,8 @@ class WebSocketTests: XCTestCase {
             case .open:
                 XCTFail("Received an open event")
             }
+            
+            repliesEx.fulfill()
 
             if replies.count == 1 {
                 let nextRef = self.helper.gen.advance().rawValue
@@ -208,8 +211,6 @@ class WebSocketTests: XCTestCase {
                         XCTFail("Sending data down the socket failed \(error)")
                     }
                 }
-            } else if replies.count >= 6 {
-                repliesEx.fulfill()
             }
         }
         defer { sub2.cancel() }
