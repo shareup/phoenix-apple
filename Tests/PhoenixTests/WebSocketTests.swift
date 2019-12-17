@@ -160,7 +160,6 @@ class WebSocketTests: XCTestCase {
             }
         }
 
-        var replies = [IncomingMessage]()
         let repliesEx = expectation(description: "Should receive 6 replies")
         repliesEx.expectedFulfillmentCount = 6
         
@@ -182,35 +181,33 @@ class WebSocketTests: XCTestCase {
                 XCTFail("Received a data response, which is wrong")
             case .string(let string):
                 let reply = try! IncomingMessage(data: string.data(using: .utf8)!)
-                replies.append(reply)
                 print("reply: \(reply)")
-            case .open:
-                XCTFail("Received an open event")
-            }
-            
-            repliesEx.fulfill()
+                repliesEx.fulfill()
+                
+                if let _joinRef = reply.joinRef, let _ref = reply.ref, _joinRef.rawValue == joinRef && _ref.rawValue == ref {
+                    let nextRef = self.helper.gen.advance().rawValue
+                    let repeatEvent = "repeat"
+                    let repeatPayload: [String: Any] = [
+                        "echo": "hello",
+                        "amount": 5
+                    ]
 
-            if replies.count == 1 {
-                let nextRef = self.helper.gen.advance().rawValue
-                let repeatEvent = "repeat"
-                let repeatPayload: [String: Any] = [
-                    "echo": "hello",
-                    "amount": 5
-                ]
+                    let message = self.helper.serialize([
+                        joinRef,
+                        nextRef,
+                        topic,
+                        repeatEvent,
+                        repeatPayload
+                    ])!
 
-                let message = self.helper.serialize([
-                    joinRef,
-                    nextRef,
-                    topic,
-                    repeatEvent,
-                    repeatPayload
-                ])!
-
-                webSocket.send(message) { error in
-                    if let error = error {
-                        XCTFail("Sending data down the socket failed \(error)")
+                    webSocket.send(message) { error in
+                        if let error = error {
+                            XCTFail("Sending data down the socket failed \(error)")
+                        }
                     }
                 }
+            case .open:
+                XCTFail("Received an open event")
             }
         }
         defer { sub2.cancel() }
