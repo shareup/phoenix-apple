@@ -145,6 +145,9 @@ class WebSocketTests: XCTestCase {
         let topic = "room:lobby"
         let event = "phx_join"
         let payload = [String: String]()
+        
+        // for later
+        let nextRef = self.helper.gen.advance().rawValue
 
         let message = helper.serialize([
             joinRef,
@@ -161,7 +164,15 @@ class WebSocketTests: XCTestCase {
         }
 
         let repliesEx = expectation(description: "Should receive 6 replies")
-        repliesEx.expectedFulfillmentCount = 6
+        repliesEx.expectedFulfillmentCount = 7
+        
+        /*
+         1.   Channel join response
+         2-6. Repeat responses
+         7.   Reponse from asking for the repeat to happen
+         
+         It's possible the response from asking for the repeat to happen could be before, during, or after the repeat messages themselves.
+         */
         
         let sub2 = webSocket.forever(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
@@ -184,8 +195,10 @@ class WebSocketTests: XCTestCase {
                 print("reply: \(reply)")
                 repliesEx.fulfill()
                 
-                if let _joinRef = reply.joinRef, let _ref = reply.ref, _joinRef.rawValue == joinRef && _ref.rawValue == ref {
-                    let nextRef = self.helper.gen.advance().rawValue
+                guard let _joinRef = reply.joinRef else { return }
+                guard let _ref = reply.ref else { return }
+                
+                if _joinRef.rawValue == joinRef && _ref.rawValue == ref {
                     let repeatEvent = "repeat"
                     let repeatPayload: [String: Any] = [
                         "echo": "hello",
@@ -205,6 +218,12 @@ class WebSocketTests: XCTestCase {
                             XCTFail("Sending data down the socket failed \(error)")
                         }
                     }
+                    
+                    return
+                }
+                
+                if _joinRef.rawValue == joinRef && _ref.rawValue == nextRef {
+                    print("OK, got the response from the repeat trigger message")
                 }
             case .open:
                 XCTFail("Received an open event")
