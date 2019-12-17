@@ -107,6 +107,15 @@ extension Channel {
         }
     }
     
+    func rejoin() {
+        sync {
+            if isJoining || isJoined { return }
+
+            let ref = pusher.send(joinPush)
+            change(to: .joining(ref))
+        }
+    }
+    
     public func leave() {
         sync {
             guard isJoining || isJoined else {
@@ -116,6 +125,15 @@ extension Channel {
             
             let ref = pusher.send(leavePush)
             change(to: .leaving(ref))
+        }
+    }
+    
+    func left() {
+        sync {
+            if isClosed || isErrored { return }
+        
+            change(to: .closed)
+            subject.send(.success(.leave))
         }
     }
 
@@ -154,9 +172,6 @@ extension Channel: Subscriber {
     }
     
     public func receive(_ input: IncomingMessage) -> Subscribers.Demand {
-        // TODO: where to send this?
-        Swift.print("input: \(String(describing: input))")
-        
         switch input.event {
         case .custom:
             let message = Channel.Message(incomingMessage: input)

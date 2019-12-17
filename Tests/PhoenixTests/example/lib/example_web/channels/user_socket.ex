@@ -18,7 +18,7 @@ defmodule ExampleWeb.Socket do
         end
       end)
 
-    Process.send_after(pid, :disconnect, 200)
+    Process.send_after(pid, :disconnect, 400)
 
     {:ok, socket}
   end

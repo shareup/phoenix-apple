@@ -89,6 +89,14 @@ extension Socket: Subscriber {
                 // TODO: check if we are already open
                 self.state = .open
                 subject.send(.opened)
+                
+                sync {
+                    for (_, weakChannel) in channels {
+                        if let channel = weakChannel.channel {
+                            channel.rejoin()
+                        }
+                    }
+                }
             case .data:
                 // TODO: Are we going to use data frames from the server for anything?
                 assertionFailure("We are not currently expecting any data frames from the server")
@@ -117,10 +125,16 @@ extension Socket: Subscriber {
             self.ws = nil
             self.subscription = nil
             self.state = .closed
+            
+            subject.send(.closed)
+            
+            for (_, weakChannel) in channels {
+                if let channel = weakChannel.channel {
+                    channel.left()
+                }
+            }
         }
 
-        subject.send(.closed)
-        
         if shouldReconnect {
             DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
                 self.connect()

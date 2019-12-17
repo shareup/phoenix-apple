@@ -223,4 +223,37 @@ class ChannelTests: XCTestCase {
         wait(for: [channel1ReceivedMessageEx], timeout: 0.25)
         waitForExpectations(timeout: 0.25)
     }
+    
+    func testRejoinsAfterDisconnect() throws {
+        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
+        
+        let socket = try! Socket(url: disconnectURL)
+        defer { socket.close() }
+        
+        let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
+        openMesssageEx.expectedFulfillmentCount = 2
+        
+        let closeMessageEx = expectation(description: "Should have receive a close message  (after disconnect)")
+        
+        let sub = socket.forever {
+            if case .opened = $0 { openMesssageEx.fulfill(); return }
+            if case .closed = $0 { closeMessageEx.fulfill(); return }
+        }
+        defer { sub.cancel() }
+        
+        let channelJoinedEx = expectation(description: "Channel should have joined twice (one after disconnecting)")
+        channelJoinedEx.expectedFulfillmentCount = 2
+        
+        let channelLeftEx = expectation(description: "Channel should have left (after disconnect)")
+        
+        let channel = socket.join("room:lobby")
+        
+        let sub2 = channel.forever {
+            if case .success(.join) = $0 { channelJoinedEx.fulfill(); return }
+            if case .success(.leave) = $0 { channelLeftEx.fulfill(); return }
+        }
+        defer { sub2.cancel() }
+        
+        waitForExpectations(timeout: 0.8)
+    }
 }

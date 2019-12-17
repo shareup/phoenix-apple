@@ -82,6 +82,6 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-        waitForExpectations(timeout: 0.5)
+        waitForExpectations(timeout: 0.8)
     }
 }
