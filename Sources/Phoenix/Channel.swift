@@ -1,8 +1,9 @@
 import Foundation
 import Combine
 import Synchronized
+import SimplePublisher
 
-public final class Channel: Publisher, Synchronized {
+public final class Channel: SimplePublisher, Synchronized {
     enum State {
         case closed
         case joining(Ref)
@@ -18,12 +19,7 @@ public final class Channel: Publisher, Synchronized {
     public typealias Output = Result<Channel.Event, Error>
     public typealias Failure = Error
 
-    var subject = PassthroughSubject<Output, Failure>()
-
-    public func receive<S>(subscriber: S)
-        where S : Subscriber, Failure == S.Failure, Output == S.Input {
-            subject.receive(subscriber: subscriber)
-    }
+    public var subject = SimpleSubject<Output, Failure>()
     
     let topic: String
     

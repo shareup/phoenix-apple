@@ -2,8 +2,9 @@ import Foundation
 import Combine
 import Synchronized
 import Forever
+import SimplePublisher
 
-final class Socket: Synchronized, Publisher {
+final class Socket: Synchronized, SimplePublisher {
     enum SocketError: Error {
         case closed
     }
@@ -17,11 +18,7 @@ final class Socket: Synchronized, Publisher {
 
     typealias Output = Socket.Message
     typealias Failure = Error
-    var subject = PassthroughSubject<Output, Failure>()
-
-    func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
-        subject.receive(subscriber: subscriber)
-    }
+    var subject = SimpleSubject<Output, Failure>()
     
     private var subscription: Subscription? = nil
     private var ws: WebSocket?

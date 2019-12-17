@@ -13,11 +13,12 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/shareup/synchronized.git", .upToNextMajor(from: "1.2.0")),
         .package(url: "https://github.com/shareup/forever.git", .upToNextMajor(from: "0.0.0")),
+        .package(url: "https://github.com/shareup/simple-publisher.git", .upToNextMajor(from: "1.2.0")),
     ],
     targets: [
         .target(
             name: "Phoenix",
-            dependencies: ["Synchronized", "Forever"]),
+            dependencies: ["SimplePublisher", "Synchronized", "Forever"]),
         .testTarget(
             name: "PhoenixTests",
             dependencies: ["Phoenix"]),

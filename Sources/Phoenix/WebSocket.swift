@@ -1,8 +1,9 @@
 import Foundation
 import Combine
 import Synchronized
+import SimplePublisher
 
-public class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
+public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     private enum State {
         case connecting
         case open(URLSessionWebSocketTask)
@@ -28,11 +29,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
     public typealias Output = Result<WebSocket.Message, Error>
     public typealias Failure = Error
 
-    var subject = PassthroughSubject<Output, Failure>()
-
-    public func receive<S>(subscriber: S) where S : Subscriber, Failure == S.Failure, Output == S.Input {
-        subject.receive(subscriber: subscriber)
-    }
+    public var subject = SimpleSubject<Output, Failure>()
     
     public required init(url: URL) {
         self.url = url
