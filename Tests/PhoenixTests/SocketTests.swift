@@ -60,7 +60,7 @@ class SocketTests: XCTestCase {
         let socket = try! Socket(url: disconnectURL)
         defer { socket.close() }
 
-        let openMesssageEx = expectation(description: "Should have received an open message")
+        let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
         openMesssageEx.expectedFulfillmentCount = 2
         
         let closeMessageEx = expectation(description: "Should have received a close message")
