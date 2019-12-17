@@ -233,11 +233,8 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
         openMesssageEx.expectedFulfillmentCount = 2
         
-        let closeMessageEx = expectation(description: "Should have receive a close message  (after disconnect)")
-        
         let sub = socket.forever {
             if case .opened = $0 { openMesssageEx.fulfill(); return }
-            if case .closed = $0 { closeMessageEx.fulfill(); return }
         }
         defer { sub.cancel() }
         
@@ -250,7 +247,6 @@ class ChannelTests: XCTestCase {
         
         let sub2 = channel.forever {
             if case .success(.join) = $0 { channelJoinedEx.fulfill(); return }
-            if case .success(.leave) = $0 { channelLeftEx.fulfill(); return }
         }
         defer { sub2.cancel() }
         
