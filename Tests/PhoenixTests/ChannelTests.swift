@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 @testable import Phoenix
 
 class ChannelTests: XCTestCase {
@@ -249,5 +250,54 @@ class ChannelTests: XCTestCase {
         defer { sub2.cancel() }
         
         waitForExpectations(timeout: 1)
+    }
+    
+    func skip_testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
+        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
+        
+        let socket = try! Socket(url: disconnectURL)
+        defer { socket.close() }
+        
+        let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
+        openMesssageEx.expectedFulfillmentCount = 2
+        
+        let sub = socket.forever {
+            if case .opened = $0 { openMesssageEx.fulfill(); return }
+        }
+        defer { sub.cancel() }
+        
+        let channelJoinedEx = expectation(description: "Channel should have joined once")
+        let channelLeftEx = expectation(description: "Channel should have left once")
+        
+        let channel = socket.join("room:lobby")
+        
+        let sub2 = channel.forever {
+            if case .success(.join) = $0 { channelJoinedEx.fulfill(); return }
+            if case .success(.leave) = $0 { channelLeftEx.fulfill(); return }
+        }
+        
+        wait(for: [channelJoinedEx], timeout: 1)
+        
+        channel.leave()
+        
+        wait(for: [channelLeftEx], timeout: 1)
+        
+        sub2.cancel()
+        
+        let channelRejoinEx = expectation(description: "Channel should not have rejoined")
+        channelRejoinEx.isInverted = true
+        
+        let _ = channel
+            .catch { _ in Empty() }
+            .compactMap { (result: Result<Channel.Event, Error>) -> Channel.Event? in
+                if case .success(let event) = result { return event }
+                return nil
+            }
+            .sink {
+                if case .join = $0 { channelRejoinEx.fulfill(); return }
+            }
+        
+        wait(for: [openMesssageEx], timeout: 1)
+        wait(for: [channelRejoinEx], timeout: 1)
     }
 }
