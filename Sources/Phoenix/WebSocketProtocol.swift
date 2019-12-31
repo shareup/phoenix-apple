@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-public protocol WebSocketProtocol: Publisher where Failure == Error, Output == Result<WebSocket.Message, Error> {
+protocol WebSocketProtocol: Publisher where Failure == Error, Output == Result<WebSocket.Message, Error> {
     
     init(url: URL) throws
     

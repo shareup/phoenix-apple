@@ -48,8 +48,8 @@ final class Socket: Synchronized, SimplePublisher {
     }
     
     public func close() {
-        ws?.close()
         self.shouldReconnect = false
+        ws?.close()
     }
     
     private func connect() {

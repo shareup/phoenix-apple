@@ -3,7 +3,7 @@ import Combine
 import Synchronized
 import SimplePublisher
 
-public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
+class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     private enum State {
         case unopened
         case connecting
@@ -12,12 +12,12 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
         case closed(WebSocketError)
     }
     
-    public var isOpen: Bool { sync {
+    var isOpen: Bool { sync {
         guard case .open = state else { return false }
         return true
     } }
     
-    public var isClosed: Bool { sync {
+    var isClosed: Bool { sync {
         guard case .closed = state else { return false }
         return true
     } }
@@ -27,12 +27,12 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
     
     private let delegateQueue = OperationQueue()
     
-    public typealias Output = Result<WebSocket.Message, Error>
-    public typealias Failure = Error
+    typealias Output = Result<WebSocket.Message, Error>
+    typealias Failure = Error
 
-    public var subject = SimpleSubject<Output, Failure>()
+    var subject = SimpleSubject<Output, Failure>()
     
-    public required init(url: URL) {
+    required init(url: URL) {
         self.url = url
         
         super.init()
@@ -67,11 +67,11 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
         }
     }
     
-    public func send(_ string: String, completionHandler: @escaping (Error?) -> Void) {
+    func send(_ string: String, completionHandler: @escaping (Error?) -> Void) {
         send(.string(string), completionHandler: completionHandler)
     }
     
-    public func send(_ data: Data, completionHandler: @escaping (Error?) -> Void) {
+    func send(_ data: Data, completionHandler: @escaping (Error?) -> Void) {
         send(.data(data), completionHandler: completionHandler)
     }
     
@@ -86,12 +86,12 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
         }
     }
     
-    public func close() {
+    func close() {
         close(.goingAway)
     }
     
     // TODO: make a list of close codes to expose publicly instead of depending on URLSessionWebSocketTask.CloseCode
-    public func close(_ closeCode:  URLSessionWebSocketTask.CloseCode) {
+    func close(_ closeCode:  URLSessionWebSocketTask.CloseCode) {
         sync {
             guard case .open(let task) = state else { return }
             state = .closing
@@ -105,7 +105,7 @@ public class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublish
 let normalCloseCodes: [URLSessionWebSocketTask.CloseCode] = [.goingAway, .normalClosure]
 
 extension WebSocket: URLSessionWebSocketDelegate {
-    public func urlSession(_ session: URLSession,
+    func urlSession(_ session: URLSession,
                            webSocketTask: URLSessionWebSocketTask,
                            didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
                            reason: Data?) {
@@ -121,7 +121,7 @@ extension WebSocket: URLSessionWebSocketDelegate {
         }
     }
     
-    public func urlSession(_ session: URLSession,
+    func urlSession(_ session: URLSession,
                            webSocketTask: URLSessionWebSocketTask,
                            didOpenWithProtocol protocol: String?) {
         sync {
