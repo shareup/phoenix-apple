@@ -3,13 +3,20 @@ import Combine
 import Synchronized
 import SimplePublisher
 
-public final class Channel: SimplePublisher, Synchronized {
+public final class Channel: Synchronized {
+    public enum Error: Swift.Error {
+        case invalidJoinReply(Channel.Reply)
+        case isClosed
+        case lostSocket
+        case noLongerJoining
+    }
+    
     enum State {
         case closed
         case joining(Ref)
         case joined(Ref)
         case leaving(Ref)
-        case errored(Error)
+        case errored(Swift.Error)
     }
     
     struct PushedMessage {
@@ -23,12 +30,14 @@ public final class Channel: SimplePublisher, Synchronized {
         }
     }
     
-    private var subscription: Subscription? = nil
+    public typealias Output = Result<Channel.Event, Swift.Error>
+    public typealias Failure = Swift.Error
 
-    public typealias Output = Result<Channel.Event, Error>
-    public typealias Failure = Error
-
-    public var subject = SimpleSubject<Output, Failure>()
+    private lazy var internalSubscriber: DelegatingSubscriber<Channel> = {
+        return DelegatingSubscriber(delegate: self)
+    }()
+    
+    private var subject = SimpleSubject<Output, Failure>()
     
     let topic: String
     
@@ -132,7 +141,7 @@ extension Channel {
     private func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
         guard let socket = socket else {
             assertionFailure("Can't write if we don't have a socket")
-            self.state = .errored(ChannelError.lostSocket)
+            self.state = .errored(Channel.Error.lostSocket)
             return
         }
         
@@ -161,7 +170,7 @@ extension Channel {
                 case .joining(let joinRef):
                     self.writeJoinPush(joinRef)
                 default:
-                    self.state = .errored(ChannelError.noLongerJoining)
+                    self.state = .errored(Channel.Error.noLongerJoining)
                 }
             }
         }
@@ -222,20 +231,42 @@ extension Channel {
     }
 }
 
-// MARK: :Subscriber
+// MARK: :Publisher
 
-extension Channel: Subscriber {
-    public typealias Input = IncomingMessage
-    
-    public func receive(subscription: Subscription) {
-        subscription.request(.unlimited)
-        
-        sync {
-            self.subscription = subscription
-        }
+extension Channel: Publisher {
+    public func receive<S>(subscriber: S)
+        where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
+        subject.receive(subscriber: subscriber)
     }
     
-    public func receive(_ input: IncomingMessage) -> Subscribers.Demand {
+    func publish(_ output: Output) {
+        subject.send(output)
+    }
+    
+    func complete() {
+        complete(.finished)
+    }
+    
+    func complete(_ failure: Failure) {
+        complete(.failure(failure))
+    }
+    
+    func complete(_ completion: Subscribers.Completion<Failure>) {
+        subject.send(completion: completion)
+    }
+}
+
+// MARK: :Subscriber
+
+extension Channel: DelegatingSubscriberDelegate {
+    typealias Input = IncomingMessage
+    
+    func internallySubscribe<P>(_ publisher: P)
+        where P: Publisher, Input == P.Output, Failure == P.Failure {
+        publisher.subscribe(internalSubscriber)
+    }
+    
+    func receive(_ input: Input) {
         switch input.event {
         case .custom:
             let message = Channel.Message(incomingMessage: input)
@@ -253,14 +284,10 @@ extension Channel: Subscriber {
             Swift.print("> \(input)")
             break
         }
-        
-        return .unlimited
     }
     
-    public func receive(completion: Subscribers.Completion<Error>) {
-        sync {
-            self.subscription = nil
-        }
+    func receive(completion: Subscribers.Completion<Swift.Error>) {
+        internalSubscriber.cancel()
     }
 }
 
@@ -272,7 +299,7 @@ extension Channel {
             switch state {
             case .joining(let joinRef):
                 guard reply.ref == joinRef && reply.joinRef == joinRef else {
-                    self.state = .errored(ChannelError.invalidJoinReply(reply))
+                    self.state = .errored(Channel.Error.invalidJoinReply(reply))
                     break
                 }
                 

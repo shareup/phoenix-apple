@@ -1,7 +1,7 @@
 import Foundation
 
 extension Channel {
-    public typealias Callback = (Result<Channel.Reply, Error>) -> ()
+    public typealias Callback = (Result<Channel.Reply, Swift.Error>) -> ()
 
     struct Push {    
         let channel: Channel
@@ -21,7 +21,7 @@ extension Channel {
             self.callback = callback
         }
 
-        func asyncCallback(result: Result<Channel.Reply, Error>) {
+        func asyncCallback(result: Result<Channel.Reply, Swift.Error>) {
             if let cb = callback {
                 DispatchQueue.global().async { cb(result) }
             }

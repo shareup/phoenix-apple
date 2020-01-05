@@ -24,7 +24,9 @@ public final class Socket: Synchronized {
     
     private var subject = SimpleSubject<Output, Failure>()
     private var ws: WebSocket?
-    private var internalSubscriber: Subscriber?
+    private lazy var internalSubscriber: DelegatingSubscriber<Socket> = {
+       return DelegatingSubscriber(delegate: self)
+    }()
     
     private var state: State = .closed
     
@@ -44,7 +46,6 @@ public final class Socket: Synchronized {
     
     public init(url: URL) throws {
         self.url = try Self.webSocketURLV2(url: url)
-        self.internalSubscriber = Subscriber(socket: self)
         connect()
     }
     
@@ -55,7 +56,7 @@ public final class Socket: Synchronized {
     
     private func connect() {
         self.ws = WebSocket(url: url)
-        ws!.subscribe(internalSubscriber!)
+        internallySubscribe(ws!)
     }
 }
 
@@ -96,10 +97,16 @@ extension Socket: Publisher {
 
 // MARK: :Subscriber
 
-extension Socket {
+extension Socket: DelegatingSubscriberDelegate {
     // Creating an indirect internal Subscriber sub-type so the methods can remain internal
+    typealias Input = Result<WebSocket.Message, Error>
     
-    func receive(_ input: Result<WebSocket.Message, Error>) {
+    func internallySubscribe<P>(_ publisher: P)
+        where P: Publisher, Input == P.Output, Failure == P.Failure {
+        publisher.subscribe(internalSubscriber)
+    }
+    
+    func receive(_ input: Input) {
         switch input {
         case .success(let message):
             switch message {
@@ -134,11 +141,10 @@ extension Socket {
         }
     }
     
-    func receive(completion: Subscribers.Completion<Error>) {
+    func receive(completion: Subscribers.Completion<Failure>) {
         // TODO: check if we are already closed
         
         sync {
-            self.internalSubscriber?.cancel()
             self.ws = nil
             self.state = .closed
             
@@ -157,42 +163,6 @@ extension Socket {
             }
         } else {
             subject.send(completion: .finished)
-        }
-    }
-    
-    class Subscriber: Combine.Subscriber, Synchronized {
-        weak var socket: Socket?
-        private var subscription: Subscription?
-        
-        typealias Input = Result<WebSocket.Message, Error>
-        typealias Failure = Error
-        
-        init(socket: Socket) {
-            self.socket = socket
-        }
-
-        func receive(subscription: Subscription) {
-            subscription.request(.unlimited)
-
-            sync {
-                self.subscription = subscription
-            }
-        }
-
-        func receive(_ input: Result<WebSocket.Message, Error>) -> Subscribers.Demand {
-            socket?.receive(input)
-            return .unlimited
-        }
-
-        func receive(completion: Subscribers.Completion<Error>) {
-            socket?.receive(completion: completion)
-        }
-        
-        func cancel() {
-            sync {
-                self.subscription?.cancel()
-                self.subscription = nil
-            }
         }
     }
 }
@@ -247,14 +217,15 @@ extension Socket {
     }
 
     private func subscribe(channel: Channel) {
-        self
-            .compactMap {
+        channel.internallySubscribe(
+            self.compactMap {
                 guard case .incomingMessage(let message) = $0 else {
                     return nil
                 }
                 return message
+            }.filter {
+                $0.topic == channel.topic
             }
-            .filter { $0.topic == channel.topic }
-            .subscribe(channel)
+        )
     }
 }
