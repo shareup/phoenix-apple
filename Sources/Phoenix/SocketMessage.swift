@@ -6,6 +6,6 @@ extension Socket {
         case opened
         case incomingMessage(IncomingMessage)
         case unreadableMessage(String)
-        case websocketError(Error)
+        case websocketError(Swift.Error)
     }
 }

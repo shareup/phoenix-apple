@@ -5,10 +5,10 @@ import Forever
 import SimplePublisher
 import Atomic
 
-typealias SocketSendCallback = (Error?) -> Void
+typealias SocketSendCallback = (Swift.Error?) -> Void
 
 public final class Socket: Synchronized {
-    enum SocketError: Error {
+    enum Error: Swift.Error {
         case closed
     }
 
@@ -17,10 +17,8 @@ public final class Socket: Synchronized {
         case closed
     }
     
-    @Atomic(true) var shouldReconnect: Bool
-
     public typealias Output = Socket.Message
-    public typealias Failure = Error
+    public typealias Failure = Swift.Error
     
     private var subject = SimpleSubject<Output, Failure>()
     private var ws: WebSocket?
@@ -29,6 +27,7 @@ public final class Socket: Synchronized {
     }()
     
     private var state: State = .closed
+    private var shouldReconnect = true
     
     private var channels = [String: WeakChannel]()
     
@@ -50,8 +49,10 @@ public final class Socket: Synchronized {
     }
     
     public func close() {
-        self.shouldReconnect = false
-        ws?.close()
+        sync {
+            self.shouldReconnect = false
+            ws?.close()
+        }
     }
     
     private func connect() {
@@ -99,7 +100,7 @@ extension Socket: Publisher {
 
 extension Socket: DelegatingSubscriberDelegate {
     // Creating an indirect internal Subscriber sub-type so the methods can remain internal
-    typealias Input = Result<WebSocket.Message, Error>
+    typealias Input = Result<WebSocket.Message, Swift.Error>
     
     func internallySubscribe<P>(_ publisher: P)
         where P: Publisher, Input == P.Output, Failure == P.Failure {
@@ -155,14 +156,14 @@ extension Socket: DelegatingSubscriberDelegate {
                     channel.left()
                 }
             }
-        }
-
-        if shouldReconnect {
-            DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
-                self.connect()
+            
+            if shouldReconnect {
+                DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
+                    self.connect()
+                }
+            } else {
+                subject.send(completion: .finished)
             }
-        } else {
-            subject.send(completion: .finished)
         }
     }
 }
@@ -193,7 +194,7 @@ extension Socket {
     
     func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
         guard let ws = ws, isOpen else {
-            completionHandler(SocketError.closed)
+            completionHandler(Socket.Error.closed)
             return
         }
         
@@ -206,6 +207,7 @@ extension Socket {
             fatalError("Could not serialize OutgoingMessage \(error)")
         }
 
+        // TODO: capture obj-c exceptions
         ws.send(data) { error in
             completionHandler(error)
             

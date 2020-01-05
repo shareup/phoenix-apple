@@ -252,7 +252,7 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
-    func skip_testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
+    func testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
         let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
         
         let socket = try! Socket(url: disconnectURL)
@@ -267,37 +267,29 @@ class ChannelTests: XCTestCase {
         defer { sub.cancel() }
         
         let channelJoinedEx = expectation(description: "Channel should have joined once")
-        let channelLeftEx = expectation(description: "Channel should have left once")
         
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever {
             if case .success(.join) = $0 { channelJoinedEx.fulfill(); return }
-            if case .success(.leave) = $0 { channelLeftEx.fulfill(); return }
         }
         
-        wait(for: [channelJoinedEx], timeout: 1)
-        
-        channel.leave()
-        
-        wait(for: [channelLeftEx], timeout: 1)
+        wait(for: [channelJoinedEx], timeout: 0.25)
         
         sub2.cancel()
         
+        let channelLeftEx = expectation(description: "Channel should have left once")
         let channelRejoinEx = expectation(description: "Channel should not have rejoined")
         channelRejoinEx.isInverted = true
         
-        let _ = channel
-            .catch { _ in Empty() }
-            .compactMap { (result: Result<Channel.Event, Error>) -> Channel.Event? in
-                if case .success(let event) = result { return event }
-                return nil
-            }
-            .sink {
-                if case .join = $0 { channelRejoinEx.fulfill(); return }
-            }
+        let sub3 = channel.forever {
+            if case .success(.join) = $0 { channelRejoinEx.fulfill(); return }
+            if case .success(.leave) = $0 { channelLeftEx.fulfill(); return }
+        }
+        defer { sub3.cancel() }
         
-        wait(for: [openMesssageEx], timeout: 1)
-        wait(for: [channelRejoinEx], timeout: 1)
+        channel.leave()
+        
+        waitForExpectations(timeout: 1)
     }
 }

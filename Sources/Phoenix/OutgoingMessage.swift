@@ -24,8 +24,8 @@ struct OutgoingMessage {
         self.payload = push.payload
     }
     
-    init(_ push: Socket.Push, ref: Ref) {
-        self.joinRef = nil
+    init(_ push: Socket.Push, ref: Ref, joinRef: Ref? = nil) {
+        self.joinRef = joinRef
         self.ref = ref
         self.topic = push.topic
         self.event = push.event
