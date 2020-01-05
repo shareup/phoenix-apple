@@ -161,7 +161,7 @@ extension Socket {
     }
     
     class Subscriber: Combine.Subscriber, Synchronized {
-        let socket: Socket
+        weak var socket: Socket?
         private var subscription: Subscription?
         
         typealias Input = Result<WebSocket.Message, Error>
@@ -180,12 +180,12 @@ extension Socket {
         }
 
         func receive(_ input: Result<WebSocket.Message, Error>) -> Subscribers.Demand {
-            socket.receive(input)
+            socket?.receive(input)
             return .unlimited
         }
 
         func receive(completion: Subscribers.Completion<Error>) {
-            socket.receive(completion: completion)
+            socket?.receive(completion: completion)
         }
         
         func cancel() {
