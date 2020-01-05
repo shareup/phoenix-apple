@@ -1,7 +1,7 @@
 import Foundation
 
 extension Socket {
-    enum Message {
+    public enum Message {
         case closed
         case opened
         case incomingMessage(IncomingMessage)

@@ -8,8 +8,16 @@ struct OutgoingMessage {
     let payload: Payload
     let sentAt: Date = Date()
     
-    init(_ push: Channel.Push, ref: Ref) {
-        self.joinRef = push.channel.joinRef
+    enum Error: Swift.Error {
+        case missingChannelJoinRef
+    }
+    
+    init(_ push: Channel.Push, ref: Ref, joinRef: Ref) {
+        if push.channel.joinRef != joinRef {
+            assertionFailure("joinRef should match the channel's joinRef")
+        }
+        
+        self.joinRef = joinRef
         self.ref = ref
         self.topic = push.channel.topic
         self.event = push.event

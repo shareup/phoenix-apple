@@ -12,9 +12,18 @@ public final class Channel: SimplePublisher, Synchronized {
         case errored(Error)
     }
     
+    struct PushedMessage {
+        let push: Push
+        let message: OutgoingMessage
+        
+        var joinRef: Ref? { message.joinRef }
+        
+        func successCallback(_ reply: Channel.Reply) {
+            push.asyncCallback(result: .success(reply))
+        }
+    }
+    
     private var subscription: Subscription? = nil
-    // TODO: sweep this dictionary periodically
-    private var tracked: [Ref: Channel.Push] = [:]
 
     public typealias Output = Result<Channel.Event, Error>
     public typealias Failure = Error
@@ -23,13 +32,23 @@ public final class Channel: SimplePublisher, Synchronized {
     
     let topic: String
     
-    private var state: State
-    private let pusher: Pusher
+    var refGenerator: Ref.Generator = Ref.Generator.global
     
-    init(topic: String, pusher: Pusher) {
+    private var state: State
+    weak var socket: Socket?
+    
+    private var pending: [Push] = []
+    private var inFlight: [Ref: PushedMessage] = [:]
+    
+    init(topic: String, socket: Socket) {
         self.topic = topic
         self.state = .closed
-        self.pusher = pusher
+        self.socket = socket
+    }
+    
+    convenience init(topic: String, socket: Socket, refGenerator: Ref.Generator) {
+        self.init(topic: topic, socket: socket)
+        self.refGenerator = refGenerator
     }
     
     var joinRef: Ref? { sync {
@@ -48,7 +67,7 @@ public final class Channel: SimplePublisher, Synchronized {
     var joinPush: Socket.Push {
         Socket.Push(topic: topic, event: .join, payload: [:]) { error in
             if let error = error {
-                self.change(to: .errored(error))
+                self.state = .errored(error)
             }
         }
     }
@@ -56,7 +75,7 @@ public final class Channel: SimplePublisher, Synchronized {
     var leavePush: Socket.Push {
         Socket.Push(topic: topic, event: .leave, payload: [:]) { error in
             if let error = error {
-                self.change(to: .errored(error))
+                self.state = .errored(error)
             }
         }
     }
@@ -85,25 +104,66 @@ public final class Channel: SimplePublisher, Synchronized {
         guard case .errored = state else { return false }
         return true
     } }
-    
-    func change(to state: State) { sync {
-        // TODO: stop using this method and always validate the current state before transitioning
-        self.state = state
-    } }
 }
 
 // MARK: Writing
 
+
+
 extension Channel {
-    public func join() {
+    func join() {
         sync {
             guard isClosed || isErrored else {
                 assertionFailure("Can't join unless we are closed or errored")
                 return
             }
             
-            let ref = pusher.send(joinPush)
-            change(to: .joining(ref))
+            let ref = refGenerator.advance()
+            self.state = .joined(ref)
+            
+            self.writeJoinPush(ref)
+        }
+    }
+    
+    private func send(_ message: OutgoingMessage) {
+        send(message) { _ in }
+    }
+    
+    private func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
+        guard let socket = socket else {
+            assertionFailure("Can't write if we don't have a socket")
+            self.state = .errored(ChannelError.lostSocket)
+            return
+        }
+        
+        socket.send(message, completionHandler: completionHandler)
+    }
+    
+    private func writeJoinPush(_ joinRef: Ref) {
+        sync {
+            let message = OutgoingMessage(joinPush, ref: joinRef)
+            
+            send(message) { error in
+                if let error = error {
+                    Swift.print("There was a problem writing to the socket, so going to try to join again after a delay: \(error)")
+                    self.writeJoinPushAfterDelay()
+                }
+            }
+        }
+    }
+    
+    private func writeJoinPushAfterDelay() {
+        let deadline = DispatchTime.now().advanced(by: .milliseconds(200))
+
+        DispatchQueue.global().asyncAfter(deadline: deadline) {
+            self.sync {
+                switch self.state {
+                case .joining(let joinRef):
+                    self.writeJoinPush(joinRef)
+                default:
+                    self.state = .errored(ChannelError.noLongerJoining)
+                }
+            }
         }
     }
     
@@ -111,8 +171,8 @@ extension Channel {
         sync {
             if isJoining || isJoined { return }
 
-            let ref = pusher.send(joinPush)
-            change(to: .joining(ref))
+            let ref = refGenerator.advance()
+            self.state = .joining(ref)
         }
     }
     
@@ -123,8 +183,10 @@ extension Channel {
                 return
             }
             
-            let ref = pusher.send(leavePush)
-            change(to: .leaving(ref))
+            let ref = refGenerator.advance()
+            let message = OutgoingMessage(leavePush, ref: ref)
+            send(message)
+            self.state = .leaving(ref)
         }
     }
     
@@ -132,7 +194,7 @@ extension Channel {
         sync {
             if isClosed || isErrored { return }
         
-            change(to: .closed)
+            self.state = .closed
             subject.send(.success(.leave))
         }
     }
@@ -147,13 +209,15 @@ extension Channel {
 
     public func push(_ eventString: String, payload: Payload, callback: Channel.Callback?) {
         sync {
+            guard let joinRef = joinRef else {
+                assertionFailure("Cannot write if we are not joined")
+                return
+            }
+            
             let push = Channel.Push(channel: self, event: PhxEvent(eventString), payload: payload, callback: callback)
-
-            // NOTE: the new contract is that when one "sends to the pusher"
-            //       one gets back the ref so one can track replies later
-            //       and one can assume the push is sent very soon
-            let ref = pusher.send(push)
-            self.tracked[ref] = push
+            let ref = refGenerator.advance()
+            let message = OutgoingMessage(push, ref: ref, joinRef: joinRef)
+            send(message) // TODO: we need to store the callback for the later reply
         }
     }
 }
@@ -208,28 +272,28 @@ extension Channel {
             switch state {
             case .joining(let joinRef):
                 guard reply.ref == joinRef && reply.joinRef == joinRef else {
-                    change(to: .errored(ChannelError.invalidJoinReply(reply)))
+                    self.state = .errored(ChannelError.invalidJoinReply(reply))
                     break
                 }
                 
-                change(to: .joined(joinRef))
+                self.state = .joined(joinRef)
                 subject.send(.success(.join))
                 
             case .joined(let joinRef):
-                guard let push = tracked[reply.ref],
-                    reply.joinRef == joinRef else {
-                    break
+                guard let pushed = inFlight[reply.ref],
+                      reply.joinRef == joinRef else {
+                    return
                 }
-
-                push.asyncCallback(result: .success(reply))
-                tracked[reply.ref] = nil
+                
+                pushed.successCallback(reply)
                 
             case .leaving(let ref):
+                // TODO: do we need to also check the joinRef to make sure we don't get a left reply from a previous leave?
                 guard reply.ref == ref else {
                     break
                 }
                 
-                change(to: .closed)
+                self.state = .closed
                 subject.send(.success(.leave))
                 
             default:

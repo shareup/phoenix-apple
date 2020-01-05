@@ -5,7 +5,9 @@ import Forever
 import SimplePublisher
 import Atomic
 
-final class Socket: Synchronized, SimplePublisher {
+typealias SocketSendCallback = (Error?) -> Void
+
+public final class Socket: Synchronized, SimplePublisher {
     enum SocketError: Error {
         case closed
     }
@@ -17,9 +19,9 @@ final class Socket: Synchronized, SimplePublisher {
     
     @Atomic(true) var shouldReconnect: Bool
 
-    typealias Output = Socket.Message
-    typealias Failure = Error
-    var subject = SimpleSubject<Output, Failure>()
+    public typealias Output = Socket.Message
+    public typealias Failure = Error
+    public var subject = SimpleSubject<Output, Failure>()
     
     private var subscription: Subscription? = nil
     private var ws: WebSocket?
@@ -27,7 +29,6 @@ final class Socket: Synchronized, SimplePublisher {
     private var state: State = .closed
     
     private var channels = [String: WeakChannel]()
-    private var pusher = Pusher()
     
     public let url: URL
     
@@ -44,7 +45,6 @@ final class Socket: Synchronized, SimplePublisher {
     public init(url: URL) throws {
         self.url = try Self.webSocketURLV2(url: url)
         connect()
-        try? pusher.receiveBatch(callback: receiveFromPusher(_:))
     }
     
     public func close() {
@@ -155,7 +155,7 @@ extension Socket {
                 return channel
             }
             
-            let channel = Channel(topic: topic, pusher: pusher)
+            let channel = Channel(topic: topic, socket: self)
             
             channels[topic] = WeakChannel(channel)
             subscribe(channel: channel)
@@ -165,31 +165,11 @@ extension Socket {
         }
     }
 
-    private func receiveFromPusher(_ tracked: [(Pusher.Push, OutgoingMessage)]) {
-        for (push, message) in tracked {
-            send(message) { error in
-                switch push {
-                case .socket(let push):
-                    // we always notify socket pushes when writing is complete
-                    push.asyncCallback(error)
-                case .channel(let push):
-                    // we only notify channel pushes when there is an error writing, there is a response, or there is a timeout
-                    guard let error = error else {
-                        return
-                    }
-                    push.asyncCallback(result: .failure(error))
-                }
-            }
-        }
-
-        try? pusher.receiveBatch(callback: receiveFromPusher(_:))
-    }
-
-    private func send(_ message: OutgoingMessage) {
+    func send(_ message: OutgoingMessage) {
         send(message, completionHandler: { _ in })
     }
     
-    private func send(_ message: OutgoingMessage, completionHandler: @escaping (Error?) -> Void) {
+    func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
         guard let ws = ws, isOpen else {
             completionHandler(SocketError.closed)
             return
