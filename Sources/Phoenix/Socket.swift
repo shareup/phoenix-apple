@@ -7,7 +7,7 @@ import Atomic
 
 typealias SocketSendCallback = (Error?) -> Void
 
-public final class Socket: Synchronized, SimplePublisher {
+public final class Socket: Synchronized {
     enum SocketError: Error {
         case closed
     }
@@ -21,10 +21,10 @@ public final class Socket: Synchronized, SimplePublisher {
 
     public typealias Output = Socket.Message
     public typealias Failure = Error
-    public var subject = SimpleSubject<Output, Failure>()
     
-    private var subscription: Subscription? = nil
+    private var subject = SimpleSubject<Output, Failure>()
     private var ws: WebSocket?
+    private var internalSubscriber: Subscriber?
     
     private var state: State = .closed
     
@@ -44,6 +44,7 @@ public final class Socket: Synchronized, SimplePublisher {
     
     public init(url: URL) throws {
         self.url = try Self.webSocketURLV2(url: url)
+        self.internalSubscriber = Subscriber(socket: self)
         connect()
     }
     
@@ -54,7 +55,7 @@ public final class Socket: Synchronized, SimplePublisher {
     
     private func connect() {
         self.ws = WebSocket(url: url)
-        ws!.subscribe(self)
+        ws!.subscribe(internalSubscriber!)
     }
 }
 
@@ -68,20 +69,37 @@ extension Socket {
     }
 }
 
+// MARK: :Publisher
+
+extension Socket: Publisher {
+    public func receive<S>(subscriber: S)
+        where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
+        subject.receive(subscriber: subscriber)
+    }
+    
+    func publish(_ output: Output) {
+        subject.send(output)
+    }
+    
+    func complete() {
+        complete(.finished)
+    }
+    
+    func complete(_ failure: Failure) {
+        complete(.failure(failure))
+    }
+    
+    func complete(_ completion: Subscribers.Completion<Failure>) {
+        subject.send(completion: completion)
+    }
+}
+
 // MARK: :Subscriber
 
-extension Socket: Subscriber {
-    typealias Input = Result<WebSocket.Message, Error>
-
-    func receive(subscription: Subscription) {
-        subscription.request(.unlimited)
-
-        sync {
-            self.subscription = subscription
-        }
-    }
-
-    func receive(_ input: Result<WebSocket.Message, Error>) -> Subscribers.Demand {
+extension Socket {
+    // Creating an indirect internal Subscriber sub-type so the methods can remain internal
+    
+    func receive(_ input: Result<WebSocket.Message, Error>) {
         switch input {
         case .success(let message):
             switch message {
@@ -114,16 +132,14 @@ extension Socket: Subscriber {
             Swift.print("WebSocket error, but we are not closed: \(error)")
             subject.send(.websocketError(error))
         }
-
-        return .unlimited
     }
-
+    
     func receive(completion: Subscribers.Completion<Error>) {
         // TODO: check if we are already closed
         
         sync {
+            self.internalSubscriber?.cancel()
             self.ws = nil
-            self.subscription = nil
             self.state = .closed
             
             subject.send(.closed)
@@ -141,6 +157,42 @@ extension Socket: Subscriber {
             }
         } else {
             subject.send(completion: .finished)
+        }
+    }
+    
+    class Subscriber: Combine.Subscriber, Synchronized {
+        let socket: Socket
+        private var subscription: Subscription?
+        
+        typealias Input = Result<WebSocket.Message, Error>
+        typealias Failure = Error
+        
+        init(socket: Socket) {
+            self.socket = socket
+        }
+
+        func receive(subscription: Subscription) {
+            subscription.request(.unlimited)
+
+            sync {
+                self.subscription = subscription
+            }
+        }
+
+        func receive(_ input: Result<WebSocket.Message, Error>) -> Subscribers.Demand {
+            socket.receive(input)
+            return .unlimited
+        }
+
+        func receive(completion: Subscribers.Completion<Error>) {
+            socket.receive(completion: completion)
+        }
+        
+        func cancel() {
+            sync {
+                self.subscription?.cancel()
+                self.subscription = nil
+            }
         }
     }
 }
