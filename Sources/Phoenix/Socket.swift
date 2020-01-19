@@ -9,27 +9,25 @@ typealias SocketSendCallback = (Swift.Error?) -> Void
 
 public final class Socket: Synchronized {
     enum Error: Swift.Error {
-        case closed
+        case notOpen
     }
 
     enum State {
-        case open
         case closed
+        case connecting(WebSocket)
+        case open(WebSocket)
+        case closing(WebSocket)
     }
     
     public typealias Output = Socket.Message
     public typealias Failure = Swift.Error
     
     private var subject = SimpleSubject<Output, Failure>()
-    private var ws: WebSocket?
-    
     private var state: State = .closed
     private var shouldReconnect = true
-    
     private var channels = [String: WeakChannel]()
     
     private let refGenerator: Ref.Generator
-    
     public let url: URL
     public let timeout: Int
     public let heartbeatInterval: Int
@@ -40,14 +38,37 @@ public final class Socket: Synchronized {
     
     public var currentRef: Ref { refGenerator.current }
     
+    public var isClosed: Bool { sync {
+        guard case .closed = state else { return false }
+        return true
+    } }
+    
+    public var isConnecting: Bool { sync {
+        guard case .connecting = state else { return false }
+        return true
+    } }
+    
     public var isOpen: Bool { sync {
         guard case .open = state else { return false }
         return true
     } }
-
-    public var isClosed: Bool { sync {
-        guard case .closed = state else { return false }
+    
+    public var isClosing: Bool { sync {
+        guard case .closing = state else { return false }
         return true
+    } }
+    
+    public var connectionState: String { sync {
+        switch state {
+        case .closed:
+            return "closed"
+        case .connecting:
+            return "connecting"
+        case .open:
+            return "open"
+        case .closing:
+            return "closing"
+        }
     } }
     
     public init(url: URL,
@@ -72,7 +93,16 @@ public final class Socket: Synchronized {
     public func disconnect() {
         sync {
             self.shouldReconnect = false
-            ws?.close()
+            
+            switch state {
+            case .closed, .closing:
+                // NOOP
+                return
+            case .open(let ws), .connecting(let ws):
+                self.state = .closing(ws)
+                subject.send(.closing)
+                ws.close()
+            }
         }
     }
     
@@ -80,10 +110,21 @@ public final class Socket: Synchronized {
         sync {
             self.shouldReconnect = true
             
-            guard ws == nil else { return }
-            
-            self.ws = WebSocket(url: url)
-            internallySubscribe(ws!)
+            switch state {
+            case .closed:
+                subject.send(.connecting)
+                
+                let ws = WebSocket(url: url)
+                self.state = .connecting(ws)
+                
+                internallySubscribe(ws)
+            case .connecting, .open:
+                // NOOP
+                return
+            case .closing:
+                // let the reconnect logic handle this case
+                return
+            }
         }
     }
 }
@@ -142,16 +183,29 @@ extension Socket: DelegatingSubscriberDelegate {
             switch message {
             case .open:
                 // TODO: check if we are already open
-                self.state = .open
-                subject.send(.open)
-                
-                sync {
-                    for (_, weakChannel) in channels {
-                        if let channel = weakChannel.channel {
-                            channel.rejoin()
+                switch state {
+                case .closed:
+                    assertionFailure("We shouldn't receive an open message if we are in a closed state")
+                    return
+                case .closing:
+                    assertionFailure("We shouldn't recieve an open message if we are in a closing state")
+                    return
+                case .open:
+                    // NOOP
+                    return
+                case .connecting(let ws):
+                    self.state = .open(ws)
+                    subject.send(.open)
+                    
+                    sync {
+                        for (_, weakChannel) in channels {
+                            if let channel = weakChannel.channel {
+                                channel.rejoin()
+                            }
                         }
                     }
                 }
+
             case .data:
                 // TODO: Are we going to use data frames from the server for anything?
                 assertionFailure("We are not currently expecting any data frames from the server")
@@ -172,23 +226,26 @@ extension Socket: DelegatingSubscriberDelegate {
     }
     
     func receive(completion: Subscribers.Completion<Failure>) {
-        // TODO: check if we are already closed
-        
         sync {
-            self.ws = nil
-            self.state = .closed
-            
-            subject.send(.close)
-            
-            for (_, weakChannel) in channels {
-                if let channel = weakChannel.channel {
-                    channel.left()
+            switch state {
+            case .closed:
+                // NOOP
+                return
+            case .open, .connecting, .closing:
+                self.state = .closed
+                
+                subject.send(.close)
+                
+                for (_, weakChannel) in channels {
+                    if let channel = weakChannel.channel {
+                        channel.left()
+                    }
                 }
-            }
-            
-            if shouldReconnect {
-                DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
-                    self.connect()
+                
+                if shouldReconnect {
+                    DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
+                        self.connect()
+                    }
                 }
             }
         }
@@ -220,27 +277,29 @@ extension Socket {
     }
     
     func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
-        guard let ws = ws, isOpen else {
-            completionHandler(Socket.Error.closed)
-            return
-        }
-        
-        let data: Data
-        
-        do {
-            data = try message.encoded()
-        } catch {
-            // TODO: make this throw instead
-            fatalError("Could not serialize OutgoingMessage \(error)")
-        }
+        sync {
+            switch state {
+            case .open(let ws):
+                let data: Data
+                
+                do {
+                    data = try message.encoded()
+                } catch {
+                    // TODO: make this throw instead
+                    fatalError("Could not serialize OutgoingMessage \(error)")
+                }
 
-        // TODO: capture obj-c exceptions
-        ws.send(data) { error in
-            completionHandler(error)
-            
-            if let error = error {
-                Swift.print("Error writing to WebSocket: \(error)")
-                ws.close(.abnormalClosure)
+                // TODO: capture obj-c exceptions
+                ws.send(data) { error in
+                    completionHandler(error)
+                    
+                    if let error = error {
+                        Swift.print("Error writing to WebSocket: \(error)")
+                        ws.close(.abnormalClosure)
+                    }
+                }
+            default:
+                completionHandler(Socket.Error.notOpen)
             }
         }
     }

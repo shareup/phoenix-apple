@@ -3,6 +3,8 @@ import XCTest
 import Combine
 
 class SocketTests: XCTestCase {
+    // MARK: init, connect, and disconnect
+    
     func testSocketInit() {
         // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L31
         XCTAssertEqual(Socket.defaultTimeout, 10_000)
@@ -60,12 +62,22 @@ class SocketTests: XCTestCase {
         wait(for: [closeMessageEx], timeout: 0.5)
     }
     
-    func testSocketConnectAndDisconnect() {
+    func testSocketDisconnectIsNoOp() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        socket.disconnect()
+    }
+    
+    func testSocketConnectIsNoOp() {
         let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         socket.connect()
         socket.connect() // calling connect again doesn't blow up
+    }
+    
+    func testSocketConnectAndDisconnect() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
         
         let closeMessageEx = expectation(description: "Should have received a close message")
         let openMesssageEx = expectation(description: "Should have received an open message")
@@ -90,6 +102,8 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
+        socket.connect()
+        
         wait(for: [openMesssageEx], timeout: 0.5)
         
         socket.disconnect()
@@ -101,6 +115,92 @@ class SocketTests: XCTestCase {
         wait(for: [reopenMessageEx], timeout: 0.5)
         waitForExpectations(timeout: 0.5)
     }
+    
+    // MARK: Connection state
+    
+    func testSocketDefaultsToClosed() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        
+        XCTAssertEqual(socket.connectionState, "closed")
+        XCTAssert(socket.isClosed)
+    }
+    
+    func testSocketIsConnecting() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let connectingMessageEx = expectation(description: "Should have received a connecting message")
+        
+        let _ = socket.forever { message in
+            switch message {
+            case .connecting:
+                connectingMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        
+        socket.connect()
+        
+        wait(for: [connectingMessageEx], timeout: 0.5)
+        
+        XCTAssertEqual(socket.connectionState, "connecting")
+        XCTAssert(socket.isConnecting)
+    }
+    
+    func testSocketIsOpen() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let openMessageEx = expectation(description: "Should have received an open message")
+        
+        let _ = socket.forever { message in
+            switch message {
+            case .open:
+                openMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        
+        socket.connect()
+        
+        wait(for: [openMessageEx], timeout: 0.5)
+        
+        XCTAssertEqual(socket.connectionState, "open")
+        XCTAssert(socket.isOpen)
+    }
+    
+    func testSocketIsClosing() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        
+        let openMessageEx = expectation(description: "Should have received an open message")
+        let closingMessageEx = expectation(description: "Should have received a closing message")
+        
+        let _ = socket.forever { message in
+            switch message {
+            case .open:
+                openMessageEx.fulfill()
+            case .closing:
+                closingMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        
+        socket.connect()
+        
+        wait(for: [openMessageEx], timeout: 0.5)
+        
+        socket.disconnect()
+        
+        XCTAssertEqual(socket.connectionState, "closing")
+        XCTAssert(socket.isClosing)
+        
+        wait(for: [closingMessageEx], timeout: 0.1)
+    }
+    
+    // MARK: Channel join
     
     func testChannelJoin() {
         let openMesssageEx = expectation(description: "Should have received an open message")
@@ -127,6 +227,8 @@ class SocketTests: XCTestCase {
         
         wait(for: [channelJoinedEx], timeout: 0.5)
     }
+    
+    // MARK: reconnect
     
     func testSocketReconnect() {
         // special disconnect query item to set a time to auto-disconnect from inside the example server
