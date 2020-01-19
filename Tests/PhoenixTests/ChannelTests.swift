@@ -15,6 +15,8 @@ class ChannelTests: XCTestCase {
         }
         defer { sub.cancel() }
         
+        socket.connect()
+        
         wait(for: [openMesssageEx], timeout: 0.5)
         
         let channelJoinedEx = expectation(description: "Channel joined")
@@ -59,6 +61,8 @@ class ChannelTests: XCTestCase {
         }
         defer { sub.cancel() }
         
+        socket.connect()
+        
         wait(for: [openMesssageEx], timeout: 0.5)
         
         let channelJoinedEx = expectation(description: "Channel joined")
@@ -71,6 +75,8 @@ class ChannelTests: XCTestCase {
             }
         }
         defer { sub2.cancel() }
+        
+        socket.connect()
         
         wait(for: [channelJoinedEx], timeout: 0.25)
         
@@ -120,6 +126,8 @@ class ChannelTests: XCTestCase {
             if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
+        
+        socket.connect()
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
@@ -178,6 +186,9 @@ class ChannelTests: XCTestCase {
             sub1.cancel()
             sub2.cancel()
         }
+        
+        socket1.connect()
+        socket2.connect()
         
         wait(for: [openMesssageEx1, openMesssageEx2], timeout: 0.5)
         
@@ -240,6 +251,8 @@ class ChannelTests: XCTestCase {
         }
         defer { sub.cancel() }
         
+        socket.connect()
+        
         let channelJoinedEx = expectation(description: "Channel should have joined twice (one after disconnecting)")
         channelJoinedEx.expectedFulfillmentCount = 2
         
@@ -266,6 +279,8 @@ class ChannelTests: XCTestCase {
             if case .open = $0 { openMesssageEx.fulfill(); return }
         }
         defer { sub.cancel() }
+        
+        socket.connect()
         
         let channelJoinedEx = expectation(description: "Channel should have joined once")
         

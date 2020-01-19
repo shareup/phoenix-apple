@@ -57,7 +57,6 @@ public final class Socket: Synchronized {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = Ref.Generator()
         self.url = try Socket.webSocketURLV2(url: url)
-        connect()
     }
     
     init(url: URL,
@@ -68,7 +67,6 @@ public final class Socket: Synchronized {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = refGenerator
         self.url = try Socket.webSocketURLV2(url: url)
-        connect()
     }
     
     public func disconnect() {

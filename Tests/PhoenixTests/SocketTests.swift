@@ -12,7 +12,6 @@ class SocketTests: XCTestCase {
         
         let url: URL = URL(string: "ws://0.0.0.0:4000/socket")!
         let socket = try! Socket(url: url)
-        defer { socket.disconnect() }
         
         XCTAssertEqual(socket.timeout, Socket.defaultTimeout)
         XCTAssertEqual(socket.heartbeatInterval, Socket.defaultHeartbeatInterval)
@@ -28,7 +27,6 @@ class SocketTests: XCTestCase {
             timeout: 20_000,
             heartbeatInterval: 40_000
         )
-        defer { socket.disconnect() }
         
         XCTAssertEqual(socket.timeout, 20_000)
         XCTAssertEqual(socket.heartbeatInterval, 40_000)
@@ -53,6 +51,8 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
+        socket.connect()
+        
         wait(for: [openMesssageEx], timeout: 0.5)
         
         socket.disconnect()
@@ -64,6 +64,7 @@ class SocketTests: XCTestCase {
         let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
+        socket.connect()
         socket.connect() // calling connect again doesn't blow up
         
         let closeMessageEx = expectation(description: "Should have received a close message")
@@ -113,6 +114,8 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
+        socket.connect()
+        
         wait(for: [openMesssageEx], timeout: 0.5)
         
         let channel = socket.join("room:lobby")
@@ -154,6 +157,8 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-        waitForExpectations(timeout: 0.8)
+        socket.connect()
+        
+        waitForExpectations(timeout: 1)
     }
 }
