@@ -161,8 +161,6 @@ extension Socket: DelegatingSubscriberDelegate {
                 DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
                     self.connect()
                 }
-            } else {
-                subject.send(completion: .finished)
             }
         }
     }
