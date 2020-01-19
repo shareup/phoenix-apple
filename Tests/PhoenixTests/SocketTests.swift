@@ -60,7 +60,7 @@ class SocketTests: XCTestCase {
         wait(for: [closeMessageEx], timeout: 0.5)
     }
     
-    func testSocketConnect() {
+    func testSocketConnectAndDisconnect() {
         let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
