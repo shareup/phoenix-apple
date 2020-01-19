@@ -71,7 +71,7 @@ public final class Socket: Synchronized {
         connect()
     }
     
-    public func close() {
+    public func disconnect() {
         sync {
             self.shouldReconnect = false
             ws?.close()
@@ -145,7 +145,7 @@ extension Socket: DelegatingSubscriberDelegate {
             case .open:
                 // TODO: check if we are already open
                 self.state = .open
-                subject.send(.opened)
+                subject.send(.open)
                 
                 sync {
                     for (_, weakChannel) in channels {
@@ -180,7 +180,7 @@ extension Socket: DelegatingSubscriberDelegate {
             self.ws = nil
             self.state = .closed
             
-            subject.send(.closed)
+            subject.send(.close)
             
             for (_, weakChannel) in channels {
                 if let channel = weakChannel.channel {

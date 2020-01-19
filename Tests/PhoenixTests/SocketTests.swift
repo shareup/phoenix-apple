@@ -12,7 +12,7 @@ class SocketTests: XCTestCase {
         
         let url: URL = URL(string: "ws://0.0.0.0:4000/socket")!
         let socket = try! Socket(url: url)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         XCTAssertEqual(socket.timeout, Socket.defaultTimeout)
         XCTAssertEqual(socket.heartbeatInterval, Socket.defaultHeartbeatInterval)
@@ -28,7 +28,7 @@ class SocketTests: XCTestCase {
             timeout: 20_000,
             heartbeatInterval: 40_000
         )
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         XCTAssertEqual(socket.timeout, 20_000)
         XCTAssertEqual(socket.heartbeatInterval, 40_000)
@@ -36,16 +36,16 @@ class SocketTests: XCTestCase {
     
     func testSocketInitEstablishesConnection() {
         let socket = try! Socket(url: testHelper.defaultURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message")
         let closeMessageEx = expectation(description: "Should have received a close message")
         
         let sub = socket.forever { message in
             switch message {
-            case .opened:
+            case .open:
                 openMesssageEx.fulfill()
-            case .closed:
+            case .close:
                 closeMessageEx.fulfill()
             default:
                 break
@@ -55,14 +55,14 @@ class SocketTests: XCTestCase {
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
-        socket.close()
+        socket.disconnect()
         
         wait(for: [closeMessageEx], timeout: 0.5)
     }
     
     func testSocketConnect() {
         let socket = try! Socket(url: testHelper.defaultURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         socket.connect() // calling connect again doesn't blow up
         
@@ -70,13 +70,18 @@ class SocketTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message")
         let reopenMessageEx = expectation(description: "Should have reopened and got an open message")
         
+        let completeMessageEx = expectation(description: "Should not complete the publishing")
+        completeMessageEx.isInverted = true
+        
         var openExs = [reopenMessageEx, openMesssageEx]
         
-        let sub = socket.forever { message in
+        let sub = socket.forever(receiveCompletion: { _ in
+            completeMessageEx.fulfill()
+        }) { message in
             switch message {
-            case .opened:
+            case .open:
                 openExs.popLast()?.fulfill()
-            case .closed:
+            case .close:
                 closeMessageEx.fulfill()
             default:
                 break
@@ -86,13 +91,14 @@ class SocketTests: XCTestCase {
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
-        socket.close()
+        socket.disconnect()
         
         wait(for: [closeMessageEx], timeout: 0.5)
         
         socket.connect()
         
         wait(for: [reopenMessageEx], timeout: 0.5)
+        waitForExpectations(timeout: 0.5)
     }
     
     func testChannelJoin() {
@@ -100,10 +106,10 @@ class SocketTests: XCTestCase {
         let channelJoinedEx = expectation(description: "Channel joined")
         
         let socket = try! Socket(url: testHelper.defaultURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         let sub = socket.forever {
-            if case .opened = $0 { openMesssageEx.fulfill() }
+            if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
         
@@ -124,7 +130,7 @@ class SocketTests: XCTestCase {
         let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
         
         let socket = try! Socket(url: disconnectURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
         openMesssageEx.expectedFulfillmentCount = 2
@@ -138,9 +144,9 @@ class SocketTests: XCTestCase {
             completeMessageEx.fulfill()
         }) { message in
             switch message {
-            case .opened:
+            case .open:
                 openMesssageEx.fulfill()
-            case .closed:
+            case .close:
                 closeMessageEx.fulfill()
             default:
                 break

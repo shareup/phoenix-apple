@@ -8,10 +8,10 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: testHelper.defaultURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         let sub = socket.forever {
-            if case .opened = $0 { openMesssageEx.fulfill() }
+            if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
         
@@ -52,10 +52,10 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: testHelper.defaultURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         let sub = socket.forever {
-            if case .opened = $0 { openMesssageEx.fulfill() }
+            if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
         
@@ -114,10 +114,10 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: testHelper.defaultURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         let sub = socket.forever {
-            if case .opened = $0 { openMesssageEx.fulfill() }
+            if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
         
@@ -168,12 +168,12 @@ class ChannelTests: XCTestCase {
         let socket1 = try Socket(url: testHelper.defaultURL)
         let socket2 = try Socket(url: testHelper.defaultURL)
         defer {
-            socket1.close()
-            socket2.close()
+            socket1.disconnect()
+            socket2.disconnect()
         }
         
-        let sub1 = socket1.forever { if case .opened = $0 { openMesssageEx1.fulfill() } }
-        let sub2 = socket2.forever { if case .opened = $0 { openMesssageEx2.fulfill() } }
+        let sub1 = socket1.forever { if case .open = $0 { openMesssageEx1.fulfill() } }
+        let sub2 = socket2.forever { if case .open = $0 { openMesssageEx2.fulfill() } }
         defer {
             sub1.cancel()
             sub2.cancel()
@@ -230,13 +230,13 @@ class ChannelTests: XCTestCase {
         let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
         
         let socket = try! Socket(url: disconnectURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
         openMesssageEx.expectedFulfillmentCount = 2
         
         let sub = socket.forever {
-            if case .opened = $0 { openMesssageEx.fulfill(); return }
+            if case .open = $0 { openMesssageEx.fulfill(); return }
         }
         defer { sub.cancel() }
         
@@ -257,13 +257,13 @@ class ChannelTests: XCTestCase {
         let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
         
         let socket = try! Socket(url: disconnectURL)
-        defer { socket.close() }
+        defer { socket.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
         openMesssageEx.expectedFulfillmentCount = 2
         
         let sub = socket.forever {
-            if case .opened = $0 { openMesssageEx.fulfill(); return }
+            if case .open = $0 { openMesssageEx.fulfill(); return }
         }
         defer { sub.cancel() }
         
