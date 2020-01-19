@@ -255,14 +255,14 @@ extension Socket: DelegatingSubscriberDelegate {
 // MARK: Join and send
 
 extension Socket {
-    public func join(_ topic: String) -> Channel {
+    public func join(_ topic: String, payload: Payload = [:]) -> Channel {
         sync {
             if let weakChannel = channels[topic],
                 let channel = weakChannel.channel {
                 return channel
             }
             
-            let channel = Channel(topic: topic, socket: self)
+            let channel = Channel(topic: topic, socket: self, joinPayload: payload)
             
             channels[topic] = WeakChannel(channel)
             subscribe(channel: channel)

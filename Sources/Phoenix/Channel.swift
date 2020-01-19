@@ -4,6 +4,8 @@ import Synchronized
 import SimplePublisher
 import Atomic
 
+
+
 public final class Channel: Synchronized {
     public enum Error: Swift.Error {
         case invalidJoinReply(Channel.Reply)
@@ -54,10 +56,12 @@ public final class Channel: Synchronized {
     weak var socket: Socket?
     
     public let topic: String
+    public let joinPayload: Payload
     
-    init(topic: String, socket: Socket) {
+    init(topic: String, socket: Socket, joinPayload: Payload = [:]) {
         self.topic = topic
         self.socket = socket
+        self.joinPayload = joinPayload
     }
     
     convenience init(topic: String, socket: Socket, refGenerator: Ref.Generator) {
@@ -79,7 +83,7 @@ public final class Channel: Synchronized {
     } }
     
     var joinPush: Socket.Push {
-        Socket.Push(topic: topic, event: .join, payload: [:]) { _ in }
+        Socket.Push(topic: topic, event: .join, payload: joinPayload) { _ in }
     }
     
     var leavePush: Socket.Push {

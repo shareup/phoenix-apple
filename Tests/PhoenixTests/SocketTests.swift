@@ -202,30 +202,35 @@ class SocketTests: XCTestCase {
     
     // MARK: Channel join
     
-    func testChannelJoin() {
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        let channelJoinedEx = expectation(description: "Channel joined")
+    func testChannelInit() {
+        let channelJoinedEx = expectation(description: "Should have received join event")
         
         let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
-        let sub = socket.forever {
-            if case .open = $0 { openMesssageEx.fulfill() }
+        socket.connect()
+        
+        let channel = socket.join("room:lobby")
+        defer { channel.leave() }
+        
+        let sub = channel.forever {
+            if case .success(.join) = $0 { channelJoinedEx.fulfill() }
         }
         defer { sub.cancel() }
         
-        socket.connect()
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-        
-        let channel = socket.join("room:lobby")
-        
-        let sub2 = channel.forever {
-            if case .success(.join) = $0 { channelJoinedEx.fulfill() }
-        }
-        defer { sub2.cancel() }
-        
         wait(for: [channelJoinedEx], timeout: 0.5)
+    }
+    
+    func testChannelInitWithParams() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        socket.connect() // TODO: we shouldn't need to connect to init a channel, this is a bug
+        
+        let channel = socket.join("room:lobby", payload: ["success": true])
+        defer { channel.leave() }
+        
+        XCTAssertEqual(channel.joinPush.payload["success"] as? Bool, true)
     }
     
     // MARK: reconnect
