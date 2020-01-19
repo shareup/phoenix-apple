@@ -3,7 +3,8 @@ import Combine
 @testable import Phoenix
 
 class ChannelTests: XCTestCase {
-    func testJoinAndLeaveEvents() throws {
+    // skip
+    func skip_testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = try Socket(url: testHelper.defaultURL)
