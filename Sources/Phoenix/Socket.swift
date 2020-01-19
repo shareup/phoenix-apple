@@ -22,16 +22,23 @@ public final class Socket: Synchronized {
     
     private var subject = SimpleSubject<Output, Failure>()
     private var ws: WebSocket?
-    private lazy var internalSubscriber: DelegatingSubscriber<Socket> = {
-       return DelegatingSubscriber(delegate: self)
-    }()
     
     private var state: State = .closed
     private var shouldReconnect = true
     
     private var channels = [String: WeakChannel]()
     
+    private let refGenerator: Ref.Generator
+    
     public let url: URL
+    public let timeout: Int
+    public let heartbeatInterval: Int
+    
+    public static let defaultTimeout: Int = 10_000
+    public static let defaultHeartbeatInterval: Int = 30_000
+    static let defaultRefGenerator = Ref.Generator()
+    
+    public var currentRef: Ref { refGenerator.current }
     
     public var isOpen: Bool { sync {
         guard case .open = state else { return false }
@@ -43,8 +50,24 @@ public final class Socket: Synchronized {
         return true
     } }
     
-    public init(url: URL) throws {
-        self.url = try Self.webSocketURLV2(url: url)
+    public init(url: URL,
+                timeout: Int = Socket.defaultTimeout,
+                heartbeatInterval: Int = Socket.defaultHeartbeatInterval) throws {
+        self.timeout = timeout
+        self.heartbeatInterval = heartbeatInterval
+        self.refGenerator = Ref.Generator()
+        self.url = try Socket.webSocketURLV2(url: url)
+        connect()
+    }
+    
+    init(url: URL,
+         timeout: Int = Socket.defaultTimeout,
+         heartbeatInterval: Int = Socket.defaultHeartbeatInterval,
+         refGenerator: Ref.Generator) throws {
+        self.timeout = timeout
+        self.heartbeatInterval = heartbeatInterval
+        self.refGenerator = refGenerator
+        self.url = try Socket.webSocketURLV2(url: url)
         connect()
     }
     
@@ -55,9 +78,15 @@ public final class Socket: Synchronized {
         }
     }
     
-    private func connect() {
-        self.ws = WebSocket(url: url)
-        internallySubscribe(ws!)
+    public func connect() {
+        sync {
+            self.shouldReconnect = true
+            
+            guard ws == nil else { return }
+            
+            self.ws = WebSocket(url: url)
+            internallySubscribe(ws!)
+        }
     }
 }
 
@@ -104,6 +133,8 @@ extension Socket: DelegatingSubscriberDelegate {
     
     func internallySubscribe<P>(_ publisher: P)
         where P: Publisher, Input == P.Output, Failure == P.Failure {
+            
+        let internalSubscriber = DelegatingSubscriber(delegate: self)
         publisher.subscribe(internalSubscriber)
     }
     
