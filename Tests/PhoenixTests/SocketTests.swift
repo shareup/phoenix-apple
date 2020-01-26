@@ -420,4 +420,141 @@ class SocketTests: XCTestCase {
         
         waitForExpectations(timeout: 1)
     }
+    
+    func testSocketDoesNotReconnectIfExplicitDisconnect() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+
+        let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
+        
+        let completeMessageEx = expectation(description: "Should not complete the publishing since it was not closed on purpose")
+        completeMessageEx.isInverted = true
+        
+        let sub = socket.forever(receiveCompletion: { _ in
+            completeMessageEx.fulfill()
+        }) { message in
+            switch message {
+            case .open:
+                openMesssageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
+        
+        let reopenMessageEx = expectation(description: "Should not have reopened")
+        reopenMessageEx.isInverted = true
+        
+        let closeMessageEx = expectation(description: "Should have received a close message after calling disconnect")
+        
+        let sub2 = socket.forever { message in
+            switch message {
+            case .open:
+                reopenMessageEx.fulfill()
+            case .close:
+                closeMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub2.cancel() }
+        
+        socket.disconnect()
+        
+        waitForExpectations(timeout: 1)
+    }
+    
+    func testSocketReconnectAfterExplicitDisconnectAndThenConnect() {
+        // special disconnect query item to set a time to auto-disconnect from inside the example server
+        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
+        
+        let socket = try! Socket(url: disconnectURL)
+        defer { socket.disconnect() }
+
+        let openMesssageEx = expectation(description: "Should have received an open message for the initial connection")
+        
+        let sub = socket.forever { message in
+            switch message {
+            case .open:
+                openMesssageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
+        
+        sub.cancel()
+        
+        let closeMessageEx = expectation(description: "Should have received a close message after calling disconnect")
+        
+        let sub2 = socket.forever { message in
+            switch message {
+            case .close:
+                closeMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub2.cancel() }
+        
+        socket.disconnect()
+        
+        wait(for: [closeMessageEx], timeout: 0.5)
+        
+        sub2.cancel()
+        
+        let reopenMesssageEx = expectation(description: "Should have received an open message after reconnecting and then again after the server kills the connection becuase of the special query param")
+        
+        reopenMesssageEx.expectedFulfillmentCount = 2
+        
+        let sub3 = socket.forever { message in
+            switch message {
+            case .open:
+                reopenMesssageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub3.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [reopenMesssageEx], timeout: 1)
+    }
+    
+    // MARK: how socket close affects channels
+    
+    func testSocketCloseErrorsChannels() {
+        // special disconnect query item to set a time to auto-disconnect from inside the example server
+        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
+        
+        let socket = try! Socket(url: disconnectURL)
+        defer { socket.disconnect() }
+        
+        let channel = socket.join("room:lobby")
+        
+        let erroredEx = expectation(description: "Channel should have errored")
+        
+        let sub = channel.forever { result in
+            switch result {
+            case .failure(let error):
+                erroredEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 1)
+    }
 }

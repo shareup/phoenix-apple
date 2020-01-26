@@ -43,6 +43,7 @@ public final class Channel: Synchronized {
     private lazy var internalSubscriber: DelegatingSubscriber<Channel> = {
         DelegatingSubscriber(delegate: self)
     }()
+    
     private var subject = SimpleSubject<Output, Failure>()
     private var refGenerator = Ref.Generator.global
     private var pending: [Push] = []
@@ -220,6 +221,13 @@ extension Channel {
         
             self.state = .closed
             subject.send(.success(.leave))
+        }
+    }
+    
+    func errored(_ error: Error) {
+        sync {
+            self.state = .errored(error)
+            subject.send(.failure(error))
         }
     }
 

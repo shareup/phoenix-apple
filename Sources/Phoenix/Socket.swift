@@ -468,7 +468,7 @@ extension Socket: DelegatingSubscriberDelegate {
                 subject.send(.close)
 
                 joinedChannels.forEach { channel in
-                    channel.left()
+                    channel.errored(Channel.Error.lostSocket)
                 }
                 
                 if shouldReconnect {
