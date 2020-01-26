@@ -26,5 +26,5 @@ jobs:
           cd Tests/PhoenixTests/example
           ( mix phx.server & )
           cd -
-          sleep 1
+          sleep 7
           swift test --skip-update
