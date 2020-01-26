@@ -6,6 +6,7 @@ import SimplePublisher
 import Atomic
 
 typealias SocketSendCallback = (Swift.Error?) -> Void
+public typealias SocketPushCompletionHandler = (Swift.Error?) -> Void
 
 public final class Socket: Synchronized {
     enum Error: Swift.Error {
@@ -26,6 +27,20 @@ public final class Socket: Synchronized {
     private var state: State = .closed
     private var shouldReconnect = true
     private var channels = [String: WeakChannel]()
+    
+    public var joinedChannels: [Channel] {
+        var _channels: [Channel] = []
+        
+        sync {
+            for (_, weakChannel) in channels {
+                if let channel = weakChannel.channel {
+                    _channels.append(channel)
+                }
+            }
+        }
+        
+        return _channels
+    }
     
     private let refGenerator: Ref.Generator
     public let url: URL
@@ -198,10 +213,8 @@ extension Socket: DelegatingSubscriberDelegate {
                     subject.send(.open)
                     
                     sync {
-                        for (_, weakChannel) in channels {
-                            if let channel = weakChannel.channel {
-                                channel.rejoin()
-                            }
+                        joinedChannels.forEach { channel in
+                            channel.rejoin()
                         }
                     }
                 }
@@ -235,11 +248,9 @@ extension Socket: DelegatingSubscriberDelegate {
                 self.state = .closed
                 
                 subject.send(.close)
-                
-                for (_, weakChannel) in channels {
-                    if let channel = weakChannel.channel {
-                        channel.left()
-                    }
+
+                joinedChannels.forEach { channel in
+                    channel.left()
                 }
                 
                 if shouldReconnect {
@@ -271,6 +282,15 @@ extension Socket {
             return channel
         }
     }
+    
+    public func push(topic: String,
+                     event: PhxEvent,
+                     payload: Payload,
+                     completionHandler: @escaping SocketPushCompletionHandler) {
+        let ref = refGenerator.advance()
+        let message = OutgoingMessage(ref: ref, topic: topic, event: event, payload: payload)
+        send(message, completionHandler: completionHandler)
+    }
 
     func send(_ message: OutgoingMessage) {
         send(message, completionHandler: { _ in })
@@ -285,8 +305,8 @@ extension Socket {
                 do {
                     data = try message.encoded()
                 } catch {
-                    // TODO: make this throw instead
-                    fatalError("Could not serialize OutgoingMessage \(error)")
+                    // TODO: make this call the callback with an error instead
+                    preconditionFailure("Could not serialize OutgoingMessage \(error)")
                 }
 
                 // TODO: capture obj-c exceptions

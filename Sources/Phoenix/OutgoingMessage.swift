@@ -12,6 +12,14 @@ struct OutgoingMessage {
         case missingChannelJoinRef
     }
     
+    init(ref: Ref, topic: String, event: PhxEvent, payload: Payload) {
+        self.joinRef = nil
+        self.ref = ref
+        self.topic = topic
+        self.event = event
+        self.payload = payload
+    }
+    
     init(_ push: Channel.Push, ref: Ref, joinRef: Ref) {
         if push.channel.joinRef != joinRef {
             assertionFailure("joinRef should match the channel's joinRef")

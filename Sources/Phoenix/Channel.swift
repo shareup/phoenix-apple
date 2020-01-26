@@ -143,9 +143,9 @@ extension Channel {
     
     private func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
         guard let socket = socket else {
-            assertionFailure("Can't write if we don't have a socket")
             self.state = .errored(Channel.Error.lostSocket)
             publish(.failure(Channel.Error.lostSocket))
+            completionHandler(Channel.Error.lostSocket)
             return
         }
         

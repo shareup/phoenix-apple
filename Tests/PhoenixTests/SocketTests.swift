@@ -223,14 +223,54 @@ class SocketTests: XCTestCase {
     
     func testChannelInitWithParams() {
         let socket = try! Socket(url: testHelper.defaultURL)
+        let channel = socket.join("room:lobby", payload: ["success": true])
+        
+        XCTAssertEqual(channel.topic, "room:lobby")
+        XCTAssertEqual(channel.joinPush.payload["success"] as? Bool, true)
+    }
+    
+    // MARK: track channels
+    
+    func testChannelsAreTracked() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        let _ = socket.join("room:lobby")
+        
+        XCTAssertEqual(socket.joinedChannels.count, 1)
+        
+        let _ = socket.join("room:lobby2")
+        
+        XCTAssertEqual(socket.joinedChannels.count, 2)
+    }
+    
+    // MARK: push
+    
+    func testPushOntoSocket() {
+        let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
-        socket.connect() // TODO: we shouldn't need to connect to init a channel, this is a bug
+        let openEx = expectation(description: "Should have opened")
+        let failedEx = expectation(description: "Shouldn't have failed")
+        failedEx.isInverted = true
         
-        let channel = socket.join("room:lobby", payload: ["success": true])
-        defer { channel.leave() }
+        let sub = socket.forever { message in
+            if case .open = message {
+                openEx.fulfill()
+            }
+        }
+        defer { sub.cancel() }
         
-        XCTAssertEqual(channel.joinPush.payload["success"] as? Bool, true)
+        socket.connect()
+        
+        wait(for: [openEx], timeout: 0.5)
+        
+        socket.push(topic: "phoenix", event: .heartbeat, payload: [:]) { error in
+            if let error = error {
+                print("Couldn't write to socket with error", error)
+                failedEx.fulfill()
+            }
+        }
+        
+        waitForExpectations(timeout: 0.5)
     }
     
     // MARK: reconnect
