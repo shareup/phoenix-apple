@@ -47,8 +47,12 @@ public final class Socket: Synchronized {
     public let timeout: Int
     public let heartbeatInterval: Int
     
-    public static let defaultTimeout: Int = 10_000
-    public static let defaultHeartbeatInterval: Int = 30_000
+    private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
+    private var pendingHeartbeatRef: Ref? = nil
+    private var heartbeatTimerCancellable: Cancellable? = nil
+    
+    public static let defaultTimeout: Int = 10_000 // TODO: use TimeInterval
+    public static let defaultHeartbeatInterval: Int = 30_000 // TODO: use TimeInterval
     static let defaultRefGenerator = Ref.Generator()
     
     public var currentRef: Ref { refGenerator.current }
@@ -109,6 +113,8 @@ public final class Socket: Synchronized {
         sync {
             self.shouldReconnect = false
             
+            self.cancelHeartbeatTimer()
+            
             switch state {
             case .closed, .closing:
                 // NOOP
@@ -133,6 +139,8 @@ public final class Socket: Synchronized {
                 self.state = .connecting(ws)
                 
                 internallySubscribe(ws)
+                cancelHeartbeatTimer()
+                createHeartbeatTimer()
             case .connecting, .open:
                 // NOOP
                 return
@@ -176,6 +184,208 @@ extension Socket: Publisher {
     
     func complete(_ completion: Subscribers.Completion<Failure>) {
         subject.send(completion: completion)
+    }
+}
+
+// MARK: join
+
+extension Socket {
+    public func join(_ topic: String, payload: Payload = [:]) -> Channel {
+        sync {
+            if let weakChannel = channels[topic],
+                let channel = weakChannel.channel {
+                return channel
+            }
+            
+            let channel = Channel(topic: topic, socket: self, joinPayload: payload)
+            
+            channels[topic] = WeakChannel(channel)
+            subscribe(channel: channel)
+            channel.join()
+            
+            return channel
+        }
+    }
+}
+
+// MARK: push
+
+extension Socket {
+    public func push(topic: String, event: PhxEvent) {
+        push(topic: topic, event: event, payload: [:])
+    }
+    
+    public func push(topic: String, event: PhxEvent, payload: Payload) {
+        push(topic: topic, event: event, payload: payload) { _ in }
+    }
+    
+    public func push(topic: String,
+                     event: PhxEvent,
+                     payload: Payload,
+                     callback: @escaping Callback) {
+        let thePush = Socket.Push(topic: topic,
+                                  event: event,
+                                  payload: payload,
+                                  callback: callback)
+        
+        sync {
+            pending.append(thePush)
+        }
+        
+        DispatchQueue.global().async {
+            self.flushNow()
+        }
+    }
+}
+
+// MARK: flush
+
+extension Socket {
+    private func flush() {
+        assert(waitToFlush == 0)
+        
+        sync {
+            guard case .open = state else { return }
+            
+            guard let push = pending.first else { return }
+            self.pending = Array(self.pending.dropFirst())
+            
+            let ref = refGenerator.advance()
+            let message = OutgoingMessage(push, ref: ref)
+            
+            send(message) { error in
+                if let error = error {
+                    Swift.print("Couldn't write to Socket – \(error) - \(message)")
+                    self.flushAfterDelay()
+                } else {
+                    self.flushNow()
+                }
+                push.asyncCallback(error)
+            }
+        }
+    }
+    
+    private func flushNow() {
+        sync {
+            guard waitToFlush == 0 else { return }
+        }
+        DispatchQueue.global().async { self.flush() }
+    }
+    
+    private func flushAfterDelay() {
+        flushAfterDelay(milliseconds: 200)
+    }
+    
+    private func flushAfterDelay(milliseconds: Int) {
+        sync {
+            guard waitToFlush == 0 else { return }
+            self.waitToFlush = milliseconds
+        }
+        
+        let deadline = DispatchTime.now().advanced(by: .milliseconds(waitToFlush))
+
+        DispatchQueue.global().asyncAfter(deadline: deadline) {
+            self.sync {
+                self.waitToFlush = 0
+                self.flushNow()
+            }
+        }
+    }
+}
+
+// MARK: send
+
+extension Socket {
+    func send(_ message: OutgoingMessage) {
+        send(message, completionHandler: { _ in })
+    }
+    
+    func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
+        sync {
+            switch state {
+            case .open(let ws):
+                let data: Data
+                
+                do {
+                    data = try message.encoded()
+                } catch {
+                    // TODO: make this call the callback with an error instead
+                    preconditionFailure("Could not serialize OutgoingMessage \(error)")
+                }
+
+                // TODO: capture obj-c exceptions
+                ws.send(data) { error in
+                    completionHandler(error)
+                    
+                    if let error = error {
+                        Swift.print("Error writing to WebSocket: \(error)")
+                        ws.close(.abnormalClosure)
+                    }
+                }
+            default:
+                completionHandler(Socket.Error.notOpen)
+            }
+        }
+    }
+}
+    
+// MARK: heartbeat
+
+extension Socket {
+    func sendHeartbeat() {
+        sync {
+            guard pendingHeartbeatRef == nil else {
+                heartbeatTimeout()
+                return
+            }
+            
+            self.pendingHeartbeatRef = refGenerator.advance()
+            let message = OutgoingMessage(heartbeatPush, ref: pendingHeartbeatRef!)
+            
+            Swift.print("writing heartbeat")
+            
+            send(message) { error in
+                if let error = error {
+                    Swift.print("error writing heartbeat push", error)
+                    self.heartbeatTimeout()
+                }
+            }
+        }
+    }
+    
+    func heartbeatTimeout() {
+        Swift.print("heartbeat timeout")
+        
+        self.pendingHeartbeatRef = nil
+        
+        switch state {
+        case .closed, .closing:
+            // NOOP
+            return
+        case .open(let ws), .connecting(let ws):
+            ws.close()
+            subject.send(.close)
+            self.state = .closed
+        }
+    }
+    
+    func cancelHeartbeatTimer() {
+        heartbeatTimerCancellable?.cancel()
+        self.heartbeatTimerCancellable = nil
+    }
+    
+    func createHeartbeatTimer() {
+        let interval = TimeInterval(Float(self.heartbeatInterval) / Float(1_000))
+        
+        let sub = Timer.publish(every: interval, on: .main, in: .common)
+                    .autoconnect()
+                    .forever { [weak self] _ in self?.sendHeartbeat() }
+        
+        self.heartbeatTimerCancellable = sub
+    }
+    
+    func heartbeatTimerTick(_ timer: Timer) {
+        Swift.print("tick")
     }
 }
 
@@ -227,7 +437,13 @@ extension Socket: DelegatingSubscriberDelegate {
             case .string(let string):
                 do {
                     let message = try IncomingMessage(data: Data(string.utf8))
-                    subject.send(.incomingMessage(message))
+                    
+                    if message.event == .heartbeat && pendingHeartbeatRef != nil && message.ref == pendingHeartbeatRef {
+                        Swift.print("heartbeat OK")
+                        self.pendingHeartbeatRef = nil
+                    } else {
+                        subject.send(.incomingMessage(message))
+                    }
                 } catch {
                     Swift.print("Could not decode the WebSocket message data: \(error)")
                     Swift.print("Message data: \(string)")
@@ -265,135 +481,9 @@ extension Socket: DelegatingSubscriberDelegate {
     }
 }
 
-// MARK: Join and send
+// MARK: subscribe
 
 extension Socket {
-    public func join(_ topic: String, payload: Payload = [:]) -> Channel {
-        sync {
-            if let weakChannel = channels[topic],
-                let channel = weakChannel.channel {
-                return channel
-            }
-            
-            let channel = Channel(topic: topic, socket: self, joinPayload: payload)
-            
-            channels[topic] = WeakChannel(channel)
-            subscribe(channel: channel)
-            channel.join()
-            
-            return channel
-        }
-    }
-    
-    public func push(topic: String, event: PhxEvent) {
-        push(topic: topic, event: event, payload: [:])
-    }
-    
-    public func push(topic: String, event: PhxEvent, payload: Payload) {
-        push(topic: topic, event: event, payload: payload) { _ in }
-    }
-    
-    public func push(topic: String,
-                     event: PhxEvent,
-                     payload: Payload,
-                     callback: @escaping Callback) {
-        let thePush = Socket.Push(topic: topic,
-                                  event: event,
-                                  payload: payload,
-                                  callback: callback)
-        
-        sync {
-            pending.append(thePush)
-        }
-        
-        DispatchQueue.global().async {
-            self.flushNow()
-        }
-    }
-    
-    private func flush() {
-        assert(waitToFlush == 0)
-        
-        sync {
-            guard case .open = state else { return }
-            
-            guard let push = pending.first else { return }
-            self.pending = Array(self.pending.dropFirst())
-            
-            let ref = refGenerator.advance()
-            let message = OutgoingMessage(push, ref: ref)
-            
-            send(message) { error in
-                if let error = error {
-                    Swift.print("Couldn't write to Socket – \(error) - \(message)")
-                    self.flushAfterDelay()
-                } else {
-                    self.flushNow()
-                }
-                push.asyncCallback(error)
-            }
-        }
-    }
-    
-    private func flushNow() {
-        sync {
-            guard waitToFlush == 0 else { return }
-        }
-        DispatchQueue.global().async { self.flush() }
-    }
-    
-    private func flushAfterDelay() {
-        flushAfterDelay(milliseconds: 200)
-    }
-    
-    private func flushAfterDelay(milliseconds: Int) {
-        sync {
-            guard waitToFlush == 0 else { return }
-            self.waitToFlush = milliseconds
-        }
-        
-        let deadline = DispatchTime.now().advanced(by: .milliseconds(waitToFlush))
-
-        DispatchQueue.global().asyncAfter(deadline: deadline) {
-            self.sync {
-                self.waitToFlush = 0
-                self.flushNow()
-            }
-        }
-    }
-
-    func send(_ message: OutgoingMessage) {
-        send(message, completionHandler: { _ in })
-    }
-    
-    func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
-        sync {
-            switch state {
-            case .open(let ws):
-                let data: Data
-                
-                do {
-                    data = try message.encoded()
-                } catch {
-                    // TODO: make this call the callback with an error instead
-                    preconditionFailure("Could not serialize OutgoingMessage \(error)")
-                }
-
-                // TODO: capture obj-c exceptions
-                ws.send(data) { error in
-                    completionHandler(error)
-                    
-                    if let error = error {
-                        Swift.print("Error writing to WebSocket: \(error)")
-                        ws.close(.abnormalClosure)
-                    }
-                }
-            default:
-                completionHandler(Socket.Error.notOpen)
-            }
-        }
-    }
-
     private func subscribe(channel: Channel) {
         channel.internallySubscribe(
             self.compactMap {

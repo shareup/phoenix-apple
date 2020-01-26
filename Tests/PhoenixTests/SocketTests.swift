@@ -300,6 +300,60 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 0.5)
     }
     
+    // MARK: heartbeat
+    
+    func testHeartbeatTimeoutMovesSocketToClosedState() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let openEx = expectation(description: "Should have opened")
+        let closeEx = expectation(description: "Should have closed")
+        
+        let sub = socket.forever { message in
+            switch message {
+            case .open:
+                openEx.fulfill()
+            case .close:
+                closeEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openEx], timeout: 0.5)
+        
+        // call internal method to simulate sending the first initial heartbeat
+        socket.sendHeartbeat()
+        // call internal method to simulate sending a second heartbeat again before the timeout period
+        socket.sendHeartbeat()
+        
+        wait(for: [closeEx], timeout: 0.5)
+    }
+    
+    func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() {
+        let socket = try! Socket(url: testHelper.defaultURL, heartbeatInterval: 1)
+        defer { socket.disconnect() }
+        
+        let closeEx = expectation(description: "Should have closed")
+        
+        let sub = socket.forever { message in
+            switch message {
+            case .close:
+                closeEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [closeEx], timeout: 0.1)
+    }
+    
     // MARK: reconnect
     
     func testSocketReconnect() {
