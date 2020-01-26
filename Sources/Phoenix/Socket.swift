@@ -5,9 +5,6 @@ import Forever
 import SimplePublisher
 import Atomic
 
-typealias SocketSendCallback = (Swift.Error?) -> Void
-public typealias SocketPushCompletionHandler = (Swift.Error?) -> Void
-
 public final class Socket: Synchronized {
     enum Error: Swift.Error {
         case notOpen
@@ -41,6 +38,9 @@ public final class Socket: Synchronized {
         
         return _channels
     }
+    
+    private var pending: [Push] = []
+    private var waitToFlush: Int = 0
     
     private let refGenerator: Ref.Generator
     public let url: URL
@@ -217,6 +217,8 @@ extension Socket: DelegatingSubscriberDelegate {
                             channel.rejoin()
                         }
                     }
+                    
+                    flushNow()
                 }
 
             case .data:
@@ -283,20 +285,88 @@ extension Socket {
         }
     }
     
+    public func push(topic: String, event: PhxEvent) {
+        push(topic: topic, event: event, payload: [:])
+    }
+    
+    public func push(topic: String, event: PhxEvent, payload: Payload) {
+        push(topic: topic, event: event, payload: payload) { _ in }
+    }
+    
     public func push(topic: String,
                      event: PhxEvent,
                      payload: Payload,
-                     completionHandler: @escaping SocketPushCompletionHandler) {
-        let ref = refGenerator.advance()
-        let message = OutgoingMessage(ref: ref, topic: topic, event: event, payload: payload)
-        send(message, completionHandler: completionHandler)
+                     callback: @escaping Callback) {
+        let thePush = Socket.Push(topic: topic,
+                                  event: event,
+                                  payload: payload,
+                                  callback: callback)
+        
+        sync {
+            pending.append(thePush)
+        }
+        
+        DispatchQueue.global().async {
+            self.flushNow()
+        }
+    }
+    
+    private func flush() {
+        assert(waitToFlush == 0)
+        
+        sync {
+            guard case .open = state else { return }
+            
+            guard let push = pending.first else { return }
+            self.pending = Array(self.pending.dropFirst())
+            
+            let ref = refGenerator.advance()
+            let message = OutgoingMessage(push, ref: ref)
+            
+            send(message) { error in
+                if let error = error {
+                    Swift.print("Couldn't write to Socket – \(error) - \(message)")
+                    self.flushAfterDelay()
+                } else {
+                    self.flushNow()
+                }
+                push.asyncCallback(error)
+            }
+        }
+    }
+    
+    private func flushNow() {
+        sync {
+            guard waitToFlush == 0 else { return }
+        }
+        DispatchQueue.global().async { self.flush() }
+    }
+    
+    private func flushAfterDelay() {
+        flushAfterDelay(milliseconds: 200)
+    }
+    
+    private func flushAfterDelay(milliseconds: Int) {
+        sync {
+            guard waitToFlush == 0 else { return }
+            self.waitToFlush = milliseconds
+        }
+        
+        let deadline = DispatchTime.now().advanced(by: .milliseconds(waitToFlush))
+
+        DispatchQueue.global().asyncAfter(deadline: deadline) {
+            self.sync {
+                self.waitToFlush = 0
+                self.flushNow()
+            }
+        }
     }
 
     func send(_ message: OutgoingMessage) {
         send(message, completionHandler: { _ in })
     }
     
-    func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
+    func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
         sync {
             switch state {
             case .open(let ws):

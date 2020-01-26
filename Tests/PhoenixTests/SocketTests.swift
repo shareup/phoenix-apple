@@ -249,6 +249,7 @@ class SocketTests: XCTestCase {
         defer { socket.disconnect() }
         
         let openEx = expectation(description: "Should have opened")
+        let sentEx = expectation(description: "Should have sent")
         let failedEx = expectation(description: "Shouldn't have failed")
         failedEx.isInverted = true
         
@@ -267,7 +268,33 @@ class SocketTests: XCTestCase {
             if let error = error {
                 print("Couldn't write to socket with error", error)
                 failedEx.fulfill()
+            } else {
+                sentEx.fulfill()
             }
+        }
+        
+        waitForExpectations(timeout: 0.5)
+    }
+    
+    func testPushOntoDisconnectedSocketBuffers() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let sentEx = expectation(description: "Should have sent")
+        let failedEx = expectation(description: "Shouldn't have failed")
+        failedEx.isInverted = true
+        
+        socket.push(topic: "phoenix", event: .heartbeat, payload: [:]) { error in
+            if let error = error {
+                print("Couldn't write to socket with error", error)
+                failedEx.fulfill()
+            } else {
+                sentEx.fulfill()
+            }
+        }
+        
+        DispatchQueue.global().async {
+            socket.connect()
         }
         
         waitForExpectations(timeout: 0.5)

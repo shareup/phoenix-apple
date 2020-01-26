@@ -141,7 +141,7 @@ extension Channel {
         send(message) { _ in }
     }
     
-    private func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
+    private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
         guard let socket = socket else {
             self.state = .errored(Channel.Error.lostSocket)
             publish(.failure(Channel.Error.lostSocket))
@@ -274,10 +274,10 @@ extension Channel {
                         // flush again in a bit
                         self.flushAfterDelay()
                     }
+                } else {
+                    self.flushNow()
                 }
             }
-            
-            flushNow()
         }
     }
     
