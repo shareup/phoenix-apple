@@ -354,6 +354,37 @@ class SocketTests: XCTestCase {
         wait(for: [closeEx], timeout: 0.1)
     }
     
+    // MARK: on open
+    
+    func testFlushesPushesOnOpen() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let boomEx = expectation(description: "Should have gotten something back from the boom event")
+        
+        let boom: PhxEvent = .custom("boom")
+        
+        socket.push(topic: "unknown", event: boom)
+        
+        let sub = socket.forever { message in
+            switch message {
+            case .incomingMessage(let incomingMessage):
+                Swift.print(incomingMessage)
+                
+                if incomingMessage.topic == "unknown" && incomingMessage.event == .reply {
+                    boomEx.fulfill()
+                }
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 0.5)
+    }
+    
     // MARK: reconnect
     
     func testSocketReconnect() {
