@@ -21,6 +21,8 @@ public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
     }
 }
 
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER
+// https://github.com/phoenixframework/phoenix/blob/2e67c0c4b52566410c536a94b0fdb26f9455591c/assets/test/socket_test.js#L466
 let maxSafeInt: UInt64 = 9007199254740991
 
 extension Ref {
@@ -42,7 +44,7 @@ extension Ref {
                 if (_current.rawValue < maxSafeInt) {
                     _current = Ref(_current.rawValue + 1)
                 } else {
-                    _current = Ref(1)
+                    _current = Ref(0)
                 }
                 
                 return _current

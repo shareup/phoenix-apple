@@ -25,7 +25,8 @@ class RefGeneratorTests: XCTestCase {
     }
     
     func testRefGeneratorRestartsForOverflow() {
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER
         let generator = Ref.Generator(start: 9007199254740991)
-        XCTAssertEqual(generator.advance(), 1)
+        XCTAssertEqual(generator.advance(), 0)
     }
 }
