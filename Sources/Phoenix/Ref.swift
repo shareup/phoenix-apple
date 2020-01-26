@@ -21,15 +21,30 @@ public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
     }
 }
 
+let maxSafeInt: UInt64 = 9007199254740991
+
 extension Ref {
     final class Generator: Synchronized {
-        var current: Phoenix.Ref { sync { _current } }
+        var current: Ref { sync { _current } }
 
-        private var _current: Phoenix.Ref = Phoenix.Ref(0)
+        private var _current: Ref
+        
+        init() {
+            self._current = Ref(0)
+        }
+        
+        init(start: Ref) {
+            self._current = start
+        }
 
         func advance() -> Phoenix.Ref {
             return sync {
-                _current = Phoenix.Ref(_current.rawValue + 1)
+                if (_current.rawValue < maxSafeInt) {
+                    _current = Ref(_current.rawValue + 1)
+                } else {
+                    _current = Ref(1)
+                }
+                
                 return _current
             }
         }
