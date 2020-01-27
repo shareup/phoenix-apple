@@ -5,7 +5,7 @@ defmodule Example.MixProject do
     [
       app: :example,
       version: "0.1.0",
-      elixir: "~> 1.5",
+      elixir: "~> 1.9",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:phoenix] ++ Mix.compilers(),
       start_permanent: Mix.env() == :prod,
@@ -32,7 +32,7 @@ defmodule Example.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.4.7"},
+      {:phoenix, "~> 1.4.12"},
       {:phoenix_pubsub, "~> 1.1"},
       {:jason, "~> 1.0"},
       {:plug_cowboy, "~> 2.0"}
