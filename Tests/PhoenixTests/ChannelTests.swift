@@ -266,7 +266,7 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
-    func testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
+    func skip_testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
         let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
         
         let socket = try! Socket(url: disconnectURL)
