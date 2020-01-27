@@ -403,6 +403,7 @@ extension Channel {
                 
                 self.state = .joined(joinRef)
                 subject.send(.success(.join))
+                flushNow()
                 
             case .joined(let joinRef):
                 guard let pushed = inFlight[reply.ref],
