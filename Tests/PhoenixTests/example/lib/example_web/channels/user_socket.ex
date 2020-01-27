@@ -1,7 +1,10 @@
 defmodule ExampleWeb.Socket do
   require Logger
 
+  # hack to be able to send custom commands to the socket without needing a channel
+  # MUST be before use Phoenix.Socket
   def handle_in({"disconnect", opts}, {state, socket}) do
+    # only support text commands
     :text = Keyword.fetch!(opts, :opcode)
 
     ExampleWeb.Endpoint.broadcast(id(socket), "disconnect", %{})
