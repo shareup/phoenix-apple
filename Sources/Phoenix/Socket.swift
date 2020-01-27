@@ -190,6 +190,7 @@ extension Socket: Publisher {
 // MARK: join
 
 extension Socket {
+    // TODO: make a channel method whereby the caller would need to call join themselves
     public func join(_ topic: String, payload: Payload = [:]) -> Channel {
         sync {
             if let weakChannel = channels[topic],
@@ -301,6 +302,8 @@ extension Socket {
     }
     
     func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
+        Swift.print("socket sending", message)
+        
         sync {
             switch state {
             case .open(let ws):
@@ -403,6 +406,8 @@ extension Socket: DelegatingSubscriberDelegate {
     }
     
     func receive(_ input: Input) {
+        Swift.print("socket input", input)
+        
         switch input {
         case .success(let message):
             switch message {
@@ -468,7 +473,7 @@ extension Socket: DelegatingSubscriberDelegate {
                 subject.send(.close)
 
                 joinedChannels.forEach { channel in
-                    channel.errored(Channel.Error.lostSocket)
+                    channel.remoteClosed(Channel.Error.lostSocket)
                 }
                 
                 if shouldReconnect {

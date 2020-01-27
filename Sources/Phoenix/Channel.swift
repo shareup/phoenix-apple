@@ -18,7 +18,7 @@ public final class Channel: Synchronized {
         case closed
         case joining(Ref)
         case joined(Ref)
-        case leaving(Ref)
+        case leaving(joinRef: Ref, leavingRef: Ref)
         case errored(Swift.Error)
     }
     
@@ -59,6 +59,7 @@ public final class Channel: Synchronized {
     public let topic: String
     public let joinPayload: Payload
     
+    // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
     init(topic: String, socket: Socket, joinPayload: Payload = [:]) {
         self.topic = topic
         self.socket = socket
@@ -76,8 +77,8 @@ public final class Channel: Synchronized {
             return ref
         case .joined(let ref):
             return ref
-        case .leaving(let ref):
-            return ref
+        case .leaving(let joinRef, _):
+            return joinRef
         default:
             return nil
         }
@@ -122,6 +123,7 @@ public final class Channel: Synchronized {
 
 
 extension Channel {
+    // TODO: make join public
     func join() {
         sync {
             guard isClosed || isErrored || isLeaving else {
@@ -200,31 +202,30 @@ extension Channel {
         sync {
             self.shouldRejoin = false
             
-            guard isJoining || isJoined else {
+            switch state {
+            case .joining(let joinRef), .joined(let joinRef):
+                let ref = refGenerator.advance()
+                let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
+                self.state = .leaving(joinRef: joinRef, leavingRef: ref)
+                
+                DispatchQueue.global().async {
+                    self.send(message)
+                }
+            default:
                 Swift.print("Can only leave if we are joining or joined, currently \(state)")
                 return
             }
-            
-            let ref = refGenerator.advance()
-            let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
-            self.state = .leaving(ref)
-            
-            DispatchQueue.global().async {
-                self.send(message)
-            }
         }
     }
     
-    func left() {
+    func remoteClosed(_ error: Swift.Error) {
         sync {
-            if isClosed || isErrored { return }
-        
-            self.state = .closed
-            subject.send(.success(.leave))
+            if isClosed && !shouldRejoin { return }
+            errored(error)
         }
     }
     
-    func errored(_ error: Error) {
+    func errored(_ error: Swift.Error) {
         sync {
             self.state = .errored(error)
             subject.send(.failure(error))
@@ -353,6 +354,8 @@ extension Channel: DelegatingSubscriberDelegate {
     }
     
     func receive(_ input: Input) {
+        Swift.print("channel input", input)
+        
         switch input.event {
         case .custom:
             let message = Channel.Message(incomingMessage: input)
@@ -409,8 +412,8 @@ extension Channel {
                 
                 pushed.callback(reply: reply)
                 
-            case .leaving(let ref):
-                guard reply.ref == ref,
+            case .leaving(let joinRef, let leavingRef):
+                guard reply.ref == leavingRef,
                       reply.joinRef == joinRef else {
                     break
                 }

@@ -557,4 +557,75 @@ class SocketTests: XCTestCase {
         
         waitForExpectations(timeout: 1)
     }
+    
+    func testSocketCloseDoesNotErrorChannelsIfLeft() {
+        // special disconnect query item to set a time to auto-disconnect from inside the example server
+        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
+        
+        let socket = try! Socket(url: disconnectURL)
+        defer { socket.disconnect() }
+        
+        let channel = socket.join("room:lobby")
+        
+        let joinedEx = expectation(description: "Channel should have joined")
+        let leftEx = expectation(description: "Channel should have left")
+        
+        let sub = channel.forever { result in
+            switch result {
+            case .success(let event):
+                switch event {
+                case .join:
+                    joinedEx.fulfill()
+                case .leave:
+                    leftEx.fulfill()
+                default:
+                    break
+                }
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [joinedEx], timeout: 0.3)
+        
+        channel.leave()
+        
+        wait(for: [leftEx], timeout: 0.3)
+        
+        sub.cancel()
+        
+        // the server will disconnect very soon…
+        
+        let erroredEx = expectation(description: "Channel should have errored")
+        erroredEx.isInverted = true
+        
+        let sub2 = channel.forever { result in
+            switch result {
+            case .failure(let error):
+                erroredEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub2.cancel() }
+        
+        let reconnectedEx = expectation(description: "Socket should have tried to reconnect")
+        
+        let sub3 = socket.forever { message in
+            switch message {
+            case .open:
+                reconnectedEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub3.cancel() }
+        
+        wait(for: [reconnectedEx], timeout: 0.5)
+        
+        waitForExpectations(timeout: 0.3) // give the channel 1 second to error
+    }
 }
