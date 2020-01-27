@@ -356,8 +356,8 @@ class SocketTests: XCTestCase {
     
     // MARK: on open
     
-    func testFlushesPushesOnOpen() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testFlushesPushesOnOpen() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let boomEx = expectation(description: "Should have gotten something back from the boom event")
@@ -383,6 +383,68 @@ class SocketTests: XCTestCase {
         socket.connect()
         
         waitForExpectations(timeout: 0.5)
+    }
+    
+    // MARK: remote close publishes close
+    
+    func testRemoteClosePublishesClose() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let openEx = expectation(description: "Should have gotten an open message")
+        
+        let sub = socket.forever {
+            if case .open = $0 { openEx.fulfill() }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openEx], timeout: 0.3)
+        
+        sub.cancel()
+        
+        let closeEx = expectation(description: "Should have gotten a close message")
+        
+        let sub2 = socket.forever {
+            if case .close = $0 { closeEx.fulfill() }
+        }
+        defer { sub2.cancel() }
+        
+        socket.send("disconnect")
+        
+        wait(for: [closeEx], timeout: 0.3)
+    }
+    
+    // MARK: remote exception publishes error
+    
+    func testRemoteExceptionPublishesError() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let openEx = expectation(description: "Should have gotten an open message")
+        
+        let sub = socket.forever {
+            if case .open = $0 { openEx.fulfill() }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openEx], timeout: 0.3)
+        
+        sub.cancel()
+        
+        let errEx = expectation(description: "Should have gotten an error message")
+        
+        let sub2 = socket.forever {
+            if case .websocketError = $0 { errEx.fulfill() }
+        }
+        defer { sub2.cancel() }
+        
+        socket.send("boom")
+        
+        wait(for: [errEx], timeout: 0.3)
     }
     
     // MARK: reconnect
@@ -417,6 +479,56 @@ class SocketTests: XCTestCase {
         wait(for: [openMesssageEx], timeout: 0.3)
         
         socket.send("disconnect")
+        
+        wait(for: [closeMessageEx], timeout: 0.3)
+        
+        sub.cancel()
+        
+        let reopenMessageEx = expectation(description: "Should have reopened the socket connection")
+        
+        let sub2 = socket.forever { message in
+            switch message {
+            case .open:
+                reopenMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub2.cancel() }
+        
+        waitForExpectations(timeout: 1)
+    }
+    
+    func testSocketReconnectAfterRemoteException() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+
+        let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
+        
+        let closeMessageEx = expectation(description: "Should have received a close message")
+        
+        let completeMessageEx = expectation(description: "Should not complete the publishing since it was not closed on purpose")
+        completeMessageEx.isInverted = true
+        
+        let sub = socket.forever(receiveCompletion: { _ in
+            completeMessageEx.fulfill()
+        }) { message in
+            switch message {
+            case .open:
+                openMesssageEx.fulfill()
+            case .close:
+                closeMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openMesssageEx], timeout: 0.3)
+        
+        socket.send("boom")
         
         wait(for: [closeMessageEx], timeout: 0.3)
         
@@ -584,6 +696,38 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
+    func testRemoteExceptionErrorsChannels() {
+        let socket = try! Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let channel = socket.join("room:lobby")
+        
+        let joinedEx = expectation(description: "Channel should have joined")
+        let erroredEx = expectation(description: "Channel should have errored")
+        
+        let sub = channel.forever { result in
+            switch result {
+            case .success(let event):
+                switch event {
+                case .join:
+                    joinedEx.fulfill()
+                default: break
+                }
+            case .failure(let error):
+                erroredEx.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [joinedEx], timeout: 0.3)
+        
+        socket.send("boom")
+        
+        waitForExpectations(timeout: 1)
+    }
+    
     func testSocketCloseDoesNotErrorChannelsIfLeft() {
         let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
@@ -650,5 +794,58 @@ class SocketTests: XCTestCase {
         wait(for: [reconnectedEx], timeout: 0.5)
         
         waitForExpectations(timeout: 0.3) // give the channel 1 second to error
+    }
+    
+    // MARK: decoding messages
+    
+    func testSocketDecodesAndPublishesMessage() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let channel = socket.join("room:lobby")
+        
+        let echoEcho = "kapow"
+        let echoEx = expectation(description: "Should have received the echo text response")
+        
+        let sub = socket.forever {
+            if case .incomingMessage(let message) = $0,
+                message.topic == channel.topic,
+                message.event == .reply,
+                message.payload["status"] as? String == "ok",
+                let response = message.payload["response"] as? [String: String],
+                response["echo"] == echoEcho {
+                
+                echoEx.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+        
+        channel.push("echo", payload: ["echo": echoEcho])
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 1)
+    }
+    
+    func testChannelReceivesMessages() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let channel = socket.join("room:lobby")
+        let echoEcho = "yahoo"
+        let echoEx = expectation(description: "Should have received the echo text response")
+        
+        channel.push("echo", payload: ["echo": echoEcho]) { result in
+            if case .success(let reply) = result,
+                reply.isOk,
+                reply.response["echo"] as? String == echoEcho {
+                
+                echoEx.fulfill()
+            }
+        }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 1)
     }
 }
