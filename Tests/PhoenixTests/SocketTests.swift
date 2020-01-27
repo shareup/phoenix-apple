@@ -387,15 +387,11 @@ class SocketTests: XCTestCase {
     
     // MARK: reconnect
     
-    func testSocketReconnect() {
-        // special disconnect query item to set a time to auto-disconnect from inside the example server
-        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
-        
-        let socket = try! Socket(url: disconnectURL)
+    func testSocketReconnectAfterRemoteClose() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
-        openMesssageEx.expectedFulfillmentCount = 2
         
         let closeMessageEx = expectation(description: "Should have received a close message")
         
@@ -417,6 +413,26 @@ class SocketTests: XCTestCase {
         defer { sub.cancel() }
         
         socket.connect()
+        
+        wait(for: [openMesssageEx], timeout: 0.3)
+        
+        socket.send("disconnect")
+        
+        wait(for: [closeMessageEx], timeout: 0.3)
+        
+        sub.cancel()
+        
+        let reopenMessageEx = expectation(description: "Should have reopened the socket connection")
+        
+        let sub2 = socket.forever { message in
+            switch message {
+            case .open:
+                reopenMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub2.cancel() }
         
         waitForExpectations(timeout: 1)
     }

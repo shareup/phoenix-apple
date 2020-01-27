@@ -304,19 +304,51 @@ extension Socket {
     func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
         Swift.print("socket sending", message)
         
+        do {
+            let data = try message.encoded()
+            send(data, completionHandler: completionHandler)
+        } catch {
+            // TODO: make this call the callback with an error instead
+            preconditionFailure("Could not serialize OutgoingMessage \(error)")
+        }
+    }
+    
+    func send(_ string: String) {
+        send(string) { _ in }
+    }
+    
+    func send(_ string: String, completionHandler: @escaping Callback) {
+        Swift.print("socket sending string", string)
+        
         sync {
             switch state {
             case .open(let ws):
-                let data: Data
-                
-                do {
-                    data = try message.encoded()
-                } catch {
-                    // TODO: make this call the callback with an error instead
-                    preconditionFailure("Could not serialize OutgoingMessage \(error)")
+                // TODO: capture obj-c exceptions over in the WebSocket class
+                ws.send(string) { error in
+                    completionHandler(error)
+                    
+                    if let error = error {
+                        Swift.print("Error writing to WebSocket: \(error)")
+                        ws.close(.abnormalClosure)
+                    }
                 }
-
-                // TODO: capture obj-c exceptions
+            default:
+                completionHandler(Socket.Error.notOpen)
+            }
+        }
+    }
+    
+    func send(_ data: Data) {
+        send(data, completionHandler: { _ in })
+    }
+    
+    func send(_ data: Data, completionHandler: @escaping Callback) {
+        Swift.print("socket sending data", String(describing: data))
+        
+        sync {
+            switch state {
+            case .open(let ws):
+                // TODO: capture obj-c exceptions over in the WebSocket class
                 ws.send(data) { error in
                     completionHandler(error)
                     

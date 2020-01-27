@@ -1,5 +1,14 @@
 defmodule ExampleWeb.Socket do
   require Logger
+
+  def handle_in({"disconnect", opts}, {state, socket}) do
+    :text = Keyword.fetch!(opts, :opcode)
+
+    ExampleWeb.Endpoint.broadcast(id(socket), "disconnect", %{})
+
+    {:ok, {state, socket}}
+  end
+
   use Phoenix.Socket
 
   channel "room:*", ExampleWeb.RoomChannel
@@ -30,7 +39,11 @@ defmodule ExampleWeb.Socket do
         id -> id
       end
 
-    socket = assign(socket, :user_id, id)
+    socket =
+      socket
+      |> assign(:user_id, id)
+      |> assign(:counter, 1)
+
     {:ok, socket}
   end
 

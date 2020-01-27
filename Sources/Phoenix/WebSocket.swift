@@ -76,6 +76,8 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     }
     
     private func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping (Error?) -> Void) {
+        // TODO: capture obj-c exceptions over in the WebSocket class
+        
         sync {
             guard case .open(let task) = state else {
                 completionHandler(WebSocketError.notOpen)

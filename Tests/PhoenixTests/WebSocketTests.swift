@@ -3,7 +3,7 @@ import XCTest
 import Forever
 
 class WebSocketTests: XCTestCase {
-    func testReceiveOpenEvent() throws {
+    func testReceiveOpenEventAndCompletesWhenClose() {
         let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
         let completeEx = expectation(description: "WebSocket pipeline is complete")
@@ -23,6 +23,34 @@ class WebSocketTests: XCTestCase {
         wait(for: [openEx], timeout: 0.25)
         
         webSocket.close()
+        
+        wait(for: [completeEx], timeout: 0.25)
+    }
+    
+    func testCompleteWhenRemoteCloses() throws {
+        let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
+        
+        let completeEx = expectation(description: "WebSocket pipeline is complete")
+        let openEx = expectation(description: "WebSocket is open")
+        
+        let sub = webSocket.forever(receiveCompletion: { completion in
+            if case .finished = completion {
+                completeEx.fulfill()
+            }
+        }) { result in
+            if case .success(.open) = result {
+                openEx.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+        
+        wait(for: [openEx], timeout: 0.25)
+        
+        webSocket.send("disconnect") { error in
+            if let error = error {
+                XCTFail("Sending data down the socket failed \(error)")
+            }
+        }
         
         wait(for: [completeEx], timeout: 0.25)
     }
