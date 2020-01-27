@@ -484,11 +484,8 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
-    func testSocketReconnectAfterExplicitDisconnectAndThenConnect() {
-        // special disconnect query item to set a time to auto-disconnect from inside the example server
-        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
-        
-        let socket = try! Socket(url: disconnectURL)
+    func testSocketReconnectAfterExplicitDisconnectAndThenConnect() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message for the initial connection")
@@ -527,14 +524,17 @@ class SocketTests: XCTestCase {
         
         sub2.cancel()
         
-        let reopenMesssageEx = expectation(description: "Should have received an open message after reconnecting and then again after the server kills the connection becuase of the special query param")
+        let reopenMesssageEx = expectation(description: "Should have received an open message after reconnecting")
+        let reopenAgainMessageEx = expectation(description: "Should then reconnect again after the server kills the connection becuase of the special command")
         
-        reopenMesssageEx.expectedFulfillmentCount = 2
+        var expectations = [reopenMesssageEx, reopenAgainMessageEx]
         
         let sub3 = socket.forever { message in
             switch message {
             case .open:
-                reopenMesssageEx.fulfill()
+                let ex = expectations.first!
+                ex.fulfill()
+                expectations = Array(expectations.dropFirst())
             default:
                 break
             }
@@ -544,41 +544,48 @@ class SocketTests: XCTestCase {
         socket.connect()
         
         wait(for: [reopenMesssageEx], timeout: 1)
+        
+        socket.send("disconnect")
+        
+        waitForExpectations(timeout: 1)
     }
     
     // MARK: how socket close affects channels
     
     func testSocketCloseErrorsChannels() {
-        // special disconnect query item to set a time to auto-disconnect from inside the example server
-        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
-        
-        let socket = try! Socket(url: disconnectURL)
+        let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
         
+        let joinedEx = expectation(description: "Channel should have joined")
         let erroredEx = expectation(description: "Channel should have errored")
         
         let sub = channel.forever { result in
             switch result {
+            case .success(let event):
+                switch event {
+                case .join:
+                    joinedEx.fulfill()
+                default: break
+                }
             case .failure(let error):
                 erroredEx.fulfill()
-            default:
-                break
             }
         }
         defer { sub.cancel() }
         
         socket.connect()
         
+        wait(for: [joinedEx], timeout: 0.3)
+        
+        socket.send("disconnect")
+        
         waitForExpectations(timeout: 1)
     }
     
     func testSocketCloseDoesNotErrorChannelsIfLeft() {
-        // special disconnect query item to set a time to auto-disconnect from inside the example server
-        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
-        
-        let socket = try! Socket(url: disconnectURL)
+        let socket = try! Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -613,8 +620,6 @@ class SocketTests: XCTestCase {
         
         sub.cancel()
         
-        // the server will disconnect very soon…
-        
         let erroredEx = expectation(description: "Channel should have errored")
         erroredEx.isInverted = true
         
@@ -639,6 +644,8 @@ class SocketTests: XCTestCase {
             }
         }
         defer { sub3.cancel() }
+        
+        socket.send("disconnect")
         
         wait(for: [reconnectedEx], timeout: 0.5)
         
