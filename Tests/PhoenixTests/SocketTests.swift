@@ -34,14 +34,13 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(socket.heartbeatInterval, 40_000)
     }
     
-    func testSocketInitEstablishesConnection() {
-        let socket = try! Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-
+    func testSocketInitEstablishesConnection() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         let closeMessageEx = expectation(description: "Should have received a close message")
         
-        let sub = socket.forever { message in
+        let socket = try Socket(url: testHelper.defaultURL)
+        
+        let sub = socket.autoconnect().forever { message in
             switch message {
             case .open:
                 openMesssageEx.fulfill()
@@ -53,7 +52,7 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-        socket.connect()
+//        socket.connect() // leaving this here so it's clear what changed in this test
         
         wait(for: [openMesssageEx], timeout: 0.5)
         

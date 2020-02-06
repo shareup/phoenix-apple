@@ -21,6 +21,7 @@ public final class Socket: Synchronized {
     public typealias Failure = Swift.Error
     
     private var subject = SimpleSubject<Output, Failure>()
+    private var canceller = CancelDelegator()
     private var state: State = .closed
     private var shouldReconnect = true
     private var channels = [String: WeakChannel]()
@@ -97,6 +98,8 @@ public final class Socket: Synchronized {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = Ref.Generator()
         self.url = try Socket.webSocketURLV2(url: url)
+        
+        canceller.delegate = self
     }
     
     init(url: URL,
@@ -107,48 +110,8 @@ public final class Socket: Synchronized {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = refGenerator
         self.url = try Socket.webSocketURLV2(url: url)
-    }
-    
-    public func disconnect() {
-        sync {
-            self.shouldReconnect = false
-            
-            self.cancelHeartbeatTimer()
-            
-            switch state {
-            case .closed, .closing:
-                // NOOP
-                return
-            case .open(let ws), .connecting(let ws):
-                self.state = .closing(ws)
-                subject.send(.closing)
-                ws.close()
-            }
-        }
-    }
-    
-    public func connect() {
-        sync {
-            self.shouldReconnect = true
-            
-            switch state {
-            case .closed:
-                subject.send(.connecting)
-                
-                let ws = WebSocket(url: url)
-                self.state = .connecting(ws)
-                
-                internallySubscribe(ws)
-                cancelHeartbeatTimer()
-                createHeartbeatTimer()
-            case .connecting, .open:
-                // NOOP
-                return
-            case .closing:
-                // let the reconnect logic handle this case
-                return
-            }
-        }
+        
+        canceller.delegate = self
     }
 }
 
@@ -184,6 +147,67 @@ extension Socket: Publisher {
     
     func complete(_ completion: Subscribers.Completion<Failure>) {
         subject.send(completion: completion)
+    }
+}
+
+// MARK: ConnectablePublisher
+
+extension Socket: ConnectablePublisher {
+    // This is how I can provide something that knows how to
+    // cancel the Socket as an opaque return value to connect() below
+    //
+    // I could make the Socket cancellable and just have cancel call
+    // disconnect, but I don't really like that idea right now
+    private struct CancelDelegator: Cancellable {
+        weak var delegate: Socket?
+        
+        func cancel() {
+            delegate?.disconnect()
+        }
+    }
+
+    @discardableResult public func connect() -> Cancellable {
+        sync {
+            self.shouldReconnect = true
+            
+            switch state {
+            case .closed:
+                subject.send(.connecting)
+                
+                let ws = WebSocket(url: url)
+                self.state = .connecting(ws)
+                
+                internallySubscribe(ws)
+                cancelHeartbeatTimer()
+                createHeartbeatTimer()
+                
+                return canceller
+            case .connecting, .open:
+                // NOOP
+                return canceller
+            case .closing:
+                // let the reconnect logic handle this case
+                return canceller
+            }
+        }
+    }
+    
+    public func disconnect() {
+        sync {
+            self.shouldReconnect = false
+            
+            self.cancelHeartbeatTimer()
+            
+            switch state {
+            case .closed, .closing:
+                // NOOP
+                return
+            case .open(let ws), .connecting(let ws):
+                self.state = .closing(ws)
+                subject.send(.closing)
+                ws.close()
+            }
+        }
     }
 }
 
