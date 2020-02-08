@@ -5,7 +5,7 @@ import Combine
 class SocketTests: XCTestCase {
     // MARK: init, connect, and disconnect
     
-    func testSocketInit() {
+    func testSocketInit() throws {
         // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L31
         XCTAssertEqual(Socket.defaultTimeout, 10_000)
         
@@ -13,7 +13,7 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(Socket.defaultHeartbeatInterval, 30_000)
         
         let url: URL = URL(string: "ws://0.0.0.0:4000/socket")!
-        let socket = try! Socket(url: url)
+        let socket = try Socket(url: url)
         
         XCTAssertEqual(socket.timeout, Socket.defaultTimeout)
         XCTAssertEqual(socket.heartbeatInterval, Socket.defaultHeartbeatInterval)
@@ -23,8 +23,8 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(socket.url.query, "vsn=2.0.0")
     }
     
-    func testSocketInitOverrides() {
-        let socket = try! Socket(
+    func testSocketInitOverrides() throws {
+        let socket = try Socket(
             url: testHelper.defaultURL,
             timeout: 20_000,
             heartbeatInterval: 40_000
@@ -40,7 +40,7 @@ class SocketTests: XCTestCase {
         
         let socket = try Socket(url: testHelper.defaultURL)
         
-        let sub = socket.autoconnect().forever { message in
+        let sub = socket.forever { message in
             switch message {
             case .open:
                 openMesssageEx.fulfill()
@@ -52,7 +52,7 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-//        socket.connect() // leaving this here so it's clear what changed in this test
+        socket.connect()
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
@@ -61,35 +61,30 @@ class SocketTests: XCTestCase {
         wait(for: [closeMessageEx], timeout: 0.5)
     }
     
-    func testSocketDisconnectIsNoOp() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketDisconnectIsNoOp() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         socket.disconnect()
     }
     
-    func testSocketConnectIsNoOp() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketConnectIsNoOp() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         socket.connect()
         socket.connect() // calling connect again doesn't blow up
     }
     
-    func testSocketConnectAndDisconnect() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketConnectAndDisconnect() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let closeMessageEx = expectation(description: "Should have received a close message")
         let openMesssageEx = expectation(description: "Should have received an open message")
         let reopenMessageEx = expectation(description: "Should have reopened and got an open message")
         
-        let completeMessageEx = expectation(description: "Should not complete the publishing")
-        completeMessageEx.isInverted = true
-        
         var openExs = [reopenMessageEx, openMesssageEx]
         
-        let sub = socket.forever(receiveCompletion: { _ in
-            completeMessageEx.fulfill()
-        }) { message in
+        let sub = socket.forever { message in
             switch message {
             case .open:
                 openExs.popLast()?.fulfill()
@@ -112,25 +107,71 @@ class SocketTests: XCTestCase {
         socket.connect()
         
         wait(for: [reopenMessageEx], timeout: 0.5)
-        waitForExpectations(timeout: 0.5)
+    }
+    
+    func testSocketAutoconnectHasUpstream() throws {
+        let conn = try Socket(url: testHelper.defaultURL).autoconnect()
+        defer { conn.upstream.disconnect() }
+        
+        let openMesssageEx = expectation(description: "Should have received an open message")
+        
+        let sub = conn.forever { message in
+            if case .open = message {
+                openMesssageEx.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
+    }
+    
+    func testSocketAutoconnectSubscriberCancelDisconnects() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let openMesssageEx = expectation(description: "Should have received an open message")
+        let closeMessageEx = expectation(description: "Should have received a close message")
+        
+        let autoSub = socket.autoconnect().forever { message in
+            if case .open = message {
+                openMesssageEx.fulfill()
+            }
+        }
+        defer { autoSub.cancel() }
+        
+        // We cannot detect the close from the autoconnected subscriber because cancelling it will stop receiving messages before the close message arrives
+        let sub = socket.forever { message in
+            if case .close = message {
+                closeMessageEx.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+        
+        wait(for: [openMesssageEx], timeout: 0.5)
+        XCTAssertEqual(socket.connectionState, "open")
+        
+        autoSub.cancel()
+        
+        wait(for: [closeMessageEx], timeout: 0.5)
+        XCTAssertEqual(socket.connectionState, "closed")
     }
     
     // MARK: Connection state
     
-    func testSocketDefaultsToClosed() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketDefaultsToClosed() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         
         XCTAssertEqual(socket.connectionState, "closed")
         XCTAssert(socket.isClosed)
     }
     
-    func testSocketIsConnecting() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketIsConnecting() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let connectingMessageEx = expectation(description: "Should have received a connecting message")
         
-        let _ = socket.forever { message in
+        let sub = socket.autoconnect().forever { message in
             switch message {
             case .connecting:
                 connectingMessageEx.fulfill()
@@ -138,8 +179,7 @@ class SocketTests: XCTestCase {
                 break
             }
         }
-        
-        socket.connect()
+        defer { sub.cancel() }
         
         wait(for: [connectingMessageEx], timeout: 0.5)
         
@@ -147,22 +187,18 @@ class SocketTests: XCTestCase {
         XCTAssert(socket.isConnecting)
     }
     
-    func testSocketIsOpen() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketIsOpen() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openMessageEx = expectation(description: "Should have received an open message")
         
-        let _ = socket.forever { message in
-            switch message {
-            case .open:
+        let sub = socket.autoconnect().forever { message in
+            if case .open = message {
                 openMessageEx.fulfill()
-            default:
-                break
             }
         }
-        
-        socket.connect()
+        defer { sub.cancel() }
         
         wait(for: [openMessageEx], timeout: 0.5)
         
@@ -170,13 +206,13 @@ class SocketTests: XCTestCase {
         XCTAssert(socket.isOpen)
     }
     
-    func testSocketIsClosing() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketIsClosing() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         
         let openMessageEx = expectation(description: "Should have received an open message")
         let closingMessageEx = expectation(description: "Should have received a closing message")
         
-        let _ = socket.forever { message in
+        let sub = socket.forever { message in
             switch message {
             case .open:
                 openMessageEx.fulfill()
@@ -186,6 +222,7 @@ class SocketTests: XCTestCase {
                 break
             }
         }
+        defer { sub.cancel() }
         
         socket.connect()
         
@@ -201,10 +238,10 @@ class SocketTests: XCTestCase {
     
     // MARK: Channel join
     
-    func testChannelInit() {
+    func testChannelInit() throws {
         let channelJoinedEx = expectation(description: "Should have received join event")
         
-        let socket = try! Socket(url: testHelper.defaultURL)
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         socket.connect()
@@ -220,8 +257,8 @@ class SocketTests: XCTestCase {
         wait(for: [channelJoinedEx], timeout: 0.5)
     }
     
-    func testChannelInitWithParams() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testChannelInitWithParams() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         let channel = socket.join("room:lobby", payload: ["success": true])
         
         XCTAssertEqual(channel.topic, "room:lobby")
@@ -230,8 +267,8 @@ class SocketTests: XCTestCase {
     
     // MARK: track channels
     
-    func testChannelsAreTracked() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testChannelsAreTracked() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         let _ = socket.join("room:lobby")
         
         XCTAssertEqual(socket.joinedChannels.count, 1)
@@ -243,8 +280,8 @@ class SocketTests: XCTestCase {
     
     // MARK: push
     
-    func testPushOntoSocket() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testPushOntoSocket() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openEx = expectation(description: "Should have opened")
@@ -252,14 +289,12 @@ class SocketTests: XCTestCase {
         let failedEx = expectation(description: "Shouldn't have failed")
         failedEx.isInverted = true
         
-        let sub = socket.forever { message in
+        let sub = socket.autoconnect().forever { message in
             if case .open = message {
                 openEx.fulfill()
             }
         }
         defer { sub.cancel() }
-        
-        socket.connect()
         
         wait(for: [openEx], timeout: 0.5)
         
@@ -275,8 +310,8 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 0.5)
     }
     
-    func testPushOntoDisconnectedSocketBuffers() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testPushOntoDisconnectedSocketBuffers() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let sentEx = expectation(description: "Should have sent")
@@ -301,14 +336,14 @@ class SocketTests: XCTestCase {
     
     // MARK: heartbeat
     
-    func testHeartbeatTimeoutMovesSocketToClosedState() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testHeartbeatTimeoutMovesSocketToClosedState() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openEx = expectation(description: "Should have opened")
         let closeEx = expectation(description: "Should have closed")
         
-        let sub = socket.forever { message in
+        let sub = socket.autoconnect().forever { message in
             switch message {
             case .open:
                 openEx.fulfill()
@@ -320,8 +355,6 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-        socket.connect()
-        
         wait(for: [openEx], timeout: 0.5)
         
         // call internal method to simulate sending the first initial heartbeat
@@ -332,13 +365,13 @@ class SocketTests: XCTestCase {
         wait(for: [closeEx], timeout: 0.5)
     }
     
-    func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() {
-        let socket = try! Socket(url: testHelper.defaultURL, heartbeatInterval: 1)
+    func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
+        let socket = try Socket(url: testHelper.defaultURL, heartbeatInterval: 1)
         defer { socket.disconnect() }
         
         let closeEx = expectation(description: "Should have closed")
         
-        let sub = socket.forever { message in
+        let sub = socket.autoconnect().forever { message in
             switch message {
             case .close:
                 closeEx.fulfill()
@@ -347,8 +380,6 @@ class SocketTests: XCTestCase {
             }
         }
         defer { sub.cancel() }
-        
-        socket.connect()
         
         wait(for: [closeEx], timeout: 0.1)
     }
@@ -365,7 +396,7 @@ class SocketTests: XCTestCase {
         
         socket.push(topic: "unknown", event: boom)
         
-        let sub = socket.forever { message in
+        let sub = socket.autoconnect().forever { message in
             switch message {
             case .incomingMessage(let incomingMessage):
                 Swift.print(incomingMessage)
@@ -378,8 +409,6 @@ class SocketTests: XCTestCase {
             }
         }
         defer { sub.cancel() }
-        
-        socket.connect()
         
         waitForExpectations(timeout: 0.5)
     }
@@ -441,7 +470,11 @@ class SocketTests: XCTestCase {
         }
         defer { sub2.cancel() }
         
-        socket.send("boom")
+        socket.send("boom") { error in
+            if error != nil {
+                XCTFail()
+            }
+        }
         
         wait(for: [errEx], timeout: 0.3)
     }
@@ -459,9 +492,7 @@ class SocketTests: XCTestCase {
         let completeMessageEx = expectation(description: "Should not complete the publishing since it was not closed on purpose")
         completeMessageEx.isInverted = true
         
-        let sub = socket.forever(receiveCompletion: { _ in
-            completeMessageEx.fulfill()
-        }) { message in
+        let sub = socket.autoconnect().forever { message in
             switch message {
             case .open:
                 openMesssageEx.fulfill()
@@ -472,8 +503,6 @@ class SocketTests: XCTestCase {
             }
         }
         defer { sub.cancel() }
-        
-        socket.connect()
         
         wait(for: [openMesssageEx], timeout: 0.3)
         
@@ -509,7 +538,7 @@ class SocketTests: XCTestCase {
         let completeMessageEx = expectation(description: "Should not complete the publishing since it was not closed on purpose")
         completeMessageEx.isInverted = true
         
-        let sub = socket.forever(receiveCompletion: { _ in
+        let sub = socket.autoconnect().forever(receiveCompletion: { _ in
             completeMessageEx.fulfill()
         }) { message in
             switch message {
@@ -522,8 +551,6 @@ class SocketTests: XCTestCase {
             }
         }
         defer { sub.cancel() }
-        
-        socket.connect()
         
         wait(for: [openMesssageEx], timeout: 0.3)
         
@@ -548,8 +575,8 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
-    func testSocketDoesNotReconnectIfExplicitDisconnect() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketDoesNotReconnectIfExplicitDisconnect() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
@@ -557,7 +584,7 @@ class SocketTests: XCTestCase {
         let completeMessageEx = expectation(description: "Should not complete the publishing since it was not closed on purpose")
         completeMessageEx.isInverted = true
         
-        let sub = socket.forever(receiveCompletion: { _ in
+        let sub = socket.autoconnect().forever(receiveCompletion: { _ in
             completeMessageEx.fulfill()
         }) { message in
             switch message {
@@ -568,8 +595,6 @@ class SocketTests: XCTestCase {
             }
         }
         defer { sub.cancel() }
-        
-        socket.connect()
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
@@ -640,7 +665,7 @@ class SocketTests: XCTestCase {
         
         var expectations = [reopenMesssageEx, reopenAgainMessageEx]
         
-        let sub3 = socket.forever { message in
+        let sub3 = socket.autoconnect().forever { message in
             switch message {
             case .open:
                 let ex = expectations.first!
@@ -652,8 +677,6 @@ class SocketTests: XCTestCase {
         }
         defer { sub3.cancel() }
         
-        socket.connect()
-        
         wait(for: [reopenMesssageEx], timeout: 1)
         
         socket.send("disconnect")
@@ -663,8 +686,8 @@ class SocketTests: XCTestCase {
     
     // MARK: how socket close affects channels
     
-    func testSocketCloseErrorsChannels() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketCloseErrorsChannels() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -695,8 +718,8 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
-    func testRemoteExceptionErrorsChannels() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testRemoteExceptionErrorsChannels() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -727,8 +750,8 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
-    func testSocketCloseDoesNotErrorChannelsIfLeft() {
-        let socket = try! Socket(url: testHelper.defaultURL)
+    func testSocketCloseDoesNotErrorChannelsIfLeft() throws {
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -806,7 +829,7 @@ class SocketTests: XCTestCase {
         let echoEcho = "kapow"
         let echoEx = expectation(description: "Should have received the echo text response")
         
-        let sub = socket.forever {
+        let sub = socket.autoconnect().forever {
             if case .incomingMessage(let message) = $0,
                 message.topic == channel.topic,
                 message.event == .reply,
@@ -820,8 +843,6 @@ class SocketTests: XCTestCase {
         defer { sub.cancel() }
         
         channel.push("echo", payload: ["echo": echoEcho])
-        
-        socket.connect()
         
         waitForExpectations(timeout: 1)
     }
