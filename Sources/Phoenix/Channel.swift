@@ -38,7 +38,7 @@ public final class Channel: Synchronized {
     }
     
     public typealias Output = Result<Channel.Event, Swift.Error>
-    public typealias Failure = Swift.Error
+    public typealias Failure = Never
 
     private lazy var internalSubscriber: DelegatingSubscriber<Channel> = {
         DelegatingSubscriber(delegate: self)
@@ -329,31 +329,20 @@ extension Channel: Publisher {
     func publish(_ output: Output) {
         subject.send(output)
     }
-    
-    func complete() {
-        complete(.finished)
-    }
-    
-    func complete(_ failure: Failure) {
-        complete(.failure(failure))
-    }
-    
-    func complete(_ completion: Subscribers.Completion<Failure>) {
-        subject.send(completion: completion)
-    }
 }
 
 // MARK: :Subscriber
 
 extension Channel: DelegatingSubscriberDelegate {
-    typealias Input = IncomingMessage
+    typealias SubscriberInput = IncomingMessage
+    typealias SubscriberFailure = Never
     
     func internallySubscribe<P>(_ publisher: P)
-        where P: Publisher, Input == P.Output, Failure == P.Failure {
+        where P: Publisher, SubscriberInput == P.Output, SubscriberFailure == P.Failure {
         publisher.subscribe(internalSubscriber)
     }
     
-    func receive(_ input: Input) {
+    func receive(_ input: SubscriberInput) {
         Swift.print("channel input", input)
         
         switch input.event {
@@ -384,7 +373,7 @@ extension Channel: DelegatingSubscriberDelegate {
         }
     }
     
-    func receive(completion: Subscribers.Completion<Swift.Error>) {
+    func receive(completion: Subscribers.Completion<SubscriberFailure>) {
         internalSubscriber.cancel()
     }
 }

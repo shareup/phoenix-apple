@@ -3,19 +3,19 @@ import Combine
 import Synchronized
 
 protocol DelegatingSubscriberDelegate: class {
-    associatedtype Input
-    associatedtype Failure: Error
+    associatedtype SubscriberInput
+    associatedtype SubscriberFailure: Error
     
-    func receive(_ input: Input)
-    func receive(completion: Subscribers.Completion<Failure>)
+    func receive(_ input: SubscriberInput)
+    func receive(completion: Subscribers.Completion<SubscriberFailure>)
 }
 
 class DelegatingSubscriber<D: DelegatingSubscriberDelegate>: Subscriber, Synchronized {
     weak var delegate: D?
     private var subscription: Subscription?
     
-    typealias Input = D.Input
-    typealias Failure = D.Failure
+    typealias Input = D.SubscriberInput
+    typealias Failure = D.SubscriberFailure
     
     init(delegate: D) {
         self.delegate = delegate

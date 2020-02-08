@@ -27,8 +27,8 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     
     private let delegateQueue = OperationQueue()
     
-    typealias Output = Result<WebSocket.Message, Error>
-    typealias Failure = Error
+    typealias Output = Result<WebSocket.Message, Swift.Error>
+    typealias Failure = Swift.Error
 
     var subject = SimpleSubject<Output, Failure>()
     

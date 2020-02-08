@@ -18,7 +18,7 @@ public final class Socket: Synchronized {
     }
     
     public typealias Output = Socket.Message
-    public typealias Failure = Swift.Error
+    public typealias Failure = Never
     
     private var subject = SimpleSubject<Output, Failure>()
     private var canceller = CancelDelegator()
@@ -135,18 +135,6 @@ extension Socket: Publisher {
     
     func publish(_ output: Output) {
         subject.send(output)
-    }
-    
-    func complete() {
-        complete(.finished)
-    }
-    
-    func complete(_ failure: Failure) {
-        complete(.failure(failure))
-    }
-    
-    func complete(_ completion: Subscribers.Completion<Failure>) {
-        subject.send(completion: completion)
     }
 }
 
@@ -452,16 +440,17 @@ extension Socket {
 
 extension Socket: DelegatingSubscriberDelegate {
     // Creating an indirect internal Subscriber sub-type so the methods can remain internal
-    typealias Input = Result<WebSocket.Message, Swift.Error>
+    typealias SubscriberInput = Result<WebSocket.Message, Swift.Error>
+    typealias SubscriberFailure = Swift.Error
     
     func internallySubscribe<P>(_ publisher: P)
-        where P: Publisher, Input == P.Output, Failure == P.Failure {
+        where P: Publisher, SubscriberInput == P.Output, SubscriberFailure == P.Failure {
             
         let internalSubscriber = DelegatingSubscriber(delegate: self)
         publisher.subscribe(internalSubscriber)
     }
     
-    func receive(_ input: Input) {
+    func receive(_ input: SubscriberInput) {
         Swift.print("socket input", input)
         
         switch input {
@@ -517,7 +506,7 @@ extension Socket: DelegatingSubscriberDelegate {
         }
     }
     
-    func receive(completion: Subscribers.Completion<Failure>) {
+    func receive(completion: Subscribers.Completion<SubscriberFailure>) {
         sync {
             switch state {
             case .closed:

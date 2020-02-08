@@ -18,6 +18,8 @@ class ChannelTests: XCTestCase {
         
         wait(for: [openMesssageEx], timeout: 0.5)
         
+        sub.cancel()
+        
         let channelJoinedEx = expectation(description: "Channel joined")
         let channelLeftEx = expectation(description: "Channel left")
         
