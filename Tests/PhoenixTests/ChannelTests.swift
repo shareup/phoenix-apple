@@ -26,14 +26,12 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever { result in
-            if case .join = result {
+            switch result {
+            case .join:
                 channelJoinedEx.fulfill()
-                return
-            }
-            
-            if case .leave = result {
+            case .leave:
                 channelLeftEx.fulfill()
-                return
+            default: break
             }
         }
         defer { sub2.cancel() }
@@ -65,9 +63,7 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever { result in
-            if case .join = result {
-                return channelJoinedEx.fulfill()
-            }
+            if case .join = result { channelJoinedEx.fulfill() }
         }
         defer { sub2.cancel() }
         
@@ -76,7 +72,7 @@ class ChannelTests: XCTestCase {
         wait(for: [channelJoinedEx], timeout: 0.25)
         
         let repliedOKEx = expectation(description: "Received OK reply")
-        let repliedErrorEx = expectation(description: "Received errro reply")
+        let repliedErrorEx = expectation(description: "Received error reply")
         
         channel.push("echo", payload: ["echo": "hello"]) { result in
             guard case .success(let reply) = result else {
@@ -199,27 +195,27 @@ class ChannelTests: XCTestCase {
         channel2ReceivedMessageEx.isInverted = true
         
         let sub3 = channel1.forever { result in
-            if case .join = result {
-                return channel1JoinedEx.fulfill()
-            }
-            
-            if case .message(let message) = result {
+            switch result {
+            case .join:
+                channel1JoinedEx.fulfill()
+            case .message(let message):
                 let text = message.payload["text"] as? String
                 
                 if message.event == "message" && text == messageText {
                     return channel1ReceivedMessageEx.fulfill()
                 }
+            default: break
             }
         }
         defer { sub3.cancel() }
         
         let sub4 = channel2.forever { result in
-            if case .join = result {
-                return channel2JoinedEx.fulfill()
-            }
-            
-            if case .message(_) = result {
-                return channel2ReceivedMessageEx.fulfill()
+            switch result {
+            case .join:
+                channel2JoinedEx.fulfill()
+            case .message:
+                channel2ReceivedMessageEx.fulfill()
+            default: break
             }
         }
         defer { sub4.cancel() }
@@ -233,16 +229,14 @@ class ChannelTests: XCTestCase {
     }
     
     func testRejoinsAfterDisconnect() throws {
-        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
-        
-        let socket = try! Socket(url: disconnectURL)
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
         openMesssageEx.expectedFulfillmentCount = 2
         
         let sub = socket.forever {
-            if case .open = $0 { openMesssageEx.fulfill(); return }
+            if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
         
@@ -254,17 +248,19 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever {
-            if case .join = $0 { channelJoinedEx.fulfill(); return }
+            if case .join = $0 {
+                socket.send("disconnect")
+                channelJoinedEx.fulfill()
+            }
         }
         defer { sub2.cancel() }
         
         waitForExpectations(timeout: 1)
     }
     
+    // MARK: skipped
     func skip_testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
-        let disconnectURL = testHelper.defaultURL.appendingQueryItems(["disconnect": "soon"])
-        
-        let socket = try! Socket(url: disconnectURL)
+        let socket = try Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
@@ -293,13 +289,18 @@ class ChannelTests: XCTestCase {
         let channelRejoinEx = expectation(description: "Channel should not have rejoined")
         channelRejoinEx.isInverted = true
         
-        let sub3 = channel.forever {
-            if case .join = $0 { channelRejoinEx.fulfill(); return }
-            if case .leave = $0 { channelLeftEx.fulfill(); return }
+        let sub3 = channel.forever { result in
+            switch result {
+            case .join: channelRejoinEx.fulfill()
+            case .leave: channelLeftEx.fulfill()
+            default: break
+            }
         }
         defer { sub3.cancel() }
         
         channel.leave()
+        
+        socket.send("disconnect")
         
         waitForExpectations(timeout: 1)
     }
