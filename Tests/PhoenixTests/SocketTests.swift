@@ -250,7 +250,7 @@ class SocketTests: XCTestCase {
         defer { channel.leave() }
         
         let sub = channel.forever {
-            if case .success(.join) = $0 { channelJoinedEx.fulfill() }
+            if case .join = $0 { channelJoinedEx.fulfill() }
         }
         defer { sub.cancel() }
         
@@ -697,14 +697,12 @@ class SocketTests: XCTestCase {
         
         let sub = channel.forever { result in
             switch result {
-            case .success(let event):
-                switch event {
-                case .join:
-                    joinedEx.fulfill()
-                default: break
-                }
-            case .failure(let error):
+            case .join:
+                joinedEx.fulfill()
+            case .error(let error):
                 erroredEx.fulfill()
+            default:
+                break
             }
         }
         defer { sub.cancel() }
@@ -729,14 +727,12 @@ class SocketTests: XCTestCase {
         
         let sub = channel.forever { result in
             switch result {
-            case .success(let event):
-                switch event {
-                case .join:
-                    joinedEx.fulfill()
-                default: break
-                }
-            case .failure(let error):
+            case .join:
+                joinedEx.fulfill()
+            case .error(let error):
                 erroredEx.fulfill()
+            default:
+                break
             }
         }
         defer { sub.cancel() }
@@ -761,15 +757,10 @@ class SocketTests: XCTestCase {
         
         let sub = channel.forever { result in
             switch result {
-            case .success(let event):
-                switch event {
-                case .join:
-                    joinedEx.fulfill()
-                case .leave:
-                    leftEx.fulfill()
-                default:
-                    break
-                }
+            case .join:
+                joinedEx.fulfill()
+            case .leave:
+                leftEx.fulfill()
             default:
                 break
             }
@@ -791,7 +782,7 @@ class SocketTests: XCTestCase {
         
         let sub2 = channel.forever { result in
             switch result {
-            case .failure(let error):
+            case .error(let error):
                 erroredEx.fulfill()
             default:
                 break

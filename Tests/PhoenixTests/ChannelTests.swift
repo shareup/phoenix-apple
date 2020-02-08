@@ -23,20 +23,15 @@ class ChannelTests: XCTestCase {
         let channelJoinedEx = expectation(description: "Channel joined")
         let channelLeftEx = expectation(description: "Channel left")
         
-        let channelCompletedEx = expectation(description: "Channel pipeline should not complete")
-        channelCompletedEx.isInverted = true
-        
         let channel = socket.join("room:lobby")
         
-        let sub2 = channel.forever(receiveCompletion: { completion in
-            channelCompletedEx.fulfill()
-        }) { result in
-            if case .success(.join) = result {
+        let sub2 = channel.forever { result in
+            if case .join = result {
                 channelJoinedEx.fulfill()
                 return
             }
             
-            if case .success(.leave) = result {
+            if case .leave = result {
                 channelLeftEx.fulfill()
                 return
             }
@@ -47,7 +42,6 @@ class ChannelTests: XCTestCase {
         
         channel.leave()
         
-        wait(for: [channelLeftEx], timeout: 0.25)
         waitForExpectations(timeout: 0.25)
     }
     
@@ -71,7 +65,7 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever { result in
-            if case .success(.join) = result {
+            if case .join = result {
                 return channelJoinedEx.fulfill()
             }
         }
@@ -140,11 +134,11 @@ class ChannelTests: XCTestCase {
         var messageCounter = 0
         
         let sub2 = channel.forever { result in
-            if case .success(.join) = result {
+            if case .join = result {
                 return channelJoinedEx.fulfill()
             }
             
-            if case .success(.message(let message)) = result {
+            if case .message(let message) = result {
                 messageCounter += 1
                 
                 XCTAssertEqual(message.event, "repeated")
@@ -205,11 +199,11 @@ class ChannelTests: XCTestCase {
         channel2ReceivedMessageEx.isInverted = true
         
         let sub3 = channel1.forever { result in
-            if case .success(.join) = result {
+            if case .join = result {
                 return channel1JoinedEx.fulfill()
             }
             
-            if case .success(.message(let message)) = result {
+            if case .message(let message) = result {
                 let text = message.payload["text"] as? String
                 
                 if message.event == "message" && text == messageText {
@@ -220,11 +214,11 @@ class ChannelTests: XCTestCase {
         defer { sub3.cancel() }
         
         let sub4 = channel2.forever { result in
-            if case .success(.join) = result {
+            if case .join = result {
                 return channel2JoinedEx.fulfill()
             }
             
-            if case .success(.message(_)) = result {
+            if case .message(_) = result {
                 return channel2ReceivedMessageEx.fulfill()
             }
         }
@@ -260,7 +254,7 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever {
-            if case .success(.join) = $0 { channelJoinedEx.fulfill(); return }
+            if case .join = $0 { channelJoinedEx.fulfill(); return }
         }
         defer { sub2.cancel() }
         
@@ -288,7 +282,7 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         
         let sub2 = channel.forever {
-            if case .success(.join) = $0 { channelJoinedEx.fulfill(); return }
+            if case .join = $0 { channelJoinedEx.fulfill(); return }
         }
         
         wait(for: [channelJoinedEx], timeout: 0.25)
@@ -300,8 +294,8 @@ class ChannelTests: XCTestCase {
         channelRejoinEx.isInverted = true
         
         let sub3 = channel.forever {
-            if case .success(.join) = $0 { channelRejoinEx.fulfill(); return }
-            if case .success(.leave) = $0 { channelLeftEx.fulfill(); return }
+            if case .join = $0 { channelRejoinEx.fulfill(); return }
+            if case .leave = $0 { channelLeftEx.fulfill(); return }
         }
         defer { sub3.cancel() }
         

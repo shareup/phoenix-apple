@@ -37,7 +37,7 @@ public final class Channel: Synchronized {
         }
     }
     
-    public typealias Output = Result<Channel.Event, Swift.Error>
+    public typealias Output = Channel.Event
     public typealias Failure = Never
 
     private lazy var internalSubscriber: DelegatingSubscriber<Channel> = {
@@ -147,7 +147,7 @@ extension Channel {
     private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
         guard let socket = socket else {
             self.state = .errored(Channel.Error.lostSocket)
-            publish(.failure(Channel.Error.lostSocket))
+            publish(.error(Channel.Error.lostSocket))
             completionHandler(Channel.Error.lostSocket)
             return
         }
@@ -228,7 +228,7 @@ extension Channel {
     func errored(_ error: Swift.Error) {
         sync {
             self.state = .errored(error)
-            subject.send(.failure(error))
+            subject.send(.error(error))
         }
     }
 
@@ -391,7 +391,7 @@ extension Channel {
                 }
                 
                 self.state = .joined(joinRef)
-                subject.send(.success(.join))
+                subject.send(.join)
                 flushNow()
                 
             case .joined(let joinRef):
@@ -409,7 +409,7 @@ extension Channel {
                 }
                 
                 self.state = .closed
-                subject.send(.success(.leave))
+                subject.send(.leave)
                 
             default:
                 // sorry, not processing replies in other states
@@ -426,7 +426,7 @@ extension Channel {
                 return
             }
 
-            subject.send(.success(.message(message)))
+            subject.send(.message(message))
         }
     }
 }
