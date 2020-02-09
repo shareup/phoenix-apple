@@ -53,6 +53,12 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(channel.joinPush.payload as? [String: Int], ["number": 2])
     }
     
+    func testIsJoiningAfterJoin() throws {
+        let channel = Channel(topic: "rooms:lobby", socket: socket)
+        channel.join()
+        XCTAssertEqual(channel.connectionState, "joining")
+    }
+    
     func testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
