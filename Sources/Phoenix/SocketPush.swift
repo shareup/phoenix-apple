@@ -7,12 +7,14 @@ extension Socket {
         public let topic: String
         public let event: PhxEvent
         public let payload: Payload
+        public let timeout: Int
         public let callback: Callback?
         
-        init(topic: String, event: PhxEvent, payload: Payload = [:], callback: Callback? = nil) {
+        init(topic: String, event: PhxEvent, payload: Payload = [:], timeout: Int = Socket.defaultTimeout, callback: Callback? = nil) {
             self.topic = topic
             self.event = event
             self.payload = payload
+            self.timeout = timeout
             self.callback = callback
         }
 

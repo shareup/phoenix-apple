@@ -3,6 +3,56 @@ import Combine
 @testable import Phoenix
 
 class ChannelTests: XCTestCase {
+    lazy var socket: Socket = {
+        try! Socket(url: testHelper.defaultURL)
+    }()
+    
+    func testChannelInit() throws {
+        let channel = Channel(topic: "rooms:lobby", socket: socket)
+        
+        XCTAssert(channel.isClosed)
+        XCTAssertEqual(channel.connectionState, "closed")
+        XCTAssertFalse(channel.joinedOnce)
+        XCTAssertEqual(channel.topic, "rooms:lobby")
+        XCTAssertEqual(channel.timeout, Socket.defaultTimeout)
+    }
+    
+    func testChannelInitOverrides() throws {
+        let socket = try Socket(url: testHelper.defaultURL, timeout: 1234)
+        
+        let channel = Channel(topic: "rooms:lobby", joinPayload: ["one": "two"], socket: socket)
+        XCTAssertEqual(channel.joinPayload as? [String: String], ["one": "two"])
+        XCTAssertEqual(channel.timeout, 1234)
+    }
+    
+    func testJoinPushPayload() throws {
+        let socket = try Socket(url: testHelper.defaultURL, timeout: 1234)
+        
+        let channel = Channel(topic: "rooms:lobby", joinPayload: ["one": "two"], socket: socket)
+        
+        let push = channel.joinPush
+        
+        XCTAssertEqual(push.payload as? [String: String], ["one": "two"])
+        XCTAssertEqual(push.event, .join)
+        XCTAssertEqual(push.timeout, 1234)
+    }
+    
+    func testJoinPushBlockPayload() throws {
+        var counter = 1
+        
+        let block = { () -> Payload in ["number": counter] }
+        
+        let channel = Channel(topic: "rooms:lobby", joinPayloadBlock: block, socket: socket)
+        
+        XCTAssertEqual(channel.joinPush.payload as? [String: Int], ["number": 1])
+        
+        counter += 1
+        
+        // We've made the explicit decision to realize the joinPush payload when we construct the joinPush struct
+        
+        XCTAssertEqual(channel.joinPush.payload as? [String: Int], ["number": 2])
+    }
+    
     func testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         

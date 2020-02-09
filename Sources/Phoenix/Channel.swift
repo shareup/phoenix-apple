@@ -4,8 +4,6 @@ import Synchronized
 import SimplePublisher
 import Atomic
 
-
-
 public final class Channel: Synchronized {
     public enum Error: Swift.Error {
         case invalidJoinReply(Channel.Reply)
@@ -56,19 +54,39 @@ public final class Channel: Synchronized {
     
     weak var socket: Socket?
     
-    public let topic: String
-    public let joinPayload: Payload
-    
-    // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
-    init(topic: String, socket: Socket, joinPayload: Payload = [:]) {
-        self.topic = topic
-        self.socket = socket
-        self.joinPayload = joinPayload
+    public var timeout: Int {
+        if let socket = socket {
+            return socket.timeout
+        } else {
+            return Socket.defaultTimeout
+        }
     }
     
-    convenience init(topic: String, socket: Socket, refGenerator: Ref.Generator) {
-        self.init(topic: topic, socket: socket)
-        self.refGenerator = refGenerator
+    public let topic: String
+    
+    typealias JoinPayloadBlock = () -> Payload
+    
+    let joinPayloadBlock: JoinPayloadBlock
+    
+    public var joinPayload: Payload { joinPayloadBlock() }
+    
+    // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
+    init(topic: String, socket: Socket) {
+        self.topic = topic
+        self.socket = socket
+        self.joinPayloadBlock = { [:] }
+    }
+    
+    init(topic: String, joinPayloadBlock: @escaping JoinPayloadBlock, socket: Socket) {
+        self.topic = topic
+        self.socket = socket
+        self.joinPayloadBlock = joinPayloadBlock
+    }
+    
+    init(topic: String, joinPayload: Payload, socket: Socket) {
+        self.topic = topic
+        self.socket = socket
+        self.joinPayloadBlock = { joinPayload }
     }
     
     var joinRef: Ref? { sync {
@@ -84,12 +102,14 @@ public final class Channel: Synchronized {
         }
     } }
     
+    var joinedOnce = false
+    
     var joinPush: Socket.Push {
-        Socket.Push(topic: topic, event: .join, payload: joinPayload) { _ in }
+        Socket.Push(topic: topic, event: .join, payload: joinPayload, timeout: timeout) { _ in }
     }
     
     var leavePush: Socket.Push {
-        Socket.Push(topic: topic, event: .leave, payload: [:]) { _ in }
+        Socket.Push(topic: topic, event: .leave, payload: [:], timeout: timeout) { _ in }
     }
     
     public var isClosed: Bool { sync {
@@ -116,6 +136,21 @@ public final class Channel: Synchronized {
         guard case .errored = state else { return false }
         return true
     } }
+    
+    public var connectionState: String {
+        switch state {
+        case .closed:
+            return "closed"
+        case .errored:
+            return "errored"
+        case .joined:
+            return "joined"
+        case .joining:
+            return "joining"
+        case .leaving:
+            return "leaving"
+        }
+    }
 }
 
 // MARK: Writing

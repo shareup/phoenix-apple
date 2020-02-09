@@ -210,7 +210,7 @@ extension Socket {
                 return channel
             }
             
-            let channel = Channel(topic: topic, socket: self, joinPayload: payload)
+            let channel = Channel(topic: topic, joinPayload: payload, socket: self)
             
             channels[topic] = WeakChannel(channel)
             subscribe(channel: channel)
