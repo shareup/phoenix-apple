@@ -25,25 +25,6 @@ defmodule ExampleWeb.Socket do
 
   channel "room:*", ExampleWeb.RoomChannel
 
-  def connect(%{"disconnect" => "soon"} = params, socket, connect_info) do
-    # or else we will recurse into this connection function
-    params = Map.delete(params, "disconnect")
-
-    {:ok, socket} = connect(params, socket, connect_info)
-
-    pid =
-      spawn(fn ->
-        receive do
-          :disconnect ->
-            ExampleWeb.Endpoint.broadcast(id(socket), "disconnect", %{})
-        end
-      end)
-
-    Process.send_after(pid, :disconnect, 400)
-
-    {:ok, socket}
-  end
-
   def connect(%{"user_id" => user_id}, socket, _connect_info) do
     id =
       case user_id do
