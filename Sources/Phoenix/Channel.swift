@@ -158,20 +158,19 @@ public final class Channel: Synchronized {
 
 
 extension Channel {
-    // TODO: make join public
-    func join() {
+    public func join() {
         sync {
-            guard isClosed || isErrored || isLeaving else {
-                assertionFailure("Can't join unless we are closed, errored, or leaving")
+            switch state {
+            case .joining, .joined:
                 return
+            case .closed, .errored, .leaving:
+                let ref = refGenerator.advance()
+                self.state = .joining(ref)
+                
+                DispatchQueue.global().async {
+                    self.writeJoinPush()
+                }
             }
-            
-            let ref = refGenerator.advance()
-            self.state = .joining(ref)
-        }
-        
-        DispatchQueue.global().async {
-            self.writeJoinPush()
         }
     }
     

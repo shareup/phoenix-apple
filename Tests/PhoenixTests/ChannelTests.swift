@@ -48,9 +48,16 @@ class ChannelTests: XCTestCase {
         
         counter += 1
         
-        // We've made the explicit decision to realize the joinPush payload when we construct the joinPush struct
+        // We've made the explicit decision to realize the joinPush.payload when we construct the joinPush struct
         
         XCTAssertEqual(channel.joinPush.payload as? [String: Int], ["number": 2])
+    }
+    
+    func testJoinTwiceIsNoOp() throws {
+        let channel = Channel(topic: "topic", socket: socket)
+        
+        channel.join()
+        channel.join()
     }
     
     func testIsJoiningAfterJoin() throws {
