@@ -205,18 +205,25 @@ extension Socket {
     // TODO: make a channel method whereby the caller would need to call join themselves
     public func join(_ topic: String, payload: Payload = [:]) -> Channel {
         sync {
+            let _channel = channel(topic, payload: payload)
+            _channel.join()
+            return _channel
+        }
+    }
+    
+    public func channel(_ topic: String, payload: Payload = [:]) -> Channel {
+        sync {
             if let weakChannel = channels[topic],
-                let channel = weakChannel.channel {
-                return channel
+                let _channel = weakChannel.channel {
+                return _channel
             }
             
-            let channel = Channel(topic: topic, joinPayload: payload, socket: self)
+            let _channel = Channel(topic: topic, joinPayload: payload, socket: self)
             
-            channels[topic] = WeakChannel(channel)
-            subscribe(channel: channel)
-            channel.join()
+            channels[topic] = WeakChannel(_channel)
+            subscribe(channel: _channel)
             
-            return channel
+            return _channel
         }
     }
 }
@@ -534,7 +541,7 @@ extension Socket: DelegatingSubscriberDelegate {
 // MARK: subscribe
 
 extension Socket {
-    private func subscribe(channel: Channel) {
+    func subscribe(channel: Channel) {
         channel.internallySubscribe(
             self.compactMap {
                 guard case .incomingMessage(let message) = $0 else {

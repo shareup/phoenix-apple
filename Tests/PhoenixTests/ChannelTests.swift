@@ -53,6 +53,12 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(channel.joinPush.payload as? [String: Int], ["number": 2])
     }
     
+    func testIsJoiningAfterJoin() throws {
+        let channel = Channel(topic: "rooms:lobby", socket: socket)
+        channel.join()
+        XCTAssertEqual(channel.connectionState, "joining")
+    }
+    
     func testJoinTwiceIsNoOp() throws {
         let channel = Channel(topic: "topic", socket: socket)
         
@@ -60,11 +66,52 @@ class ChannelTests: XCTestCase {
         channel.join()
     }
     
-    func testIsJoiningAfterJoin() throws {
-        let channel = Channel(topic: "rooms:lobby", socket: socket)
+    func testJoinPushParamsMakeItToServer() throws {
+        let params = ["did": "make it"]
+        
+        defer { socket.disconnect() }
+        
+        let openEx = expectation(description: "Socket should have opened")
+        
+        let sub = socket.forever {
+            if case .open = $0 { openEx.fulfill() }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openEx], timeout: 1)
+        
+        let channel = Channel(topic: "room:lobby", joinPayload: params, socket: socket)
+        
+        let joinEx = expectation(description: "Shoult have joined")
+        
+        let sub2 = channel.forever {
+            if case .join = $0 { joinEx.fulfill() }
+        }
+        defer { sub2.cancel() }
+        
         channel.join()
-        XCTAssertEqual(channel.connectionState, "joining")
+        
+        wait(for: [joinEx], timeout: 1)
+        
+        var replyParams: [String: String]? = nil
+        
+        let replyEx = expectation(description: "Should have received reply")
+        
+        channel.push("echo_join_params", payload: [:]) { result in
+            if case .success(let reply) = result {
+                replyParams = reply.response as? [String: String]
+                replyEx.fulfill()
+            }
+        }
+        
+        wait(for: [replyEx], timeout: 1)
+        
+        XCTAssertEqual(params, replyParams)
     }
+    
+    // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4
     
     func testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")

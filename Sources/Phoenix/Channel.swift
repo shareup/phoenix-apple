@@ -71,22 +71,20 @@ public final class Channel: Synchronized {
     public var joinPayload: Payload { joinPayloadBlock() }
     
     // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
-    init(topic: String, socket: Socket) {
-        self.topic = topic
-        self.socket = socket
-        self.joinPayloadBlock = { [:] }
+    convenience init(topic: String, socket: Socket) {
+        self.init(topic: topic, joinPayloadBlock: { [:] }, socket: socket)
+    }
+    
+    convenience init(topic: String, joinPayload: Payload, socket: Socket) {
+        self.init(topic: topic, joinPayloadBlock: { joinPayload }, socket: socket)
     }
     
     init(topic: String, joinPayloadBlock: @escaping JoinPayloadBlock, socket: Socket) {
         self.topic = topic
         self.socket = socket
         self.joinPayloadBlock = joinPayloadBlock
-    }
-    
-    init(topic: String, joinPayload: Payload, socket: Socket) {
-        self.topic = topic
-        self.socket = socket
-        self.joinPayloadBlock = { joinPayload }
+        
+        socket.subscribe(channel: self)
     }
     
     var joinRef: Ref? { sync {
