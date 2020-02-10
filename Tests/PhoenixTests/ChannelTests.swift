@@ -99,7 +99,7 @@ class ChannelTests: XCTestCase {
         
         let replyEx = expectation(description: "Should have received reply")
         
-        channel.push("echo_join_params", payload: [:]) { result in
+        channel.push("echo_join_params") { result in
             if case .success(let reply) = result {
                 replyParams = reply.response as? [String: String]
                 replyEx.fulfill()
@@ -111,6 +111,11 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(params, replyParams)
     }
     
+    func testJoinCanHaveTimeout() throws {
+        let channel = Channel(topic: "topic", socket: socket)
+        channel.join(timeout: 1234)
+        XCTAssertEqual(1234, channel.timeout)
+    }
     // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4
     
     func testJoinAndLeaveEvents() throws {

@@ -54,8 +54,12 @@ public final class Channel: Synchronized {
     
     weak var socket: Socket?
     
+    private var customTimeout: Int? = nil
+    
     public var timeout: Int {
-        if let socket = socket {
+        if let customTimeout = customTimeout {
+            return customTimeout
+        } else if let socket = socket {
             return socket.timeout
         } else {
             return Socket.defaultTimeout
@@ -156,6 +160,11 @@ public final class Channel: Synchronized {
 
 
 extension Channel {
+    public func join(timeout customTimeout: Int) {
+        self.customTimeout = customTimeout
+        join()
+    }
+    
     public func join() {
         sync {
             switch state {
@@ -263,9 +272,13 @@ extension Channel {
             subject.send(.error(error))
         }
     }
-
+    
     public func push(_ eventString: String) {
-        push(eventString, payload: [String: Any]())
+        push(eventString, payload: [String: Any](), callback: nil)
+    }
+    
+    public func push(_ eventString: String, callback: Channel.Callback?) {
+        push(eventString, payload: [String: Any](), callback: callback)
     }
 
     public func push(_ eventString: String, payload: Payload) {
