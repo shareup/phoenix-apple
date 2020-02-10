@@ -166,7 +166,14 @@ extension Channel {
     }
     
     public func join() {
+        rejoin()
+    }
+    
+    
+    func rejoin() {
         sync {
+            guard shouldRejoin else { return }
+            
             switch state {
             case .joining, .joined:
                 return
@@ -223,19 +230,6 @@ extension Channel {
 
         DispatchQueue.global().asyncAfter(deadline: deadline) {
             self.writeJoinPush()
-        }
-    }
-    
-    func rejoin() {
-        sync {
-            if !shouldRejoin || isJoining || isJoined { return }
-
-            let ref = refGenerator.advance()
-            self.state = .joining(ref)
-            
-            DispatchQueue.global().async {
-                self.writeJoinPush()
-            }
         }
     }
     
@@ -346,6 +340,7 @@ extension Channel {
         flushAfterDelay(milliseconds: 200)
     }
     
+    // TODO: backoff
     private func flushAfterDelay(milliseconds: Int) {
         sync {
             guard waitToFlush == 0 else { return }

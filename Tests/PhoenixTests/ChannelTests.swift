@@ -123,6 +123,58 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(1234, channel.timeout)
     }
     
+    // MARK: timeout behavior
+    
+    func testJoinSucceedsIfBeforeTimeout() throws {
+        let channel = Channel(topic: "room:lobby", socket: socket)
+        
+        let joinEx = expectation(description: "Should have joined")
+        
+        let sub = channel.forever {
+            if case .join = $0 { joinEx.fulfill() }
+        }
+        defer { sub.cancel() }
+        
+        channel.join(timeout: 1_000)
+        
+        let time = DispatchTime.now().advanced(by: .milliseconds(200))
+        DispatchQueue.global().asyncAfter(deadline: time) { [socket] in
+            socket.connect()
+        }
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssert(channel.isJoined)
+    }
+    
+    func testJoinRetriesWithBackoffIfTimeout() throws {
+        var counter = 0
+        
+        let channel = Channel(
+            topic: "room:lobby",
+            joinPayloadBlock: { counter += 1; return [:] },
+            socket: socket)
+        
+        let joinEx = expectation(description: "Should have joined")
+        
+        let sub = channel.forever {
+            if case .join = $0 { joinEx.fulfill() }
+        }
+        defer { sub.cancel() }
+        
+        channel.join(timeout: 100)
+        
+        let time = DispatchTime.now().advanced(by: .milliseconds(1_000))
+        DispatchQueue.global().asyncAfter(deadline: time) { [socket] in
+            socket.connect()
+        }
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssert(channel.isJoined)
+        XCTAssertGreaterThan(counter, 4)
+    }
+    
     // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4
     
     func skip_testJoinAndLeaveEvents() throws {
