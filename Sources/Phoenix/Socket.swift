@@ -329,13 +329,13 @@ extension Socket {
             case .open(let ws):
                 // TODO: capture obj-c exceptions over in the WebSocket class
                 ws.send(string) { error in
-                    completionHandler(error)
-                    
                     if let error = error {
                         Swift.print("Error writing to WebSocket: \(error)")
                         self.state = .closing(ws) // TODO: write a test to prove this works
                         ws.close(.abnormalClosure)
                     }
+                    
+                    completionHandler(error)
                 }
             default:
                 completionHandler(Socket.Error.notOpen)
@@ -355,13 +355,13 @@ extension Socket {
             case .open(let ws):
                 // TODO: capture obj-c exceptions over in the WebSocket class
                 ws.send(data) { error in
-                    completionHandler(error)
-                    
                     if let error = error {
                         Swift.print("Error writing to WebSocket: \(error)")
                         self.state = .closing(ws) // TODO: write a test to prove this works
                         ws.close(.abnormalClosure)
                     }
+                    
+                    completionHandler(error)
                 }
             default:
                 completionHandler(Socket.Error.notOpen)
