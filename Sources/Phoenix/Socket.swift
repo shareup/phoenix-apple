@@ -313,8 +313,7 @@ extension Socket {
             let data = try message.encoded()
             send(data, completionHandler: completionHandler)
         } catch {
-            // TODO: make this call the callback with an error instead
-            preconditionFailure("Could not serialize OutgoingMessage \(error)")
+            completionHandler(Error.couldNotSerializeOutgoingMessage(message))
         }
     }
     
