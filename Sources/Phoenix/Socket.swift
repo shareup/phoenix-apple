@@ -417,8 +417,9 @@ extension Socket {
     
     func createHeartbeatTimer() {
         let interval = TimeInterval(Float(self.heartbeatInterval) / Float(1_000))
+        let tolerance = interval * 0.1 // let's be nice
         
-        let sub = Timer.publish(every: interval, on: .main, in: .common)
+        let sub = Timer.publish(every: interval, tolerance: tolerance, on: .main, in: .common)
                     .autoconnect()
                     .forever { [weak self] _ in self?.sendHeartbeat() }
         
