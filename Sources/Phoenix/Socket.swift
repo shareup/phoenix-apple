@@ -425,10 +425,6 @@ extension Socket {
         
         self.heartbeatTimerCancellable = sub
     }
-    
-    func heartbeatTimerTick(_ timer: Timer) {
-        Swift.print("tick")
-    }
 }
 
 // MARK: :Subscriber
