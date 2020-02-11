@@ -383,7 +383,8 @@ extension Channel {
         sync {
             switch state {
             case .joining(let joinRef):
-                guard reply.ref == joinRef && reply.joinRef == joinRef else {
+                guard reply.ref == joinRef,
+                    reply.joinRef == joinRef else {
                     self.state = .errored(Channel.Error.invalidJoinReply(reply))
                     break
                 }
