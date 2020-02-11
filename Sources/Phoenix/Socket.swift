@@ -333,6 +333,7 @@ extension Socket {
                     
                     if let error = error {
                         Swift.print("Error writing to WebSocket: \(error)")
+                        self.state = .closing(ws)
                         ws.close(.abnormalClosure)
                     }
                 }
