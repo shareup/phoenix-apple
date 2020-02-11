@@ -1,5 +1,3 @@
-import Foundation
-
 public enum PhxEvent: Equatable, ExpressibleByStringLiteral {
     case join
     case leave

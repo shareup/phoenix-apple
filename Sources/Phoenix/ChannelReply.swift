@@ -1,5 +1,3 @@
-import Foundation
-
 extension Channel {
     public struct Reply {
         public struct Error: Swift.Error {

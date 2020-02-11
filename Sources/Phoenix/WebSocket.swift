@@ -1,7 +1,7 @@
-import Foundation
 import Combine
-import Synchronized
+import Foundation
 import SimplePublisher
+import Synchronized
 
 class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     private enum State {

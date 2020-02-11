@@ -1,46 +1,10 @@
-import Foundation
 import Combine
-import Synchronized
+import Foundation
 import SimplePublisher
-import Atomic
+import Synchronized
 
 public final class Channel: Synchronized {
-    public enum Error: Swift.Error {
-        case invalidJoinReply(Channel.Reply)
-        case isClosed
-        case lostSocket
-        case noLongerJoining
-    }
-    
-    enum State {
-        case closed
-        case joining(Ref)
-        case joined(Ref)
-        case leaving(joinRef: Ref, leavingRef: Ref)
-        case errored(Swift.Error)
-    }
-    
-    struct PushedMessage {
-        let push: Push
-        let message: OutgoingMessage
-        
-        var joinRef: Ref? { message.joinRef }
-        
-        func callback(reply: Channel.Reply) {
-            push.asyncCallback(result: .success(reply))
-        }
-        
-        func callback(error: Swift.Error) {
-            push.asyncCallback(result: .failure(error))
-        }
-    }
-    
-    public typealias Output = Channel.Event
-    public typealias Failure = Never
-
-    private lazy var internalSubscriber: DelegatingSubscriber<Channel> = {
-        DelegatingSubscriber(delegate: self)
-    }()
+    typealias JoinPayloadBlock = () -> Payload
     
     private var subject = SimpleSubject<Output, Failure>()
     private var refGenerator = Ref.Generator.global
@@ -68,10 +32,7 @@ public final class Channel: Synchronized {
     
     public let topic: String
     
-    typealias JoinPayloadBlock = () -> Payload
-    
     let joinPayloadBlock: JoinPayloadBlock
-    
     public var joinPayload: Payload { joinPayloadBlock() }
     
     // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
@@ -88,6 +49,7 @@ public final class Channel: Synchronized {
         self.socket = socket
         self.joinPayloadBlock = joinPayloadBlock
         
+        // NOTE: we ask the socket to send us events from here
         socket.subscribe(channel: self)
     }
     
@@ -156,8 +118,6 @@ public final class Channel: Synchronized {
 }
 
 // MARK: Writing
-
-
 
 extension Channel {
     public func join(timeout customTimeout: Int) {
@@ -361,6 +321,9 @@ extension Channel {
 // MARK: :Publisher
 
 extension Channel: Publisher {
+    public typealias Output = Channel.Event
+    public typealias Failure = Never
+    
     public func receive<S>(subscriber: S)
         where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
         subject.receive(subscriber: subscriber)
@@ -376,11 +339,6 @@ extension Channel: Publisher {
 extension Channel: DelegatingSubscriberDelegate {
     typealias SubscriberInput = IncomingMessage
     typealias SubscriberFailure = Never
-    
-    func internallySubscribe<P>(_ publisher: P)
-        where P: Publisher, SubscriberInput == P.Output, SubscriberFailure == P.Failure {
-        publisher.subscribe(internalSubscriber)
-    }
     
     func receive(_ input: SubscriberInput) {
         Swift.print("channel input", input)
@@ -414,7 +372,7 @@ extension Channel: DelegatingSubscriberDelegate {
     }
     
     func receive(completion: Subscribers.Completion<SubscriberFailure>) {
-        internalSubscriber.cancel()
+        assertionFailure("Socket Failure = Never, should never complete")
     }
 }
 

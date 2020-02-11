@@ -1,22 +1,10 @@
-import Foundation
 import Combine
-import Synchronized
 import Forever
+import Foundation
 import SimplePublisher
-import Atomic
+import Synchronized
 
 public final class Socket: Synchronized {
-    enum Error: Swift.Error {
-        case notOpen
-    }
-
-    enum State {
-        case closed
-        case connecting(WebSocket)
-        case open(WebSocket)
-        case closing(WebSocket)
-    }
-    
     public typealias Output = Socket.Message
     public typealias Failure = Never
     
@@ -202,7 +190,6 @@ extension Socket: ConnectablePublisher {
 // MARK: join
 
 extension Socket {
-    // TODO: make a channel method whereby the caller would need to call join themselves
     public func join(_ topic: String, payload: Payload = [:]) -> Channel {
         sync {
             let _channel = channel(topic, payload: payload)
@@ -221,7 +208,6 @@ extension Socket {
             let _channel = Channel(topic: topic, joinPayload: payload, socket: self)
             
             channels[topic] = WeakChannel(_channel)
-            subscribe(channel: _channel)
             
             return _channel
         }
@@ -449,13 +435,6 @@ extension Socket: DelegatingSubscriberDelegate {
     // Creating an indirect internal Subscriber sub-type so the methods can remain internal
     typealias SubscriberInput = Result<WebSocket.Message, Swift.Error>
     typealias SubscriberFailure = Swift.Error
-    
-    func internallySubscribe<P>(_ publisher: P)
-        where P: Publisher, SubscriberInput == P.Output, SubscriberFailure == P.Failure {
-            
-        let internalSubscriber = DelegatingSubscriber(delegate: self)
-        publisher.subscribe(internalSubscriber)
-    }
     
     func receive(_ input: SubscriberInput) {
         Swift.print("socket input", input)

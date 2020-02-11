@@ -1,4 +1,3 @@
-import Foundation
 import Combine
 import Synchronized
 
@@ -8,6 +7,15 @@ protocol DelegatingSubscriberDelegate: class {
     
     func receive(_ input: SubscriberInput)
     func receive(completion: Subscribers.Completion<SubscriberFailure>)
+}
+
+extension DelegatingSubscriberDelegate {
+    func internallySubscribe<P>(_ publisher: P)
+        where P: Publisher, SubscriberInput == P.Output, SubscriberFailure == P.Failure {
+            
+        let internalSubscriber = DelegatingSubscriber(delegate: self)
+        publisher.subscribe(internalSubscriber)
+    }
 }
 
 class DelegatingSubscriber<D: DelegatingSubscriberDelegate>: Subscriber, Synchronized {
@@ -44,4 +52,8 @@ class DelegatingSubscriber<D: DelegatingSubscriberDelegate>: Subscriber, Synchro
             self.subscription = nil
         }
     }
+    
+//    deinit {
+//        cancel()
+//    }
 }

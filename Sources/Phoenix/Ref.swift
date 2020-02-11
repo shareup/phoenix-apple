@@ -1,4 +1,3 @@
-import Foundation
 import Synchronized
 
 public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
