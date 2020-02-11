@@ -33,7 +33,7 @@ public final class Channel: Synchronized {
     public let topic: String
     
     let joinPayloadBlock: JoinPayloadBlock
-    public var joinPayload: Payload { joinPayloadBlock() }
+    var joinPayload: Payload { joinPayloadBlock() }
     
     // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
     convenience init(topic: String, socket: Socket) {
