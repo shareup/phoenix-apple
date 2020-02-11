@@ -1,18 +1,18 @@
 defmodule ExampleWeb.RoomChannel do
   use Phoenix.Channel
 
-  def join(room = "room:lobby", params, socket) do
-    do_join(room, params, socket)
+  def join("room:lobby", params, socket) do
+    do_join(params, socket)
   end
 
-  def join(room = "room:" <> _room_id, params, socket) do
+  def join("room:" <> _room_id, params, socket) do
     case socket.assigns.user_id do
       nil -> {:error, %{reason: "unauthorized"}}
-      _ -> do_join(room, params, socket)
+      _ -> do_join(params, socket)
     end
   end
 
-  defp do_join(room, params, socket) do
+  defp do_join(params, socket) do
     socket =
       socket
       |> assign(:join_params, params)
