@@ -29,7 +29,6 @@ public final class Socket: Synchronized {
     }
     
     private var pending: [Push] = []
-    private var waitToFlush: Int = 0
     
     private let refGenerator: Ref.Generator
     public let url: URL
@@ -239,7 +238,7 @@ extension Socket {
         }
         
         DispatchQueue.global().async {
-            self.flushNow()
+            self.flushAsync()
         }
     }
 }
@@ -248,8 +247,6 @@ extension Socket {
 
 extension Socket {
     private func flush() {
-        assert(waitToFlush == 0)
-        
         sync {
             guard case .open = state else { return }
             
@@ -260,42 +257,16 @@ extension Socket {
             let message = OutgoingMessage(push, ref: ref)
             
             send(message) { error in
-                if let error = error {
-                    Swift.print("Couldn't write to Socket – \(error) - \(message)")
-                    self.flushAfterDelay()
-                } else {
-                    self.flushNow()
+                if error == nil {
+                    self.flushAsync()
                 }
                 push.asyncCallback(error)
             }
         }
     }
     
-    private func flushNow() {
-        sync {
-            guard waitToFlush == 0 else { return }
-        }
+    private func flushAsync() {
         DispatchQueue.global().async { self.flush() }
-    }
-    
-    private func flushAfterDelay() {
-        flushAfterDelay(milliseconds: 200)
-    }
-    
-    private func flushAfterDelay(milliseconds: Int) {
-        sync {
-            guard waitToFlush == 0 else { return }
-            self.waitToFlush = milliseconds
-        }
-        
-        let deadline = DispatchTime.now().advanced(by: .milliseconds(waitToFlush))
-
-        DispatchQueue.global().asyncAfter(deadline: deadline) {
-            self.sync {
-                self.waitToFlush = 0
-                self.flushNow()
-            }
-        }
     }
 }
 
@@ -462,7 +433,7 @@ extension Socket: DelegatingSubscriberDelegate {
                         }
                     }
                     
-                    flushNow()
+                    flushAsync()
                 }
 
             case .data:
