@@ -376,8 +376,8 @@ extension Socket {
             return
         case .open(let ws), .connecting(let ws):
             ws.close()
-            subject.send(.close)
             self.state = .closed
+            subject.send(.close)
         }
     }
     
