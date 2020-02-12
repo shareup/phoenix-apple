@@ -12,6 +12,7 @@ public final class Socket: Synchronized {
     private var canceller = CancelDelegator()
     private var state: State = .closed
     private var shouldReconnect = true
+    private var webSocketSubscriber: AnySubscriber<SubscriberInput, SubscriberFailure>?
     private var channels = [String: WeakChannel]()
     
     public var joinedChannels: [Channel] {
@@ -32,15 +33,15 @@ public final class Socket: Synchronized {
     
     private let refGenerator: Ref.Generator
     public let url: URL
-    public let timeout: Int
-    public let heartbeatInterval: Int
+    public let timeout: TimeInterval
+    public let heartbeatInterval: TimeInterval
     
     private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
     private var pendingHeartbeatRef: Ref? = nil
     private var heartbeatTimerCancellable: Cancellable? = nil
     
-    public static let defaultTimeout: Int = 10_000 // TODO: use TimeInterval
-    public static let defaultHeartbeatInterval: Int = 30_000 // TODO: use TimeInterval
+    public static let defaultTimeout: TimeInterval = 10
+    public static let defaultHeartbeatInterval: TimeInterval = 30
     static let defaultRefGenerator = Ref.Generator()
     
     public var currentRef: Ref { refGenerator.current }
@@ -79,24 +80,24 @@ public final class Socket: Synchronized {
     } }
     
     public init(url: URL,
-                timeout: Int = Socket.defaultTimeout,
-                heartbeatInterval: Int = Socket.defaultHeartbeatInterval) throws {
+                timeout: TimeInterval = Socket.defaultTimeout,
+                heartbeatInterval: TimeInterval = Socket.defaultHeartbeatInterval) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = Ref.Generator()
-        self.url = try Socket.webSocketURLV2(url: url)
+        self.url = Socket.webSocketURLV2(url: url)
         
         canceller.delegate = self
     }
     
     init(url: URL,
-         timeout: Int = Socket.defaultTimeout,
-         heartbeatInterval: Int = Socket.defaultHeartbeatInterval,
-         refGenerator: Ref.Generator) throws {
+         timeout: TimeInterval = Socket.defaultTimeout,
+         heartbeatInterval: TimeInterval = Socket.defaultHeartbeatInterval,
+         refGenerator: Ref.Generator) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = refGenerator
-        self.url = try Socket.webSocketURLV2(url: url)
+        self.url = Socket.webSocketURLV2(url: url)
         
         canceller.delegate = self
     }
@@ -105,7 +106,7 @@ public final class Socket: Synchronized {
 // MARK: Phoenix socket URL
 
 extension Socket {
-    static func webSocketURLV2(url original: URL) throws -> URL {
+    static func webSocketURLV2(url original: URL) -> URL {
         return original
             .appendingPathComponent("websocket")
             .appendingQueryItems(["vsn": "2.0.0"])
@@ -152,7 +153,7 @@ extension Socket: ConnectablePublisher {
                 let ws = WebSocket(url: url)
                 self.state = .connecting(ws)
                 
-                internallySubscribe(ws)
+                self.webSocketSubscriber = internallySubscribe(ws)
                 cancelHeartbeatTimer()
                 createHeartbeatTimer()
                 
@@ -351,6 +352,8 @@ extension Socket {
                 return
             }
             
+            guard case .open = state else { return }
+            
             self.pendingHeartbeatRef = refGenerator.advance()
             let message = OutgoingMessage(heartbeatPush, ref: pendingHeartbeatRef!)
             
@@ -376,6 +379,7 @@ extension Socket {
             return
         case .open(let ws), .connecting(let ws):
             ws.close()
+            // TODO: shouldn't this be an errored state?
             self.state = .closed
             subject.send(.close)
         }
@@ -387,7 +391,7 @@ extension Socket {
     }
     
     func createHeartbeatTimer() {
-        let interval = TimeInterval(Float(self.heartbeatInterval) / Float(1_000))
+        let interval = self.heartbeatInterval
         let tolerance = interval * 0.1 // let's be nice
         
         let sub = Timer.publish(every: interval, tolerance: tolerance, on: .main, in: .common)
@@ -426,13 +430,6 @@ extension Socket: DelegatingSubscriberDelegate {
                 case .connecting(let ws):
                     self.state = .open(ws)
                     subject.send(.open)
-                    
-                    sync {
-                        joinedChannels.forEach { channel in
-                            channel.rejoin()
-                        }
-                    }
-                    
                     flushAsync()
                 }
 
@@ -441,9 +438,12 @@ extension Socket: DelegatingSubscriberDelegate {
                 assertionFailure("We are not currently expecting any data frames from the server")
             case .string(let string):
                 do {
-                    let message = try IncomingMessage(data: Data(string.utf8))
+                    let message = try IncomingMessage(string: string)
                     
-                    if message.event == .heartbeat && pendingHeartbeatRef != nil && message.ref == pendingHeartbeatRef {
+                    if message.event == .heartbeat &&
+                        pendingHeartbeatRef != nil &&
+                        message.ref == pendingHeartbeatRef {
+                        
                         Swift.print("heartbeat OK")
                         self.pendingHeartbeatRef = nil
                     } else {
@@ -469,36 +469,17 @@ extension Socket: DelegatingSubscriberDelegate {
                 return
             case .open, .connecting, .closing:
                 self.state = .closed
+                self.webSocketSubscriber = nil
                 
                 subject.send(.close)
-
-                joinedChannels.forEach { channel in
-                    channel.remoteClosed(Channel.Error.lostSocket)
-                }
                 
                 if shouldReconnect {
-                    DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
+                    let deadline = DispatchTime.now().advanced(by: .milliseconds(200))
+                    DispatchQueue.global().asyncAfter(deadline: deadline) {
                         self.connect()
                     }
                 }
             }
         }
-    }
-}
-
-// MARK: subscribe
-
-extension Socket {
-    func subscribe(channel: Channel) {
-        channel.internallySubscribe(
-            self.compactMap {
-                guard case .incomingMessage(let message) = $0 else {
-                    return nil
-                }
-                return message
-            }.filter {
-                $0.topic == channel.topic
-            }
-        )
     }
 }

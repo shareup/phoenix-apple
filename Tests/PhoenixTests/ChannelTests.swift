@@ -4,11 +4,11 @@ import Combine
 
 class ChannelTests: XCTestCase {
     lazy var socket: Socket = {
-        try! Socket(url: testHelper.defaultURL)
+        Socket(url: testHelper.defaultURL)
     }()
     
     override func setUp() {
-        self.socket = try! Socket(url: testHelper.defaultURL)
+        self.socket = Socket(url: testHelper.defaultURL)
     }
     
     override func tearDown() {
@@ -26,7 +26,7 @@ class ChannelTests: XCTestCase {
     }
     
     func testChannelInitOverrides() throws {
-        let socket = try Socket(url: testHelper.defaultURL, timeout: 1234)
+        let socket = Socket(url: testHelper.defaultURL, timeout: 1234)
         
         let channel = Channel(topic: "rooms:lobby", joinPayload: ["one": "two"], socket: socket)
         XCTAssertEqual(channel.joinPayload as? [String: String], ["one": "two"])
@@ -34,7 +34,7 @@ class ChannelTests: XCTestCase {
     }
     
     func testJoinPushPayload() throws {
-        let socket = try Socket(url: testHelper.defaultURL, timeout: 1234)
+        let socket = Socket(url: testHelper.defaultURL, timeout: 1234)
         
         let channel = Channel(topic: "rooms:lobby", joinPayload: ["one": "two"], socket: socket)
         
@@ -119,14 +119,17 @@ class ChannelTests: XCTestCase {
     
     func testJoinCanHaveTimeout() throws {
         let channel = Channel(topic: "topic", socket: socket)
-        channel.join(timeout: 1234)
-        XCTAssertEqual(1234, channel.timeout)
+        channel.join(timeout: 1.234)
+        XCTAssertEqual(1.234, channel.timeout)
     }
     
     // MARK: timeout behavior
     
     func testJoinSucceedsIfBeforeTimeout() throws {
-        let channel = Channel(topic: "room:lobby", socket: socket)
+        var counter = 0
+        let block: Channel.JoinPayloadBlock = { counter += 1; return [:] }
+        
+        let channel = Channel(topic: "room:lobby", joinPayloadBlock: block, socket: socket)
         
         let joinEx = expectation(description: "Should have joined")
         
@@ -135,7 +138,7 @@ class ChannelTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-        channel.join(timeout: 1_000)
+        channel.join(timeout: 1)
         
         let time = DispatchTime.now().advanced(by: .milliseconds(200))
         DispatchQueue.global().asyncAfter(deadline: time) { [socket] in
@@ -145,6 +148,9 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 2)
         
         XCTAssert(channel.isJoined)
+        XCTAssertEqual(counter, 2)
+        // The joinPush is generated once and sent to the Socket which isn't open, so it's not written
+        // Then a second time after the Socket publishes it's open message and the Channel tries to reconnect
     }
     
     func testJoinRetriesWithBackoffIfTimeout() throws {
@@ -180,7 +186,7 @@ class ChannelTests: XCTestCase {
     func skip_testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let sub = socket.forever {
@@ -220,7 +226,7 @@ class ChannelTests: XCTestCase {
     func skip_testPushCallback() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let sub = socket.forever {
@@ -284,7 +290,7 @@ class ChannelTests: XCTestCase {
     func skip_testReceiveMessages() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let sub = socket.forever {
@@ -338,8 +344,8 @@ class ChannelTests: XCTestCase {
         let openMesssageEx1 = expectation(description: "Should have received an open message for socket 1")
         let openMesssageEx2 = expectation(description: "Should have received an open message for socket 2")
         
-        let socket1 = try Socket(url: testHelper.defaultURL)
-        let socket2 = try Socket(url: testHelper.defaultURL)
+        let socket1 = Socket(url: testHelper.defaultURL)
+        let socket2 = Socket(url: testHelper.defaultURL)
         defer {
             socket1.disconnect()
             socket2.disconnect()
@@ -403,7 +409,7 @@ class ChannelTests: XCTestCase {
     }
     
     func skip_testRejoinsAfterDisconnect() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
@@ -434,7 +440,7 @@ class ChannelTests: XCTestCase {
     
     // MARK: skipped
     func skip_testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")

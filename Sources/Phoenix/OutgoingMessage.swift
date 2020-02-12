@@ -22,7 +22,7 @@ struct OutgoingMessage {
     
     init(_ push: Channel.Push, ref: Ref, joinRef: Ref) {
         if push.channel.joinRef != joinRef {
-            assertionFailure("joinRef should match the channel's joinRef")
+            preconditionFailure("joinRef should match the channel's joinRef")
         }
         
         self.joinRef = joinRef

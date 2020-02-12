@@ -7,13 +7,13 @@ class SocketTests: XCTestCase {
     
     func testSocketInit() throws {
         // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L31
-        XCTAssertEqual(Socket.defaultTimeout, 10_000)
+        XCTAssertEqual(Socket.defaultTimeout, 10)
         
         // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L33
-        XCTAssertEqual(Socket.defaultHeartbeatInterval, 30_000)
+        XCTAssertEqual(Socket.defaultHeartbeatInterval, 30)
         
         let url: URL = URL(string: "ws://0.0.0.0:4000/socket")!
-        let socket = try Socket(url: url)
+        let socket = Socket(url: url)
         
         XCTAssertEqual(socket.timeout, Socket.defaultTimeout)
         XCTAssertEqual(socket.heartbeatInterval, Socket.defaultHeartbeatInterval)
@@ -24,21 +24,21 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketInitOverrides() throws {
-        let socket = try Socket(
+        let socket = Socket(
             url: testHelper.defaultURL,
-            timeout: 20_000,
-            heartbeatInterval: 40_000
+            timeout: 20,
+            heartbeatInterval: 40
         )
         
-        XCTAssertEqual(socket.timeout, 20_000)
-        XCTAssertEqual(socket.heartbeatInterval, 40_000)
+        XCTAssertEqual(socket.timeout, 20)
+        XCTAssertEqual(socket.heartbeatInterval, 40)
     }
     
     func testSocketInitEstablishesConnection() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         let closeMessageEx = expectation(description: "Should have received a close message")
         
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         
         let sub = socket.forever { message in
             switch message {
@@ -62,12 +62,12 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketDisconnectIsNoOp() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         socket.disconnect()
     }
     
     func testSocketConnectIsNoOp() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         socket.connect()
@@ -75,7 +75,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketConnectAndDisconnect() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let closeMessageEx = expectation(description: "Should have received a close message")
@@ -110,7 +110,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketAutoconnectHasUpstream() throws {
-        let conn = try Socket(url: testHelper.defaultURL).autoconnect()
+        let conn = Socket(url: testHelper.defaultURL).autoconnect()
         defer { conn.upstream.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message")
@@ -126,7 +126,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketAutoconnectSubscriberCancelDisconnects() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openMesssageEx = expectation(description: "Should have received an open message")
@@ -159,14 +159,14 @@ class SocketTests: XCTestCase {
     // MARK: Connection state
     
     func testSocketDefaultsToClosed() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         
         XCTAssertEqual(socket.connectionState, "closed")
         XCTAssert(socket.isClosed)
     }
     
     func testSocketIsConnecting() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let connectingMessageEx = expectation(description: "Should have received a connecting message")
@@ -188,7 +188,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketIsOpen() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openMessageEx = expectation(description: "Should have received an open message")
@@ -207,7 +207,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketIsClosing() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         
         let openMessageEx = expectation(description: "Should have received an open message")
         let closingMessageEx = expectation(description: "Should have received a closing message")
@@ -241,7 +241,7 @@ class SocketTests: XCTestCase {
     func testChannelInit() throws {
         let channelJoinedEx = expectation(description: "Should have received join event")
         
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         socket.connect()
@@ -258,7 +258,7 @@ class SocketTests: XCTestCase {
     }
     
     func testChannelInitWithParams() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         let channel = socket.join("room:lobby", payload: ["success": true])
         
         XCTAssertEqual(channel.topic, "room:lobby")
@@ -268,7 +268,7 @@ class SocketTests: XCTestCase {
     // MARK: track channels
     
     func testChannelsAreTracked() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         let _ = socket.join("room:lobby")
         
         XCTAssertEqual(socket.joinedChannels.count, 1)
@@ -281,7 +281,7 @@ class SocketTests: XCTestCase {
     // MARK: push
     
     func testPushOntoSocket() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openEx = expectation(description: "Should have opened")
@@ -311,7 +311,7 @@ class SocketTests: XCTestCase {
     }
     
     func testPushOntoDisconnectedSocketBuffers() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let sentEx = expectation(description: "Should have sent")
@@ -337,7 +337,7 @@ class SocketTests: XCTestCase {
     // MARK: heartbeat
     
     func testHeartbeatTimeoutMovesSocketToClosedState() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openEx = expectation(description: "Should have opened")
@@ -366,7 +366,7 @@ class SocketTests: XCTestCase {
     }
     
     func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
-        let socket = try Socket(url: testHelper.defaultURL, heartbeatInterval: 1)
+        let socket = Socket(url: testHelper.defaultURL, heartbeatInterval: 0.001)
         defer { socket.disconnect() }
         
         let closeEx = expectation(description: "Should have closed")
@@ -381,13 +381,13 @@ class SocketTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-        wait(for: [closeEx], timeout: 0.1)
+        wait(for: [closeEx], timeout: 1)
     }
     
     // MARK: on open
     
     func testFlushesPushesOnOpen() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let boomEx = expectation(description: "Should have gotten something back from the boom event")
@@ -416,7 +416,7 @@ class SocketTests: XCTestCase {
     // MARK: remote close publishes close
     
     func testRemoteClosePublishesClose() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openEx = expectation(description: "Should have gotten an open message")
@@ -447,7 +447,7 @@ class SocketTests: XCTestCase {
     // MARK: remote exception publishes error
     
     func testRemoteExceptionPublishesError() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let openEx = expectation(description: "Should have gotten an open message")
@@ -482,7 +482,7 @@ class SocketTests: XCTestCase {
     // MARK: reconnect
     
     func testSocketReconnectAfterRemoteClose() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
@@ -528,7 +528,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketReconnectAfterRemoteException() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
@@ -576,7 +576,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketDoesNotReconnectIfExplicitDisconnect() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message twice (one after reconnecting)")
@@ -621,7 +621,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketReconnectAfterExplicitDisconnectAndThenConnect() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
         let openMesssageEx = expectation(description: "Should have received an open message for the initial connection")
@@ -687,7 +687,7 @@ class SocketTests: XCTestCase {
     // MARK: how socket close affects channels
     
     func testSocketCloseErrorsChannels() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -717,7 +717,7 @@ class SocketTests: XCTestCase {
     }
     
     func testRemoteExceptionErrorsChannels() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -747,7 +747,7 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketCloseDoesNotErrorChannelsIfLeft() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -769,15 +769,15 @@ class SocketTests: XCTestCase {
         
         socket.connect()
         
-        wait(for: [joinedEx], timeout: 0.3)
+        wait(for: [joinedEx], timeout: 1)
         
         channel.leave()
         
-        wait(for: [leftEx], timeout: 0.3)
+        wait(for: [leftEx], timeout: 2)
         
         sub.cancel()
         
-        let erroredEx = expectation(description: "Channel should have errored")
+        let erroredEx = expectation(description: "Channel not should have errored")
         erroredEx.isInverted = true
         
         let sub2 = channel.forever { result in
@@ -804,7 +804,7 @@ class SocketTests: XCTestCase {
         
         socket.send("disconnect")
         
-        wait(for: [reconnectedEx], timeout: 0.5)
+        wait(for: [reconnectedEx], timeout: 2)
         
         waitForExpectations(timeout: 0.3) // give the channel 1 second to error
     }
@@ -812,7 +812,7 @@ class SocketTests: XCTestCase {
     // MARK: decoding messages
     
     func testSocketDecodesAndPublishesMessage() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
@@ -839,7 +839,7 @@ class SocketTests: XCTestCase {
     }
     
     func testChannelReceivesMessages() throws {
-        let socket = try Socket(url: testHelper.defaultURL)
+        let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")

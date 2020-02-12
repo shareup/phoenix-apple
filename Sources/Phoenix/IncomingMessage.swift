@@ -12,6 +12,10 @@ public struct IncomingMessage {
     let topic: String
     let event: PhxEvent
     let payload: Payload
+    
+    init(string: String) throws {
+        try self.init(data: Data(string.utf8))
+    }
 
     init(data: Data) throws {
         let jsonArray = try JSONSerialization.jsonObject(with: data, options: [])

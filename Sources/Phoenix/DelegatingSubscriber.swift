@@ -10,11 +10,14 @@ protocol DelegatingSubscriberDelegate: class {
 }
 
 extension DelegatingSubscriberDelegate {
-    func internallySubscribe<P>(_ publisher: P)
+    func internallySubscribe<P>(_ publisher: P) -> AnySubscriber<SubscriberInput, SubscriberFailure>
         where P: Publisher, SubscriberInput == P.Output, SubscriberFailure == P.Failure {
             
         let internalSubscriber = DelegatingSubscriber(delegate: self)
+        
         publisher.subscribe(internalSubscriber)
+            
+        return AnySubscriber(internalSubscriber)
     }
 }
 
