@@ -804,9 +804,9 @@ class SocketTests: XCTestCase {
         
         socket.send("disconnect")
         
-        wait(for: [reconnectedEx], timeout: 2)
+        wait(for: [reconnectedEx], timeout: 1)
         
-        waitForExpectations(timeout: 0.3) // give the channel 1 second to error
+        waitForExpectations(timeout: 1) // give the channel 1 second to error
     }
     
     // MARK: decoding messages

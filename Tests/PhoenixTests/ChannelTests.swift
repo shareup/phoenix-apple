@@ -154,31 +154,47 @@ class ChannelTests: XCTestCase {
     }
     
     func testJoinRetriesWithBackoffIfTimeout() throws {
+        let openEx = expectation(description: "Socket should have opened")
+        
+        let sub = socket.forever {
+            if case .open = $0 { openEx.fulfill() }
+        }
+        defer { sub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [openEx], timeout: 0.3)
+        
         var counter = 0
         
         let channel = Channel(
-            topic: "room:lobby",
-            joinPayloadBlock: { counter += 1; return [:] },
+            topic: "room:timeout",
+            joinPayloadBlock: {
+                counter += 1
+                
+                if counter < 9 {
+                    return ["timeout": 2000]
+                } else {
+                    return [:]
+                }
+            },
             socket: socket)
         
         let joinEx = expectation(description: "Should have joined")
         
-        let sub = channel.forever {
-            if case .join = $0 { joinEx.fulfill() }
+        let sub2 = channel.forever {
+            if case .join = $0 {
+                joinEx.fulfill()
+            }
         }
-        defer { sub.cancel() }
+        defer { sub2.cancel() }
         
         channel.join(timeout: 100)
-        
-        let time = DispatchTime.now().advanced(by: .milliseconds(1_000))
-        DispatchQueue.global().asyncAfter(deadline: time) { [socket] in
-            socket.connect()
-        }
         
         waitForExpectations(timeout: 2)
         
         XCTAssert(channel.isJoined)
-        XCTAssertGreaterThan(counter, 4)
+        XCTAssertEqual(counter, 9)
     }
     
     // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4
