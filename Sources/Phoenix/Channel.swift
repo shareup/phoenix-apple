@@ -126,6 +126,13 @@ public final class Channel: Synchronized {
         return true
     } }
     
+    func errored(_ error: Swift.Error) {
+        sync {
+            self.state = .errored(error)
+            subject.send(.error(error))
+        }
+    }
+    
     public var connectionState: String {
         switch state {
         case .closed:
@@ -142,7 +149,7 @@ public final class Channel: Synchronized {
     }
 }
 
-// MARK: Writing
+// MARK: join
 
 extension Channel {
     public func join(timeout customTimeout: TimeInterval) {
@@ -173,27 +180,6 @@ extension Channel {
         }
     }
     
-    private func send(_ message: OutgoingMessage) {
-        send(message) { _ in }
-    }
-    
-    private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
-        guard let socket = socket else {
-            self.errored(Channel.Error.lostSocket)
-            completionHandler(Channel.Error.lostSocket)
-            return
-        }
-        
-        socket.send(message) { error in
-            if let error = error {
-                Swift.print("There was an error writing to the socket: \(error)")
-//                self.errored(error)
-            }
-            
-            completionHandler(error)
-        }
-    }
-    
     private func writeJoinPush() {
         // TODO: set a timer for timeout for the join push
         sync {
@@ -217,7 +203,11 @@ extension Channel {
             self.writeJoinPush()
         }
     }
-    
+}
+
+// MARK: leave
+
+extension Channel {
     public func leave(timeout: TimeInterval) {
         self.customTimeout = timeout
         leave()
@@ -242,21 +232,11 @@ extension Channel {
             }
         }
     }
-    
-    func remoteClosed(_ error: Swift.Error) {
-        sync {
-            if isClosed && !shouldRejoin { return }
-            errored(error)
-        }
-    }
-    
-    func errored(_ error: Swift.Error) {
-        sync {
-            self.state = .errored(error)
-            subject.send(.error(error))
-        }
-    }
-    
+}
+
+// MARK: push
+
+extension Channel {
     public func push(_ eventString: String) {
         push(eventString, payload: [String: Any](), callback: nil)
     }
@@ -284,7 +264,37 @@ extension Channel {
         self.timeoutPushedMessagesAsync()
         self.flushAsync()
     }
+}
+
+// MARK: push
+
+extension Channel {
+    private func send(_ message: OutgoingMessage) {
+        send(message) { _ in }
+    }
     
+    private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
+        guard let socket = socket else {
+            // TODO: maybe we should just hard ref the socket?
+            self.errored(Channel.Error.lostSocket)
+            completionHandler(Channel.Error.lostSocket)
+            return
+        }
+        
+        socket.send(message) { error in
+            if let error = error {
+                Swift.print("There was an error writing to the socket: \(error)")
+                // NOTE: we don't change state to error here, instead we let the socket close do that for us
+            }
+            
+            completionHandler(error)
+        }
+    }
+}
+
+// MARK: flush
+
+extension Channel {
     private func flush() {
         sync {
             guard case .joined(let joinRef) = state else { return }
@@ -316,7 +326,11 @@ extension Channel {
     private func flushAsync() {
         DispatchQueue.global().async { self.flush() }
     }
-    
+}
+
+// MARK: timeout stuffs
+
+extension Channel {
     private func timeoutPushedMessages() {
         sync {
             if let pushedMessagesTimer = pushedMessagesTimer {
@@ -341,6 +355,10 @@ extension Channel {
         }
     }
     
+    private func timeoutPushedMessagesAsync() {
+        DispatchQueue.global().async { self.timeoutPushedMessages() }
+    }
+    
     private func createPushedMessagesTimer() {
         sync {
             guard !inFlight.isEmpty,
@@ -356,10 +374,6 @@ extension Channel {
                 self.timeoutPushedMessagesAsync()
             }
         }
-    }
-    
-    private func timeoutPushedMessagesAsync() {
-        DispatchQueue.global().async { self.timeoutPushedMessages() }
     }
 }
 
