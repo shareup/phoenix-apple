@@ -446,7 +446,8 @@ extension Channel {
             switch state {
             case .joining(let joinRef):
                 guard reply.ref == joinRef,
-                    reply.joinRef == joinRef else {
+                    reply.joinRef == joinRef,
+                    reply.isOk else {
                     self.errored(Channel.Error.invalidJoinReply(reply))
                     break
                 }
