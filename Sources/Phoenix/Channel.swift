@@ -33,6 +33,12 @@ public final class Channel: Synchronized {
     
     private var pushedMessagesTimer: Timer?
     
+    private var joinLeaveTimer: JoinTimer = .off
+    
+    // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
+    let defaultRejoinTimeIntervals = [1, 2, 5].map { TimeInterval($0) }
+    let maximiumDefaultRejoinTimeInterval = TimeInterval(10)
+    
     public let topic: String
     
     let joinPayloadBlock: JoinPayloadBlock
@@ -190,6 +196,9 @@ extension Channel {
                 send(message) { error in
                     if let error = error {
                         Swift.print("There was a problem writing to the socket: \(error)")
+                        // TODO: create the rejoin timer now?
+                    } else {
+                        self.createJoinPushTimer()
                     }
                 }
             default:
@@ -331,6 +340,56 @@ extension Channel {
 // MARK: timeout stuffs
 
 extension Channel {
+    func timeoutJoinPush() {
+        errored(Error.joinTimeout)
+    }
+    
+    private func createJoinPushTimer() {
+        sync {
+            let interval: TimeInterval
+            let attempt: Int
+            
+            if case .rejoin(_, let newAttempt) = joinLeaveTimer {
+                attempt = newAttempt
+                interval = rejoinAfter(attempt: attempt)
+            } else {
+                interval = timeout
+                attempt = 1
+            }
+            
+            joinLeaveTimer.invalidate()
+            
+            let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+                Swift.print("Timer!")
+                self.timeoutJoinPush()
+            }
+//            timer.tolerance = interval * 0.1
+            
+            Swift.print("now      \(Date())")
+            Swift.print("fire at: \(timer.fireDate) – isValid: \(timer.isValid)")
+            
+            self.joinLeaveTimer = .joining(timer: timer, attempt: attempt)
+        }
+    }
+    
+    // TODO: make overridable with a block
+    private func rejoinAfter(attempt: Int) -> TimeInterval {
+        // NOTE: subscript will cause a crash if we read too far
+        let index: Int
+        
+        if (attempt > 0) {
+            index = attempt - 1
+        } else {
+            index = 0
+        }
+        
+        if index < defaultRejoinTimeIntervals.endIndex {
+            return defaultRejoinTimeIntervals[Int(attempt) - 1]
+        } else {
+            return maximiumDefaultRejoinTimeInterval
+        }
+    }
+    
     private func timeoutPushedMessages() {
         sync {
             if let pushedMessagesTimer = pushedMessagesTimer {
@@ -348,7 +407,7 @@ extension Channel {
             
             for message in messages {
                 inFlight[message.ref] = nil
-                message.callback(error: Error.timeout)
+                message.callback(error: Error.pushTimeout)
             }
             
             createPushedMessagesTimer()
@@ -370,9 +429,13 @@ extension Channel {
             
             guard let next = possibleNext else { return }
             
-            self.pushedMessagesTimer = Timer(fire: next.timeoutDate, interval: 0, repeats: false) { _ in
+            let timer = Timer(fire: next.timeoutDate, interval: 0, repeats: false) { _ in
                 self.timeoutPushedMessagesAsync()
             }
+            
+            RunLoop.current.add(timer, forMode: .default)
+            
+            self.pushedMessagesTimer = timer
         }
     }
 }

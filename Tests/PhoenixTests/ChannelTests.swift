@@ -153,7 +153,53 @@ class ChannelTests: XCTestCase {
         // Then a second time after the Socket publishes it's open message and the Channel tries to reconnect
     }
     
-    func testJoinRetriesWithBackoffIfTimeout() throws {
+//    func testJoinRetriesWithBackoffIfTimeout() throws {
+//        let openEx = expectation(description: "Socket should have opened")
+//
+//        let sub = socket.forever {
+//            if case .open = $0 { openEx.fulfill() }
+//        }
+//        defer { sub.cancel() }
+//
+//        socket.connect()
+//
+//        wait(for: [openEx], timeout: 0.3)
+//
+//        var counter = 0
+//
+//        let channel = Channel(
+//            topic: "room:timeout",
+//            joinPayloadBlock: {
+//                counter += 1
+//
+//                if counter < 9 {
+//                    return ["timeout": 2000]
+//                } else {
+//                    return [:]
+//                }
+//            },
+//            socket: socket)
+//
+//        let joinEx = expectation(description: "Should have joined")
+//
+//        let sub2 = channel.forever {
+//            if case .join = $0 {
+//                joinEx.fulfill()
+//            }
+//        }
+//        defer { sub2.cancel() }
+//
+//        channel.join(timeout: 100)
+//
+//        waitForExpectations(timeout: 2)
+//
+//        XCTAssert(channel.isJoined)
+//        XCTAssertEqual(counter, 9)
+//    }
+    
+    func testSetsStateToErroredAfterJoinTimeout() throws {
+        defer { socket.disconnect() }
+        
         let openEx = expectation(description: "Socket should have opened")
         
         let sub = socket.forever {
@@ -163,24 +209,13 @@ class ChannelTests: XCTestCase {
         
         socket.connect()
         
-        wait(for: [openEx], timeout: 0.3)
+        wait(for: [openEx], timeout: 0.5)
         
-        var counter = 0
+        // Very large timeout for the server to wait before erroring
+        let channel = Channel(topic: "room:timeout", joinPayload: ["timeout": 15_000, "join": true], socket: socket)
         
-        let channel = Channel(
-            topic: "room:timeout",
-            joinPayloadBlock: {
-                counter += 1
-                
-                if counter < 9 {
-                    return ["timeout": 2000]
-                } else {
-                    return [:]
-                }
-            },
-            socket: socket)
-        
-        let joinEx = expectation(description: "Should have joined")
+        let joinEx = expectation(description: "Channel should not have joined")
+        joinEx.isInverted = true
         
         let sub2 = channel.forever {
             if case .join = $0 {
@@ -189,12 +224,12 @@ class ChannelTests: XCTestCase {
         }
         defer { sub2.cancel() }
         
-        channel.join(timeout: 100)
+        // Very short timeout for the joinPush
+        channel.join(timeout: 2)
         
-        waitForExpectations(timeout: 2)
+        wait(for: [joinEx], timeout: 4)
         
-        XCTAssert(channel.isJoined)
-        XCTAssertEqual(counter, 9)
+        XCTAssertEqual(channel.connectionState, "errored")
     }
     
     // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4

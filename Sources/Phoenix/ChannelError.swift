@@ -4,6 +4,7 @@ extension Channel {
         case socketIsClosed
         case lostSocket
         case noLongerJoining
-        case timeout
+        case pushTimeout
+        case joinTimeout
     }
 }
