@@ -212,6 +212,12 @@ extension Channel {
         }
     }
     
+    private func writeJoinPushAsync() {
+        DispatchQueue.global().async {
+            self.writeJoinPush()
+        }
+    }
+    
     public func leave(timeout: TimeInterval) {
         self.customTimeout = timeout
         leave()
@@ -230,7 +236,7 @@ extension Channel {
                 DispatchQueue.global().async {
                     self.send(message)
                 }
-            default:
+            case .leaving, .errored, .closed:
                 Swift.print("Can only leave if we are joining or joined, currently \(state)")
                 return
             }
@@ -401,15 +407,38 @@ extension Channel: DelegatingSubscriberDelegate {
 
 extension Channel {
     private func handleSocketOpen() {
-        guard case .joining = state else { return }
-        
-        DispatchQueue.global().async {
-            self.writeJoinPush()
+        sync {
+            switch state {
+            case .joining:
+                writeJoinPushAsync()
+            case .errored:
+                let ref = refGenerator.advance()
+                self.state = .joining(ref)
+                writeJoinPushAsync()
+            case .closed:
+                break // NOOP
+            case .joined, .leaving:
+                preconditionFailure("Really shouldn't get an open if we are \(state) and didn't get a close")
+            }
         }
     }
     
     private func handleSocketClose() {
-        errored(Error.isClosed)
+        sync {
+            switch state {
+            case .joined, .joining, .leaving:
+                errored(Error.socketIsClosed)
+            case .errored(let error):
+                if let error = error as? Channel.Error,
+                    case .socketIsClosed = error {
+                    // No need to error again if this is the reason we are already errored – although this shouldn't happen
+                    return
+                }
+                errored(Error.socketIsClosed)
+            case .closed:
+                break // NOOP
+            }
+        }
     }
     
     private func handle(_ input: IncomingMessage) {

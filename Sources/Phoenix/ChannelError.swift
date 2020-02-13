@@ -1,7 +1,7 @@
 extension Channel {
     public enum Error: Swift.Error {
         case invalidJoinReply(Channel.Reply)
-        case isClosed
+        case socketIsClosed
         case lostSocket
         case noLongerJoining
         case timeout
