@@ -17,6 +17,8 @@ final class TestHelper {
     }
 }
 
+let testHelper = TestHelper()
+
 extension XCTest {
     func expectation(_ description: String, file: StaticString = #file, line: UInt = #line) -> Expectation {
         return Expectation(description, file: file, line: line)
@@ -43,8 +45,6 @@ extension XCTest {
         wait(for: [expectation], timeout: timeout, file: file, line: line)
     }
 }
-
-let testHelper = TestHelper()
 
 enum ExpectationError: Error {
     case timeout(Expectation)
