@@ -35,8 +35,8 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketInitEstablishesConnection() throws {
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        let closeMessageEx = expectation(description: "Should have received a close message")
+        var openMesssageEx = expectation("Should have received an open message")
+        var closeMessageEx = expectation("Should have received a close message")
         
         let socket = Socket(url: testHelper.defaultURL)
         
@@ -54,11 +54,11 @@ class SocketTests: XCTestCase {
         
         socket.connect()
         
-        wait(for: [openMesssageEx], timeout: 0.5)
+        try wait(for: [openMesssageEx], timeout: 0.5)
         
         socket.disconnect()
         
-        wait(for: [closeMessageEx], timeout: 0.5)
+        try wait(for: [closeMessageEx], timeout: 0.5)
     }
     
     func testSocketDisconnectIsNoOp() throws {
