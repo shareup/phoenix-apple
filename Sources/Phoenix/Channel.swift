@@ -363,7 +363,7 @@ extension Channel {
                 Swift.print("Timer!")
                 self.timeoutJoinPush()
             }
-//            timer.tolerance = interval * 0.1
+            timer.tolerance = interval * 0.1
             
             Swift.print("now      \(Date())")
             Swift.print("fire at: \(timer.fireDate) – isValid: \(timer.isValid)")

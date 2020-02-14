@@ -8,7 +8,7 @@ defmodule ExampleWeb.RoomChannel do
   def join("room:timeout", %{"timeout" => amount} = params, socket) do
     Process.sleep(amount)
 
-    if %{join: true} = params do
+    if %{"join" => true} = params do
       do_join(params, socket)
     else
       {:error, %{reason: "hard coded timeout"}}
