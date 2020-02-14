@@ -35,11 +35,11 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketInitEstablishesConnection() throws {
-        var openMesssageEx = expectation("Should have received an open message")
-        var closeMessageEx = expectation("Should have received a close message")
-        
+        let openMesssageEx = expectation("Should have received an open message")
+        let closeMessageEx = expectation("Should have received a close message")
+
         let socket = Socket(url: testHelper.defaultURL)
-        
+
         let sub = socket.forever { message in
             switch message {
             case .open:
@@ -51,14 +51,14 @@ class SocketTests: XCTestCase {
             }
         }
         defer { sub.cancel() }
-        
+
         socket.connect()
         
-        try wait(for: [openMesssageEx], timeout: 0.5)
-        
+        wait(for: [openMesssageEx], timeout: 0.5)
+
         socket.disconnect()
-        
-        try wait(for: [closeMessageEx], timeout: 0.5)
+
+        wait(for: [closeMessageEx], timeout: 0.5)
     }
     
     func testSocketDisconnectIsNoOp() throws {
@@ -699,7 +699,7 @@ class SocketTests: XCTestCase {
             switch result {
             case .join:
                 joinedEx.fulfill()
-            case .error(let error):
+            case .error:
                 erroredEx.fulfill()
             default:
                 break
@@ -729,7 +729,7 @@ class SocketTests: XCTestCase {
             switch result {
             case .join:
                 joinedEx.fulfill()
-            case .error(let error):
+            case .error:
                 erroredEx.fulfill()
             default:
                 break
@@ -782,7 +782,7 @@ class SocketTests: XCTestCase {
         
         let sub2 = channel.forever { result in
             switch result {
-            case .error(let error):
+            case .error:
                 erroredEx.fulfill()
             default:
                 break
