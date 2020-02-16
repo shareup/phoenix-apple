@@ -36,12 +36,12 @@ public final class Channel: Synchronized {
     private var joinTimer: JoinTimer = .off
     
     // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
-    let defaultRejoinTimeIntervals: [Int: DispatchTimeInterval] = [
+    let defaultRejoinTimeouts: [Int: DispatchTimeInterval] = [
         1: .seconds(1),
         2: .seconds(2),
         3: .seconds(5)
     ]
-    let maximiumDefaultRejoinTimeInterval: DispatchTimeInterval = .seconds(10)
+    let maximiumDefaultRejoinTimeout: DispatchTimeInterval = .seconds(10)
     
     public let topic: String
     
@@ -176,6 +176,8 @@ extension Channel {
         sync {
             guard shouldRejoin else { return }
             
+            print("$$ rejoin!")
+            
             switch state {
             case .joining, .joined:
                 return
@@ -202,7 +204,7 @@ extension Channel {
                         Swift.print("There was a problem writing to the socket: \(error)")
                         // TODO: create the rejoin timer now?
                     } else {
-                        self.createJoinPushTimer()
+                        self.createJoinTimer()
                     }
                 }
             default:
@@ -346,37 +348,56 @@ extension Channel {
 extension Channel {
     func timeoutJoinPush() {
         errored(Error.joinTimeout)
+        createRejoinTimer()
     }
     
-    private func createJoinPushTimer() {
+    private func createJoinTimer() {
         sync {
-            let interval: DispatchTimeInterval
             let attempt: Int
             
             if case .rejoin(_, let newAttempt) = joinTimer {
                 attempt = newAttempt
-                interval = rejoinAfter(attempt: attempt)
             } else {
-                interval = timeout
                 attempt = 1
             }
             
             self.joinTimer = .off
             
-            let timer = Timer(interval) { [weak self] in
-                Swift.print("Timer!")
+            let timer = Timer(timeout) { [weak self] in
                 self?.timeoutJoinPush()
             }
+            
+            Swift.print("$$ creating join timer", timeout, attempt)
             
             self.joinTimer = .joining(timer: timer, attempt: attempt)
         }
     }
     
+    private func createRejoinTimer() {
+        sync {
+            guard case .joining(_, let attempt) = joinTimer else {
+                // NOTE: does this make sense?
+                createJoinTimer()
+                return
+            }
+            
+            self.joinTimer = .off
+            
+            let interval = rejoinAfter(attempt: attempt)
+            
+            let timer = Timer(interval) { [weak self] in
+                self?.rejoin()
+            }
+            
+            Swift.print("$$ creating rejoin timer", interval, attempt)
+            
+            self.joinTimer = .rejoin(timer: timer, attempt: attempt + 1)
+        }
+    }
+    
     // TODO: make overridable with a block
     private func rejoinAfter(attempt: Int) -> DispatchTimeInterval {
-        let index = attempt > 0 ? attempt - 1 : 0
-        
-        return defaultRejoinTimeIntervals[index, default: maximiumDefaultRejoinTimeInterval]
+        return defaultRejoinTimeouts[attempt, default: maximiumDefaultRejoinTimeout]
     }
     
     private func timeoutPushedMessages() {
@@ -537,12 +558,13 @@ extension Channel {
                 guard reply.ref == joinRef,
                     reply.joinRef == joinRef,
                     reply.isOk else {
-                    self.errored(Channel.Error.invalidJoinReply(reply))
+//                    self.errored(Channel.Error.invalidJoinReply(reply))
                     break
                 }
                 
                 self.state = .joined(joinRef)
                 subject.send(.join)
+                self.joinTimer = .off
                 flushAsync()
                 
             case .joined(let joinRef):
@@ -551,7 +573,11 @@ extension Channel {
                     return
                 }
                 
-                pushed.callback(reply: reply)
+                createPushedMessagesTimer()
+                
+                DispatchQueue.global().async {
+                    pushed.callback(reply: reply)
+                }
                 
             case .leaving(let joinRef, let leavingRef):
                 guard reply.ref == leavingRef,
