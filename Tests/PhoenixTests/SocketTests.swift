@@ -35,8 +35,8 @@ class SocketTests: XCTestCase {
     }
     
     func testSocketInitEstablishesConnection() throws {
-        let openMesssageEx = expectation("Should have received an open message")
-        let closeMessageEx = expectation("Should have received a close message")
+        let openMesssageEx = expectation(description: "Should have received an open message")
+        let closeMessageEx = expectation(description: "Should have received a close message")
 
         let socket = Socket(url: testHelper.defaultURL)
 

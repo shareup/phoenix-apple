@@ -131,7 +131,7 @@ class ChannelTests: XCTestCase {
         
         let channel = Channel(topic: "room:lobby", joinPayloadBlock: block, socket: socket)
         
-        let joinEx = expectation("Should have joined")
+        let joinEx = expectation(description: "Should have joined")
         
         let sub = channel.forever {
             if case .join = $0 { joinEx.fulfill() }
@@ -145,7 +145,7 @@ class ChannelTests: XCTestCase {
             socket.connect()
         }
         
-        wait(for: joinEx, timeout: 2)
+        wait(for: [joinEx], timeout: 2)
         
         XCTAssert(channel.isJoined)
         XCTAssertEqual(counter, 2)
@@ -200,7 +200,7 @@ class ChannelTests: XCTestCase {
     func testSetsStateToErroredAfterJoinTimeout() throws {
         defer { socket.disconnect() }
         
-        let openEx = expectation("Socket should have opened")
+        let openEx = expectation(description: "Socket should have opened")
         
         let sub = socket.forever {
             if case .open = $0 { openEx.fulfill() }
@@ -209,25 +209,24 @@ class ChannelTests: XCTestCase {
         
         socket.connect()
         
-        wait(for: openEx, timeout: 0.5)
+        wait(for: [openEx], timeout: 0.5)
         
         // Very large timeout for the server to wait before erroring
         let channel = Channel(topic: "room:timeout", joinPayload: ["timeout": 15_000, "join": true], socket: socket)
         
-        let joinEx = expectation("Channel should not have joined")
-        joinEx.isInverted = true
+        let erroredEx = expectation(description: "Channel should not have joined")
         
         let sub2 = channel.forever {
-            if case .join = $0 {
-                joinEx.fulfill()
+            if case .error = $0 {
+                erroredEx.fulfill()
             }
         }
         defer { sub2.cancel() }
         
         // Very short timeout for the joinPush
-        channel.join(timeout: 1)
+        channel.join(timeout: .seconds(1))
         
-        wait(for: joinEx, timeout: 4)
+        wait(for: [erroredEx], timeout: 2)
         
         XCTAssertEqual(channel.connectionState, "errored")
     }
