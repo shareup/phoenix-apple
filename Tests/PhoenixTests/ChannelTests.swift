@@ -236,7 +236,7 @@ class ChannelTests: XCTestCase {
     
     // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4
     
-    func skip_testJoinAndLeaveEvents() throws {
+    func testJoinAndLeaveEvents() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = Socket(url: testHelper.defaultURL)
@@ -273,10 +273,10 @@ class ChannelTests: XCTestCase {
         
         channel.leave()
         
-        waitForExpectations(timeout: 0.25)
+        waitForExpectations(timeout: 1)
     }
     
-    func skip_testPushCallback() throws {
+    func testPushCallback() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = Socket(url: testHelper.defaultURL)
@@ -340,7 +340,7 @@ class ChannelTests: XCTestCase {
         wait(for: [repliedOKEx, repliedErrorEx], timeout: 0.25)
     }
     
-    func skip_testReceiveMessages() throws {
+    func testReceiveMessages() throws {
         let openMesssageEx = expectation(description: "Should have received an open message")
         
         let socket = Socket(url: testHelper.defaultURL)
@@ -393,7 +393,7 @@ class ChannelTests: XCTestCase {
         wait(for: [messageRepeatedEx], timeout: 0.25)
     }
     
-    func skip_testMultipleSocketsCollaborating() throws {
+    func testMultipleSocketsCollaborating() throws {
         let openMesssageEx1 = expectation(description: "Should have received an open message for socket 1")
         let openMesssageEx2 = expectation(description: "Should have received an open message for socket 2")
         
@@ -461,7 +461,7 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
     
-    func skip_testRejoinsAfterDisconnect() throws {
+    func testRejoinsAfterDisconnect() throws {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
