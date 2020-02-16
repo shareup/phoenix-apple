@@ -19,9 +19,9 @@ public final class Channel: Synchronized {
     // TODO: just know it's going to be a certain type that is Cancellable so we can cancel it
     private var socketSubscriber: AnySubscriber<SubscriberInput, SubscriberFailure>?
     
-    private var customTimeout: TimeInterval? = nil
+    private var customTimeout: DispatchTimeInterval? = nil
     
-    public var timeout: TimeInterval {
+    public var timeout: DispatchTimeInterval {
         if let customTimeout = customTimeout {
             return customTimeout
         } else if let socket = socket {
@@ -33,11 +33,15 @@ public final class Channel: Synchronized {
     
     private var pushedMessagesTimer: Timer?
     
-    private var joinLeaveTimer: JoinTimer = .off
+    private var joinTimer: JoinTimer = .off
     
     // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
-    let defaultRejoinTimeIntervals = [1, 2, 5].map { TimeInterval($0) }
-    let maximiumDefaultRejoinTimeInterval = TimeInterval(10)
+    let defaultRejoinTimeIntervals: [Int: DispatchTimeInterval] = [
+        1: .seconds(1),
+        2: .seconds(2),
+        3: .seconds(5)
+    ]
+    let maximiumDefaultRejoinTimeInterval: DispatchTimeInterval = .seconds(10)
     
     public let topic: String
     
@@ -158,7 +162,7 @@ public final class Channel: Synchronized {
 // MARK: join
 
 extension Channel {
-    public func join(timeout customTimeout: TimeInterval) {
+    public func join(timeout customTimeout: DispatchTimeInterval) {
         self.customTimeout = customTimeout
         join()
     }
@@ -217,7 +221,7 @@ extension Channel {
 // MARK: leave
 
 extension Channel {
-    public func leave(timeout: TimeInterval) {
+    public func leave(timeout: DispatchTimeInterval) {
         self.customTimeout = timeout
         leave()
     }
@@ -346,10 +350,10 @@ extension Channel {
     
     private func createJoinPushTimer() {
         sync {
-            let interval: TimeInterval
+            let interval: DispatchTimeInterval
             let attempt: Int
             
-            if case .rejoin(_, let newAttempt) = joinLeaveTimer {
+            if case .rejoin(_, let newAttempt) = joinTimer {
                 attempt = newAttempt
                 interval = rejoinAfter(attempt: attempt)
             } else {
@@ -357,49 +361,32 @@ extension Channel {
                 attempt = 1
             }
             
-            joinLeaveTimer.invalidate()
+            self.joinTimer = .off
             
-            let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+            let timer = Timer(interval) { [weak self] in
                 Swift.print("Timer!")
-                self.timeoutJoinPush()
+                self?.timeoutJoinPush()
             }
-            timer.tolerance = interval * 0.1
             
-            Swift.print("now      \(Date())")
-            Swift.print("fire at: \(timer.fireDate) – isValid: \(timer.isValid)")
-            
-            self.joinLeaveTimer = .joining(timer: timer, attempt: attempt)
+            self.joinTimer = .joining(timer: timer, attempt: attempt)
         }
     }
     
     // TODO: make overridable with a block
-    private func rejoinAfter(attempt: Int) -> TimeInterval {
-        // NOTE: subscript will cause a crash if we read too far
-        let index: Int
+    private func rejoinAfter(attempt: Int) -> DispatchTimeInterval {
+        let index = attempt > 0 ? attempt - 1 : 0
         
-        if (attempt > 0) {
-            index = attempt - 1
-        } else {
-            index = 0
-        }
-        
-        if index < defaultRejoinTimeIntervals.endIndex {
-            return defaultRejoinTimeIntervals[Int(attempt) - 1]
-        } else {
-            return maximiumDefaultRejoinTimeInterval
-        }
+        return defaultRejoinTimeIntervals[index, default: maximiumDefaultRejoinTimeInterval]
     }
     
     private func timeoutPushedMessages() {
         sync {
-            if let pushedMessagesTimer = pushedMessagesTimer {
-                self.pushedMessagesTimer = nil
-                pushedMessagesTimer.invalidate()
-            }
+            // invalidate a previous timer if it's there
+            self.pushedMessagesTimer = nil
             
             guard !inFlight.isEmpty else { return }
             
-            let now = Date()
+            let now = DispatchTime.now()
         
             let messages = inFlight.values.sorted().filter {
                 $0.timeoutDate < now
@@ -429,13 +416,9 @@ extension Channel {
             
             guard let next = possibleNext else { return }
             
-            let timer = Timer(fire: next.timeoutDate, interval: 0, repeats: false) { _ in
-                self.timeoutPushedMessagesAsync()
+            self.pushedMessagesTimer =  Timer(fireAt: next.timeoutDate) { [weak self] in
+                self?.timeoutPushedMessagesAsync()
             }
-            
-            RunLoop.current.add(timer, forMode: .default)
-            
-            self.pushedMessagesTimer = timer
         }
     }
 }

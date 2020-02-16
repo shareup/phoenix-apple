@@ -8,7 +8,7 @@ extension Channel {
         var ref: Ref { message.ref }
         var joinRef: Ref? { message.joinRef }
         
-        var timeoutDate: Date {
+        var timeoutDate: DispatchTime {
             message.sentAt.advanced(by: push.timeout)
         }
         

@@ -26,15 +26,15 @@ class ChannelTests: XCTestCase {
     }
     
     func testChannelInitOverrides() throws {
-        let socket = Socket(url: testHelper.defaultURL, timeout: 1234)
+        let socket = Socket(url: testHelper.defaultURL, timeout: .milliseconds(1234))
         
         let channel = Channel(topic: "rooms:lobby", joinPayload: ["one": "two"], socket: socket)
         XCTAssertEqual(channel.joinPayload as? [String: String], ["one": "two"])
-        XCTAssertEqual(channel.timeout, 1234)
+        XCTAssertEqual(channel.timeout, .milliseconds(1234))
     }
     
     func testJoinPushPayload() throws {
-        let socket = Socket(url: testHelper.defaultURL, timeout: 1234)
+        let socket = Socket(url: testHelper.defaultURL, timeout: .milliseconds(1234))
         
         let channel = Channel(topic: "rooms:lobby", joinPayload: ["one": "two"], socket: socket)
         
@@ -42,7 +42,7 @@ class ChannelTests: XCTestCase {
         
         XCTAssertEqual(push.payload as? [String: String], ["one": "two"])
         XCTAssertEqual(push.event, .join)
-        XCTAssertEqual(push.timeout, 1234)
+        XCTAssertEqual(push.timeout, .milliseconds(1234))
     }
     
     func testJoinPushBlockPayload() throws {
@@ -119,8 +119,8 @@ class ChannelTests: XCTestCase {
     
     func testJoinCanHaveTimeout() throws {
         let channel = Channel(topic: "topic", socket: socket)
-        channel.join(timeout: 1.234)
-        XCTAssertEqual(1.234, channel.timeout)
+        channel.join(timeout: .milliseconds(1234))
+        XCTAssertEqual(channel.timeout, .milliseconds(1234))
     }
     
     // MARK: timeout behavior
@@ -138,7 +138,7 @@ class ChannelTests: XCTestCase {
         }
         defer { sub.cancel() }
         
-        channel.join(timeout: 1)
+        channel.join(timeout: .seconds(1))
         
         let time = DispatchTime.now().advanced(by: .milliseconds(200))
         DispatchQueue.global().asyncAfter(deadline: time) { [socket] in

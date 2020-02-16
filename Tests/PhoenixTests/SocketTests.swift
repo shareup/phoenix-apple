@@ -7,10 +7,10 @@ class SocketTests: XCTestCase {
     
     func testSocketInit() throws {
         // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L31
-        XCTAssertEqual(Socket.defaultTimeout, 10)
+        XCTAssertEqual(Socket.defaultTimeout, .seconds(10))
         
         // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L33
-        XCTAssertEqual(Socket.defaultHeartbeatInterval, 30)
+        XCTAssertEqual(Socket.defaultHeartbeatInterval, .seconds(30))
         
         let url: URL = URL(string: "ws://0.0.0.0:4000/socket")!
         let socket = Socket(url: url)
@@ -26,12 +26,12 @@ class SocketTests: XCTestCase {
     func testSocketInitOverrides() throws {
         let socket = Socket(
             url: testHelper.defaultURL,
-            timeout: 20,
-            heartbeatInterval: 40
+            timeout: .seconds(20),
+            heartbeatInterval: .seconds(40)
         )
         
-        XCTAssertEqual(socket.timeout, 20)
-        XCTAssertEqual(socket.heartbeatInterval, 40)
+        XCTAssertEqual(socket.timeout, .seconds(20))
+        XCTAssertEqual(socket.heartbeatInterval, .seconds(40))
     }
     
     func testSocketInitEstablishesConnection() throws {
@@ -366,7 +366,7 @@ class SocketTests: XCTestCase {
     }
     
     func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
-        let socket = Socket(url: testHelper.defaultURL, heartbeatInterval: 0.001)
+        let socket = Socket(url: testHelper.defaultURL, heartbeatInterval: .milliseconds(1))
         defer { socket.disconnect() }
         
         let closeEx = expectation(description: "Should have closed")

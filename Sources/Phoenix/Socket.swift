@@ -33,15 +33,15 @@ public final class Socket: Synchronized {
     
     private let refGenerator: Ref.Generator
     public let url: URL
-    public let timeout: TimeInterval
-    public let heartbeatInterval: TimeInterval
+    public let timeout: DispatchTimeInterval
+    public let heartbeatInterval: DispatchTimeInterval
     
     private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
     private var pendingHeartbeatRef: Ref? = nil
-    private var heartbeatTimerCancellable: Cancellable? = nil
+    private var heartbeatTimer: Timer? = nil
     
-    public static let defaultTimeout: TimeInterval = 10
-    public static let defaultHeartbeatInterval: TimeInterval = 30
+    public static let defaultTimeout: DispatchTimeInterval = .seconds(10)
+    public static let defaultHeartbeatInterval: DispatchTimeInterval = .seconds(30)
     static let defaultRefGenerator = Ref.Generator()
     
     public var currentRef: Ref { refGenerator.current }
@@ -80,8 +80,8 @@ public final class Socket: Synchronized {
     } }
     
     public init(url: URL,
-                timeout: TimeInterval = Socket.defaultTimeout,
-                heartbeatInterval: TimeInterval = Socket.defaultHeartbeatInterval) {
+                timeout: DispatchTimeInterval = Socket.defaultTimeout,
+                heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = Ref.Generator()
@@ -91,8 +91,8 @@ public final class Socket: Synchronized {
     }
     
     init(url: URL,
-         timeout: TimeInterval = Socket.defaultTimeout,
-         heartbeatInterval: TimeInterval = Socket.defaultHeartbeatInterval,
+         timeout: DispatchTimeInterval = Socket.defaultTimeout,
+         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
          refGenerator: Ref.Generator) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
@@ -386,19 +386,13 @@ extension Socket {
     }
     
     func cancelHeartbeatTimer() {
-        heartbeatTimerCancellable?.cancel()
-        self.heartbeatTimerCancellable = nil
+        self.heartbeatTimer = nil
     }
     
     func createHeartbeatTimer() {
-        let interval = self.heartbeatInterval
-        let tolerance = interval * 0.1 // let's be nice
-        
-        let sub = Timer.publish(every: interval, tolerance: tolerance, on: .main, in: .common)
-                    .autoconnect()
-                    .forever { [weak self] _ in self?.sendHeartbeat() }
-        
-        self.heartbeatTimerCancellable = sub
+        self.heartbeatTimer = Timer(self.heartbeatInterval, repeat: true) { [weak self] in
+            self?.sendHeartbeat()
+        }
     }
 }
 

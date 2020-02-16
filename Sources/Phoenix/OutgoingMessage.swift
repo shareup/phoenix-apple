@@ -6,7 +6,7 @@ struct OutgoingMessage {
     let topic: String
     let event: PhxEvent
     let payload: Payload
-    let sentAt: Date = Date()
+    let sentAt: DispatchTime = DispatchTime.now()
     
     enum Error: Swift.Error {
         case missingChannelJoinRef
