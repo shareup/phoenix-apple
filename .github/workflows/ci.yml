@@ -16,15 +16,15 @@ jobs:
         run: mix local.hex --force
       - name: Install rebar3
         run: mix local.rebar --force
-      - name: Get dependencies for example phoenix app
+      - name: Get dependencies for Phoenix app
         run: mix deps.get
-        working-directory: ./Tests/PhoenixTests/example
+        working-directory: ./Tests/PhoenixTests/server
       - name: Build the example app
         run: mix compile
-        working-directory: ./Tests/PhoenixTests/example
+        working-directory: ./Tests/PhoenixTests/server
       - name: Test
         run: |
-          cd Tests/PhoenixTests/example
+          cd Tests/PhoenixTests/server
           ( mix phx.server & )
           cd -
           sleep 7
