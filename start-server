@@ -1,0 +1,5 @@
+#! /usr/bin/env bash
+
+pushd Tests/PhoenixTests/server
+./start
+popd
