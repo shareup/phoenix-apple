@@ -90,7 +90,7 @@ class ChannelTests: XCTestCase {
 
         let channel = Channel(topic: "room:lobby", joinPayload: params, socket: socket)
         
-        let joinEx = expectation(description: "Shoult have joined")
+        let joinEx = expectation(description: "Should have joined")
         
         let sub2 = channel.forever {
             if case .join = $0 { joinEx.fulfill() }
