@@ -163,7 +163,7 @@ class ChannelTests: XCTestCase {
 
         socket.connect()
 
-        wait(for: [openEx], timeout: 0.3)
+        wait(for: [openEx], timeout: 1)
 
         var counter = 0
 
@@ -212,10 +212,10 @@ class ChannelTests: XCTestCase {
         
         socket.connect()
         
-        wait(for: [openEx], timeout: 0.5)
+        wait(for: [openEx], timeout: 1)
         
         // Very large timeout for the server to wait before erroring
-        let channel = Channel(topic: "room:timeout", joinPayload: ["timeout": 15_000, "join": true], socket: socket)
+        let channel = Channel(topic: "room:timeout", joinPayload: ["timeout": 3_000, "join": true], socket: socket)
         
         let erroredEx = expectation(description: "Channel should not have joined")
         
@@ -227,9 +227,9 @@ class ChannelTests: XCTestCase {
         defer { sub2.cancel() }
         
         // Very short timeout for the joinPush
-        channel.join(timeout: .seconds(1))
+        channel.join(timeout: .milliseconds(100))
         
-        wait(for: [erroredEx], timeout: 2)
+        wait(for: [erroredEx], timeout: 1)
         
         XCTAssertEqual(channel.connectionState, "errored")
     }
