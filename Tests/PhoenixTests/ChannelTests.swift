@@ -174,10 +174,18 @@ class ChannelTests: XCTestCase {
                 if (counter >= 4) {
                     return ["join": true]
                 } else {
-                    return ["timeout": 400, "join": true]
+                    return ["timeout": 20, "join": true]
                 }
             },
-            socket: socket)
+            socket: socket
+        )
+        channel.rejoinTimeout = { attempt in
+            switch attempt {
+            case 0: XCTFail("Rejoin timeouts start at 1"); return .seconds(1)
+            case 1, 2, 3, 4: return .milliseconds(10 * attempt)
+            default: XCTFail("Too many attempts: \(attempt)"); return .seconds(1)
+            }
+        }
 
         let joinEx = expectation(description: "Should have joined")
 
@@ -188,9 +196,9 @@ class ChannelTests: XCTestCase {
         }
         defer { sub2.cancel() }
 
-        channel.join(timeout: .milliseconds(300))
+        channel.join(timeout: .milliseconds(10))
 
-        waitForExpectations(timeout: 15)
+        waitForExpectations(timeout: 2)
 
         XCTAssert(channel.isJoined)
         XCTAssertEqual(counter, 4)
