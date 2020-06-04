@@ -180,7 +180,7 @@ extension Channel {
         sync {
             guard shouldRejoin else { return }
             
-            print("$$ rejoin!")
+            Swift.print("$$ rejoin!")
             
             switch state {
             case .joining, .joined:
@@ -587,7 +587,7 @@ extension Channel {
                 self.state = .closed
                 subject.send(.leave)
                 // TODO: send completion instead if we leave
-//                subject.send(completion: Never)
+                // subject.send(completion: Never)
                 
             default:
                 // sorry, not processing replies in other states
