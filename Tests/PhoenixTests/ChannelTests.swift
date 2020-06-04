@@ -87,7 +87,7 @@ class ChannelTests: XCTestCase {
         socket.connect()
         
         wait(for: [openEx], timeout: 1)
-        
+
         let channel = Channel(topic: "room:lobby", joinPayload: params, socket: socket)
         
         let joinEx = expectation(description: "Shoult have joined")
@@ -100,7 +100,7 @@ class ChannelTests: XCTestCase {
         channel.join()
         
         wait(for: [joinEx], timeout: 1)
-        
+
         var replyParams: [String: String]? = nil
         
         let replyEx = expectation(description: "Should have received reply")
@@ -113,7 +113,7 @@ class ChannelTests: XCTestCase {
         }
         
         wait(for: [replyEx], timeout: 1)
-        
+
         XCTAssertEqual(params, replyParams)
     }
     
@@ -146,7 +146,7 @@ class ChannelTests: XCTestCase {
         }
         
         wait(for: [joinEx], timeout: 2)
-        
+
         XCTAssert(channel.isJoined)
         XCTAssertEqual(counter, 2)
         // The joinPush is generated once and sent to the Socket which isn't open, so it's not written
