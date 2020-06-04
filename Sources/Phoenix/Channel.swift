@@ -5,6 +5,7 @@ import Synchronized
 
 public final class Channel: Synchronized {
     typealias JoinPayloadBlock = () -> Payload
+    typealias RejoinTimeout = (Int) -> DispatchTimeInterval
     
     private var subject = SimpleSubject<Output, Failure>()
     private var refGenerator = Ref.Generator.global
@@ -34,14 +35,17 @@ public final class Channel: Synchronized {
     private var pushedMessagesTimer: Timer?
     
     private var joinTimer: JoinTimer = .off
-    
-    // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
-    let defaultRejoinTimeouts: [Int: DispatchTimeInterval] = [
-        1: .seconds(1),
-        2: .seconds(2),
-        3: .seconds(5)
-    ]
-    let maximiumDefaultRejoinTimeout: DispatchTimeInterval = .seconds(10)
+
+    var rejoinTimeout: RejoinTimeout = { attempt in
+        // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
+        switch attempt {
+        case 0: assertionFailure("Rejoins are 1-indexed"); return .seconds(1)
+        case 1: return .seconds(1)
+        case 2: return .seconds(2)
+        case 3: return .seconds(5)
+        default: return .seconds(10)
+        }
+    }
     
     public let topic: String
     
@@ -383,7 +387,7 @@ extension Channel {
             
             self.joinTimer = .off
             
-            let interval = rejoinAfter(attempt: attempt)
+            let interval = rejoinTimeout(attempt)
             
             let timer = Timer(interval) { [weak self] in
                 self?.rejoin()
@@ -393,11 +397,6 @@ extension Channel {
             
             self.joinTimer = .rejoin(timer: timer, attempt: attempt + 1)
         }
-    }
-    
-    // TODO: make overridable with a block
-    private func rejoinAfter(attempt: Int) -> DispatchTimeInterval {
-        return defaultRejoinTimeouts[attempt, default: maximiumDefaultRejoinTimeout]
     }
     
     private func timeoutPushedMessages() {
