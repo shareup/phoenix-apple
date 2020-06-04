@@ -19,7 +19,7 @@ jobs:
       - name: Get dependencies for Phoenix app
         run: mix deps.get
         working-directory: ./Tests/PhoenixTests/server
-      - name: Build the example app
+      - name: Build the server app
         run: mix compile
         working-directory: ./Tests/PhoenixTests/server
       - name: Test

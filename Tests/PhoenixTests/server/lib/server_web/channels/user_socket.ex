@@ -1,4 +1,4 @@
-defmodule ExampleWeb.Socket do
+defmodule ServerWeb.Socket do
   require Logger
 
   # hack to be able to send custom commands to the socket without needing a channel
@@ -7,7 +7,7 @@ defmodule ExampleWeb.Socket do
     # only support text commands
     :text = Keyword.fetch!(opts, :opcode)
 
-    ExampleWeb.Endpoint.broadcast(id(socket), "disconnect", %{})
+    ServerWeb.Endpoint.broadcast(id(socket), "disconnect", %{})
 
     {:ok, {state, socket}}
   end
@@ -23,7 +23,7 @@ defmodule ExampleWeb.Socket do
 
   use Phoenix.Socket
 
-  channel "room:*", ExampleWeb.RoomChannel
+  channel("room:*", ServerWeb.RoomChannel)
 
   def connect(%{"user_id" => user_id}, socket, _connect_info) do
     id =

@@ -1,4 +1,4 @@
-# Example websocket server for testing the Phoenix swift package
+# Server websocket server for testing the Phoenix swift package
 
 To start the server:
 

@@ -1,9 +1,9 @@
-defmodule Example.MixProject do
+defmodule Server.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :example,
+      app: :server,
       version: "0.1.0",
       elixir: "~> 1.9",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -18,7 +18,7 @@ defmodule Example.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {Example.Application, []},
+      mod: {Server.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end

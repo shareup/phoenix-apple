@@ -1,4 +1,4 @@
-defmodule ExampleWeb.RoomChannel do
+defmodule ServerWeb.RoomChannel do
   use Phoenix.Channel
 
   def join("room:lobby", params, socket) do
