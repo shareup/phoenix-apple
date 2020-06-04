@@ -419,18 +419,7 @@ class SocketTests: XCTestCase {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
-        let openEx = expectation(description: "Should have gotten an open message")
-        
-        let sub = socket.forever {
-            if case .open = $0 { openEx.fulfill() }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [openEx], timeout: 0.3)
-        
-        sub.cancel()
+        assertOpen(socket)
         
         let closeEx = expectation(description: "Should have gotten a close message")
         
@@ -449,19 +438,8 @@ class SocketTests: XCTestCase {
     func testRemoteExceptionPublishesError() throws {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
-        
-        let openEx = expectation(description: "Should have gotten an open message")
-        
-        let sub = socket.forever {
-            if case .open = $0 { openEx.fulfill() }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [openEx], timeout: 0.3)
-        
-        sub.cancel()
+
+        assertOpen(socket)
         
         let errEx = expectation(description: "Should have gotten an error message")
         
@@ -476,7 +454,7 @@ class SocketTests: XCTestCase {
             }
         }
         
-        wait(for: [errEx], timeout: 0.3)
+        wait(for: [errEx], timeout: 1)
     }
     
     // MARK: reconnect
@@ -624,23 +602,7 @@ class SocketTests: XCTestCase {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
 
-        let openMesssageEx = expectation(description: "Should have received an open message for the initial connection")
-        
-        let sub = socket.forever { message in
-            switch message {
-            case .open:
-                openMesssageEx.fulfill()
-            default:
-                break
-            }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-        
-        sub.cancel()
+        assertOpen(socket)
         
         let closeMessageEx = expectation(description: "Should have received a close message after calling disconnect")
         
@@ -858,5 +820,20 @@ class SocketTests: XCTestCase {
         socket.connect()
         
         waitForExpectations(timeout: 1)
+    }
+}
+
+private extension SocketTests {
+    func assertOpen(_ socket: Socket) {
+        let openEx = expectation(description: "Should have gotten an open message");
+
+        let sub = socket.forever {
+            if case .open = $0 { openEx.fulfill() }
+        }
+        defer { sub.cancel() }
+
+        socket.connect()
+
+        wait(for: [openEx], timeout: 1)
     }
 }
