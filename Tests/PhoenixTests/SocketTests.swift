@@ -707,61 +707,25 @@ class SocketTests: XCTestCase {
         
         waitForExpectations(timeout: 1)
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L676
     func testSocketCloseDoesNotErrorChannelsIfLeft() throws {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
         
-        let joinedEx = expectation(description: "Channel should have joined")
-        let leftEx = expectation(description: "Channel should have left")
-        
-        let sub = channel.forever { result in
-            switch result {
-            case .join:
-                joinedEx.fulfill()
-            case .leave:
-                leftEx.fulfill()
-            default:
-                break
-            }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [joinedEx], timeout: 1)
-        
-        channel.leave()
-        
-        wait(for: [leftEx], timeout: 2)
-        
-        sub.cancel()
+        assertJoinAndLeave(channel, socket)
         
         let erroredEx = expectation(description: "Channel not should have errored")
         erroredEx.isInverted = true
-        
-        let sub2 = channel.forever { result in
-            switch result {
-            case .error:
-                erroredEx.fulfill()
-            default:
-                break
-            }
-        }
+
+        let sub2 = channel.forever(receiveValue: onResult(.error, erroredEx.fulfill()))
         defer { sub2.cancel() }
         
         let reconnectedEx = expectation(description: "Socket should have tried to reconnect")
-        
-        let sub3 = socket.forever { message in
-            switch message {
-            case .open:
-                reconnectedEx.fulfill()
-            default:
-                break
-            }
-        }
+
+        let sub3 = socket.forever(receiveValue: onResult(.open, reconnectedEx.fulfill()))
         defer { sub3.cancel() }
         
         socket.send("disconnect")
@@ -835,5 +799,34 @@ private extension SocketTests {
         socket.connect()
 
         wait(for: [openEx], timeout: 1)
+    }
+
+    func assertJoinAndLeave(_ channel: Channel, _ socket: Socket) {
+        let joinedEx = expectation(description: "Channel should have joined")
+        let leftEx = expectation(description: "Channel should have left")
+
+        let sub = channel.forever { result in
+            switch result {
+            case .join:
+                joinedEx.fulfill()
+                channel.leave()
+            case .leave:
+                leftEx.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+
+        socket.connect()
+
+        wait(for: [joinedEx, leftEx], timeout: 1)
+    }
+
+    func onResult<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
+        return { v in
+            guard v.matches(value) else { return }
+            block()
+        }
     }
 }
