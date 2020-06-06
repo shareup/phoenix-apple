@@ -46,8 +46,8 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
             case .closed, .unopened:
                 let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
                 let task = session.webSocketTask(with: url)
-                task.resume()
                 task.receive(completionHandler: receiveFromWebSocket(_:))
+                task.resume()
             default:
                 return
             }
