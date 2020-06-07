@@ -25,7 +25,12 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     private let url: URL
     private var state: State = .unopened
     
-    private let delegateQueue = OperationQueue()
+    private lazy var delegateQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "WebSocket.delegateQueue"
+        queue.maxConcurrentOperationCount = 1
+        return queue
+    }()
     
     typealias Output = Result<WebSocket.Message, Swift.Error>
     typealias Failure = Swift.Error
