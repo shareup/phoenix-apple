@@ -116,7 +116,10 @@ class SocketTests: XCTestCase {
         var autoSub: Subscribers.Forever<Publishers.Autoconnect<Socket>>? = nil
         autoSub = socket.autoconnect().forever(receiveValue:
             expectAndThen([
-                .open: { XCTAssertEqual(socket.connectionState, "open"); autoSub?.cancel() }
+                .open: {
+                    XCTAssertEqual(socket.connectionState, "open")
+                    autoSub?.cancel()
+                }
             ])
         )
         defer { autoSub?.cancel() }
