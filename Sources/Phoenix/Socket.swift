@@ -148,10 +148,10 @@ extension Socket: ConnectablePublisher {
             
             switch state {
             case .closed:
-                subject.send(.connecting)
-                
                 let ws = WebSocket(url: url)
                 self.state = .connecting(ws)
+
+                subject.send(.connecting)
                 
                 self.webSocketSubscriber = internallySubscribe(ws)
                 cancelHeartbeatTimer()
