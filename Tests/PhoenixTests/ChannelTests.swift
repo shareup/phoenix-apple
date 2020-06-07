@@ -198,7 +198,7 @@ class ChannelTests: XCTestCase {
 
         channel.join(timeout: .milliseconds(10))
 
-        waitForExpectations(timeout: 2)
+        waitForExpectations(timeout: 4)
 
         XCTAssert(channel.isJoined)
         XCTAssertEqual(counter, 4)
