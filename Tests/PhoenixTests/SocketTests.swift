@@ -3,6 +3,7 @@ import XCTest
 import Combine
 
 class SocketTests: XCTestCase {
+
     // MARK: init, connect, and disconnect
     
     func testSocketInit() throws {
@@ -165,51 +166,44 @@ class SocketTests: XCTestCase {
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
-//
-//
-//        let openMessageEx = expectation(description: "Should have received an open message")
-//
-//        let sub = socket.autoconnect().forever { message in
-//            if case .open = message {
-//                openMessageEx.fulfill()
-//            }
-//        }
-//        defer { sub.cancel() }
-//
-//        wait(for: [openMessageEx], timeout: 0.5)
-//
-//        XCTAssertEqual(socket.connectionState, "open")
-//        XCTAssert(socket.isOpen)
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L336
     func testSocketIsClosing() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        
-        let openMessageEx = expectation(description: "Should have received an open message")
-        let closingMessageEx = expectation(description: "Should have received a closing message")
-        
-        let sub = socket.forever { message in
-            switch message {
-            case .open:
-                openMessageEx.fulfill()
-            case .closing:
-                closingMessageEx.fulfill()
-            default:
-                break
-            }
-        }
+
+        let sub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .open: { socket.disconnect() },
+                .closing: {
+                    XCTAssertEqual(socket.connectionState, "closing")
+                    XCTAssert(socket.isClosing)
+                    XCTAssertFalse(socket.isOpen)
+                }
+            ])
+        )
         defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [openMessageEx], timeout: 0.5)
-        
-        socket.disconnect()
-        
-        XCTAssertEqual(socket.connectionState, "closing")
-        XCTAssert(socket.isClosing)
-        
-        wait(for: [closingMessageEx], timeout: 0.1)
+
+        waitForExpectations(timeout: 2)
+    }
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L344
+    func testSocketIsClosed() throws {
+        let socket = Socket(url: testHelper.defaultURL)
+
+        let sub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .open: { socket.disconnect() },
+                .close: {
+                    XCTAssertEqual(socket.connectionState, "closed")
+                    XCTAssert(socket.isClosed)
+                    XCTAssertFalse(socket.isOpen)
+                }
+            ])
+        )
+        defer { sub.cancel() }
+
+        waitForExpectations(timeout: 2)
     }
     
     func testSocketIsConnectedEvenAfterSubscriptionIsCancelled() throws {
