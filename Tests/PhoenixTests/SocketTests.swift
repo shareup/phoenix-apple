@@ -6,10 +6,10 @@ class SocketTests: XCTestCase {
     // MARK: init, connect, and disconnect
     
     func testSocketInit() throws {
-        // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L31
+        // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L33
         XCTAssertEqual(Socket.defaultTimeout, .seconds(10))
-        
-        // https://github.com/phoenixframework/phoenix/blob/b93fa36f040e4d0444df03b6b8d17f4902f4a9d0/assets/test/socket_test.js#L33
+
+        // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L35
         XCTAssertEqual(Socket.defaultHeartbeatInterval, .seconds(30))
         
         let url: URL = URL(string: "ws://0.0.0.0:4000/socket")!
@@ -22,7 +22,8 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(socket.url.path, "/socket/websocket")
         XCTAssertEqual(socket.url.query, "vsn=2.0.0")
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L49
     func testSocketInitOverrides() throws {
         let socket = Socket(
             url: testHelper.defaultURL,
@@ -33,177 +34,152 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(socket.timeout, .seconds(20))
         XCTAssertEqual(socket.heartbeatInterval, .seconds(40))
     }
-    
-    func testSocketInitEstablishesConnection() throws {
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        let closeMessageEx = expectation(description: "Should have received a close message")
 
-        let socket = Socket(url: testHelper.defaultURL)
-
-        let sub = socket.forever { message in
-            switch message {
-            case .open:
-                openMesssageEx.fulfill()
-            case .close:
-                closeMessageEx.fulfill()
-            default:
-                break
-            }
-        }
-        defer { sub.cancel() }
-
-        socket.connect()
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-
-        socket.disconnect()
-
-        wait(for: [closeMessageEx], timeout: 0.5)
-    }
-    
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L297
     func testSocketDisconnectIsNoOp() throws {
         let socket = Socket(url: testHelper.defaultURL)
         socket.disconnect()
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L242
     func testSocketConnectIsNoOp() throws {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
-        
+
         socket.connect()
         socket.connect() // calling connect again doesn't blow up
     }
-    
+
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L153
     func testSocketConnectAndDisconnect() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
+
+        let sub = socket.forever(receiveValue:
+            expectAndThen([
+                .open: { socket.disconnect() },
+                .close: { }
+            ])
+        )
+        defer { sub.cancel() }
+
+        socket.connect()
+
+        waitForExpectations(timeout: 2)
+    }
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L161
+    func testSocketConnectDisconnectAndReconnect() throws {
+        let socket = Socket(url: testHelper.defaultURL)
         
         let closeMessageEx = expectation(description: "Should have received a close message")
         let openMesssageEx = expectation(description: "Should have received an open message")
         let reopenMessageEx = expectation(description: "Should have reopened and got an open message")
         
         var openExs = [reopenMessageEx, openMesssageEx]
-        
-        let sub = socket.forever { message in
-            switch message {
-            case .open:
-                openExs.popLast()?.fulfill()
-            case .close:
-                closeMessageEx.fulfill()
-            default:
-                break
-            }
-        }
+
+        let sub = socket.forever(receiveValue:
+            onResults([
+                .open: { openExs.popLast()?.fulfill(); if !openExs.isEmpty { socket.disconnect() } },
+                .close: { closeMessageEx.fulfill(); socket.connect() }
+            ])
+        )
         defer { sub.cancel() }
-        
+
         socket.connect()
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-        
-        socket.disconnect()
-        
-        wait(for: [closeMessageEx], timeout: 0.5)
-        
-        socket.connect()
-        
-        wait(for: [reopenMessageEx], timeout: 0.5)
+
+        waitForExpectations(timeout: 2)
     }
     
     func testSocketAutoconnectHasUpstream() throws {
         let conn = Socket(url: testHelper.defaultURL).autoconnect()
         defer { conn.upstream.disconnect() }
-        
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        
-        let sub = conn.forever { message in
-            if case .open = message {
-                openMesssageEx.fulfill()
-            }
-        }
+
+        let sub = conn.forever(receiveValue: expect(.open))
         defer { sub.cancel() }
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
+
+        waitForExpectations(timeout: 2)
     }
     
     func testSocketAutoconnectSubscriberCancelDisconnects() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        let closeMessageEx = expectation(description: "Should have received a close message")
-        
-        let autoSub = socket.autoconnect().forever { message in
-            if case .open = message {
-                openMesssageEx.fulfill()
-            }
-        }
-        defer { autoSub.cancel() }
-        
-        // We cannot detect the close from the autoconnected subscriber because cancelling it will stop receiving messages before the close message arrives
-        let sub = socket.forever { message in
-            if case .close = message {
-                closeMessageEx.fulfill()
-            }
-        }
+
+        let sub = socket.forever(receiveValue:
+            expectAndThen([
+                .close: { XCTAssertEqual(socket.connectionState, "closed") }
+            ])
+        )
         defer { sub.cancel() }
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-        XCTAssertEqual(socket.connectionState, "open")
-        
-        autoSub.cancel()
-        
-        wait(for: [closeMessageEx], timeout: 0.5)
-        XCTAssertEqual(socket.connectionState, "closed")
+
+        var autoSub: Subscribers.Forever<Publishers.Autoconnect<Socket>>? = nil
+        autoSub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .open: { XCTAssertEqual(socket.connectionState, "open"); autoSub?.cancel() }
+            ])
+        )
+        defer { autoSub?.cancel() }
+
+        waitForExpectations(timeout: 2)
     }
     
     // MARK: Connection state
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L309
     func testSocketDefaultsToClosed() throws {
         let socket = Socket(url: testHelper.defaultURL)
         
         XCTAssertEqual(socket.connectionState, "closed")
         XCTAssert(socket.isClosed)
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L320
     func testSocketIsConnecting() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let connectingMessageEx = expectation(description: "Should have received a connecting message")
-        
-        let sub = socket.autoconnect().forever { message in
-            switch message {
-            case .connecting:
-                connectingMessageEx.fulfill()
-            default:
-                break
-            }
-        }
+
+        let sub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .connecting: {
+                    XCTAssertEqual(socket.connectionState, "connecting")
+                    XCTAssert(socket.isConnecting)
+                    XCTAssertFalse(socket.isOpen)
+                }
+            ])
+        )
         defer { sub.cancel() }
-        
-        wait(for: [connectingMessageEx], timeout: 0.5)
-        
-        XCTAssertEqual(socket.connectionState, "connecting")
-        XCTAssert(socket.isConnecting)
+
+        waitForExpectations(timeout: 2)
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L328
     func testSocketIsOpen() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let openMessageEx = expectation(description: "Should have received an open message")
-        
-        let sub = socket.autoconnect().forever { message in
-            if case .open = message {
-                openMessageEx.fulfill()
-            }
-        }
+
+        let sub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .open: {
+                    XCTAssertEqual(socket.connectionState, "open")
+                    XCTAssert(socket.isOpen)
+                }
+            ])
+        )
         defer { sub.cancel() }
-        
-        wait(for: [openMessageEx], timeout: 0.5)
-        
-        XCTAssertEqual(socket.connectionState, "open")
-        XCTAssert(socket.isOpen)
+
+        waitForExpectations(timeout: 2)
+//
+//
+//        let openMessageEx = expectation(description: "Should have received an open message")
+//
+//        let sub = socket.autoconnect().forever { message in
+//            if case .open = message {
+//                openMessageEx.fulfill()
+//            }
+//        }
+//        defer { sub.cancel() }
+//
+//        wait(for: [openMessageEx], timeout: 0.5)
+//
+//        XCTAssertEqual(socket.connectionState, "open")
+//        XCTAssert(socket.isOpen)
     }
     
     func testSocketIsClosing() throws {
@@ -401,30 +377,17 @@ class SocketTests: XCTestCase {
     func testHeartbeatTimeoutMovesSocketToClosedState() throws {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
-        
-        let openEx = expectation(description: "Should have opened")
-        let closeEx = expectation(description: "Should have closed")
-        
-        let sub = socket.autoconnect().forever { message in
-            switch message {
-            case .open:
-                openEx.fulfill()
-            case .close:
-                closeEx.fulfill()
-            default:
-                break
-            }
-        }
+
+        let sub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                // Call internal methods to simulate sending heartbeats before the timeout period
+                .open: { socket.sendHeartbeat(); socket.sendHeartbeat() },
+                .close: { }
+            ])
+        )
         defer { sub.cancel() }
-        
-        wait(for: [openEx], timeout: 0.5)
-        
-        // call internal method to simulate sending the first initial heartbeat
-        socket.sendHeartbeat()
-        // call internal method to simulate sending a second heartbeat again before the timeout period
-        socket.sendHeartbeat()
-        
-        wait(for: [closeEx], timeout: 0.5)
+
+        waitForExpectations(timeout: 1)
     }
     
     func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
@@ -705,19 +668,18 @@ class SocketTests: XCTestCase {
         
         socket.send("disconnect")
         
-        waitForExpectations(timeout: 1)
+        waitForExpectations(timeout: 2)
     }
     
     // MARK: how socket close affects channels
     
     func testSocketCloseErrorsChannels() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
 
         let sub = channel.forever(receiveValue:
-            awaitAndThen([
+            expectAndThen([
                 .join: { socket.send("disconnect") },
                 .error: { }
             ])
@@ -726,29 +688,25 @@ class SocketTests: XCTestCase {
         
         socket.connect()
         
-        waitForExpectations(timeout: 1)
+        waitForExpectations(timeout: 2)
     }
     
     func testRemoteExceptionErrorsChannels() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
         
         let channel = socket.join("room:lobby")
-        
-        let joinedEx = expectation(description: "Channel should have joined")
-        let erroredEx = expectation(description: "Channel should have errored")
 
         let sub = channel.forever(receiveValue:
-            onResults([
-                .join: { joinedEx.fulfill(); socket.send("boom") },
-                .error: { erroredEx.fulfill() }
+            expectAndThen([
+                .join: { socket.send("boom") },
+                .error: { }
             ])
         )
         defer { sub.cancel() }
         
         socket.connect()
 
-        waitForExpectations(timeout: 1)
+        waitForExpectations(timeout: 2)
     }
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L676
@@ -866,11 +824,20 @@ private extension SocketTests {
         wait(for: [joinedEx, leftEx], timeout: 1)
     }
 
-    func awaitAndThen<T: RawCaseConvertible>(_ valueToAction: Dictionary<T.RawCase, (() -> Void)>) -> (T) -> Void {
+    func expect<T: RawCaseConvertible>(_ value: T.RawCase) -> (T) -> Void {
+        let expectation = self.expectation(description: "Should have received '\(String(describing: value))'")
+        return { v in
+            if v.matches(value) {
+                expectation.fulfill()
+            }
+        }
+    }
+
+    func expectAndThen<T: RawCaseConvertible>(_ valueToAction: Dictionary<T.RawCase, (() -> Void)>) -> (T) -> Void {
         let valueToExpectation = valueToAction.reduce(into: Dictionary<T.RawCase, XCTestExpectation>())
         { [unowned self] (dict, valueToAction) in
             let key = valueToAction.key
-            let expectation = self.expectation(description: "Should have \(String(describing: key))")
+            let expectation = self.expectation(description: "Should have received '\(String(describing: key))'")
             dict[key] = expectation
         }
 
