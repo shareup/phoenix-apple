@@ -101,6 +101,10 @@ public final class Socket: Synchronized {
         
         canceller.delegate = self
     }
+
+    deinit {
+        disconnect()
+    }
 }
 
 // MARK: Phoenix socket URL
