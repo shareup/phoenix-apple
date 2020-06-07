@@ -307,13 +307,16 @@ class SocketTests: XCTestCase {
     
     func testChannelsAreTracked() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        _ = socket.join("room:lobby")
+        let channel1 = socket.join("room:lobby")
         
         XCTAssertEqual(socket.joinedChannels.count, 1)
         
-        _ = socket.join("room:lobby2")
+        let channel2 = socket.join("room:lobby2")
         
         XCTAssertEqual(socket.joinedChannels.count, 2)
+        
+        XCTAssertEqual(channel1.connectionState, "joining")
+        XCTAssertEqual(channel2.connectionState, "joining")
     }
     
     // MARK: push
@@ -479,7 +482,7 @@ class SocketTests: XCTestCase {
             }
         }
         
-        wait(for: [errEx], timeout: 1)
+        wait(for: [errEx], timeout: 2)
     }
     
     // MARK: reconnect
