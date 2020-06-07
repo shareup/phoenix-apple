@@ -5,7 +5,8 @@ import Combine
 class SocketTests: XCTestCase {
 
     // MARK: init, connect, and disconnect
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L24
     func testSocketInit() throws {
         // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L33
         XCTAssertEqual(Socket.defaultTimeout, .seconds(10))
