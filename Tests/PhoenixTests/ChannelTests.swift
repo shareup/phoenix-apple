@@ -202,9 +202,9 @@ class ChannelTests: XCTestCase {
 
         XCTAssert(channel.isJoined)
         XCTAssertEqual(counter, 4)
-        // 1st is the first backoff amount of 1 second
-        // 2nd is the second backoff amount of 2 seconds
-        // 3rd is the third backoff amount of 5 seconds
+        // 1st is the first backoff amount of 10 milliseconds
+        // 2nd is the second backoff amount of 20 milliseconds
+        // 3rd is the third backoff amount of 30 milliseconds
         // 4th is the successful join, where we don't ask the server to sleep
     }
     
