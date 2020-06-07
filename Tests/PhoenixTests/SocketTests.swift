@@ -236,6 +236,68 @@ class SocketTests: XCTestCase {
         wait(for: [closingMessageEx], timeout: 0.1)
     }
     
+    func testSocketIsConnectedEvenAfterSubscriptionIsCancelled() throws {
+        let socket = Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let closeMessageEx = expectation(description: "Shouldn't have received any close or closing messages")
+        closeMessageEx.isInverted = true
+        
+        let openEx = expectation(description: "Should have gotten an open message")
+
+        let sub = socket.forever {
+            switch($0) {
+            case .open:
+                openEx.fulfill()
+            case .close, .closing:
+                closeMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+
+        socket.connect()
+
+        wait(for: [openEx], timeout: 1)
+        
+        XCTAssertEqual(socket.connectionState, "open")
+        
+        sub.cancel()
+        
+        wait(for: [closeMessageEx], timeout: 1)
+        
+        XCTAssertEqual(socket.connectionState, "open")
+    }
+    
+    func testSocketIsDisconnectedAfterAutconnectSubscriptionIsCancelled() throws {
+        let socket = Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+        
+        let openEx = expectation(description: "Should have gotten an open message")
+        let closeMessageEx = expectation(description: "Should have received a close message")
+            
+        let sub = socket.autoconnect().forever {
+            switch($0) {
+            case .open:
+                openEx.fulfill()
+            case .closing:
+                closeMessageEx.fulfill()
+            default:
+                break
+            }
+        }
+
+        wait(for: [openEx], timeout: 1)
+        
+        XCTAssertEqual(socket.connectionState, "open")
+        
+        sub.cancel()
+        
+        wait(for: [closeMessageEx], timeout: 1)
+        
+        XCTAssertEqual(socket.connectionState, "closing")
+    }
+    
     // MARK: Channel join
     
     func testChannelInit() throws {
