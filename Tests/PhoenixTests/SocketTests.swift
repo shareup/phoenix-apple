@@ -270,8 +270,8 @@ class SocketTests: XCTestCase {
         sub.cancel()
         
         wait(for: [closeMessageEx], timeout: 1)
-        
-        XCTAssertEqual(socket.connectionState, "closing")
+      
+        XCTAssert(["closed", "closing"].contains(socket.connectionState))
     }
     
     // MARK: Channel join
@@ -307,11 +307,11 @@ class SocketTests: XCTestCase {
     
     func testChannelsAreTracked() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        let _ = socket.join("room:lobby")
+        _ = socket.join("room:lobby")
         
         XCTAssertEqual(socket.joinedChannels.count, 1)
         
-        let _ = socket.join("room:lobby2")
+        _ = socket.join("room:lobby2")
         
         XCTAssertEqual(socket.joinedChannels.count, 2)
     }
