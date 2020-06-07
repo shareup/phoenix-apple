@@ -55,8 +55,4 @@ class DelegatingSubscriber<D: DelegatingSubscriberDelegate>: Subscriber, Synchro
             self.subscription = nil
         }
     }
-    
-//    deinit {
-//        cancel()
-//    }
 }

@@ -109,9 +109,9 @@ let normalCloseCodes: [URLSessionWebSocketTask.CloseCode] = [.goingAway, .normal
 
 extension WebSocket: URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession,
-                           webSocketTask: URLSessionWebSocketTask,
-                           didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
-                           reason: Data?) {
+                    webSocketTask: URLSessionWebSocketTask,
+                    didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
+                    reason: Data?) {
         sync {
             if case .closed = state { return } // Apple will double close or I would do an assertion failure...
             state = .closed(WebSocketError.closed(closeCode, reason))
@@ -125,8 +125,8 @@ extension WebSocket: URLSessionWebSocketDelegate {
     }
     
     func urlSession(_ session: URLSession,
-                           webSocketTask: URLSessionWebSocketTask,
-                           didOpenWithProtocol protocol: String?) {
+                    webSocketTask: URLSessionWebSocketTask,
+                    didOpenWithProtocol protocol: String?) {
         sync {
             if case .open = state {
                 assertionFailure("Received an open event from the networking library, but I think I'm already open")
