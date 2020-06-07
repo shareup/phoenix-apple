@@ -39,7 +39,7 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
         
         connect()
     }
-    
+
     private func connect() {
         sync {
             switch (state) {
@@ -47,7 +47,7 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
                 state = .connecting
                 let session = URLSession(configuration: .default, delegate: self, delegateQueue: delegateQueue)
                 let task = session.webSocketTask(with: url)
-                task.receive(completionHandler: receiveFromWebSocket(_:))
+                task.receive() { [weak self] in self?.receiveFromWebSocket($0) }
                 task.resume()
             default:
                 return
@@ -63,7 +63,7 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
         sync {
             if case .open(let task) = state,
                 case .running = task.state {
-                task.receive(completionHandler: receiveFromWebSocket(_:))
+                task.receive() { [weak self] in self?.receiveFromWebSocket($0) }
             }
         }
     }
@@ -110,6 +110,19 @@ let normalCloseCodes: [URLSessionWebSocketTask.CloseCode] = [.goingAway, .normal
 extension WebSocket: URLSessionWebSocketDelegate {
     func urlSession(_ session: URLSession,
                     webSocketTask: URLSessionWebSocketTask,
+                    didOpenWithProtocol protocol: String?) {
+        sync {
+            if case .open = state {
+                assertionFailure("Received an open event from the networking library, but I think I'm already open")
+            }
+            state = .open(webSocketTask)
+        }
+
+        subject.send(.success(.open))
+    }
+
+    func urlSession(_ session: URLSession,
+                    webSocketTask: URLSessionWebSocketTask,
                     didCloseWith closeCode: URLSessionWebSocketTask.CloseCode,
                     reason: Data?) {
         sync {
@@ -123,17 +136,10 @@ extension WebSocket: URLSessionWebSocketDelegate {
             subject.send(completion: .failure(WebSocketError.closed(closeCode, reason)))
         }
     }
-    
-    func urlSession(_ session: URLSession,
-                    webSocketTask: URLSessionWebSocketTask,
-                    didOpenWithProtocol protocol: String?) {
-        sync {
-            if case .open = state {
-                assertionFailure("Received an open event from the networking library, but I think I'm already open")
-            }
-            state = .open(webSocketTask)
-        }
 
-        subject.send(.success(.open))
+    func urlSession(_ session: URLSession,
+                    task: URLSessionTask,
+                    didCompleteWithError error: Error?) {
+        session.invalidateAndCancel()
     }
 }
