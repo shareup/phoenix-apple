@@ -1,13 +1,19 @@
 import Combine
 import Foundation
-import SimplePublisher
+import Forever
 import Synchronized
 
-public final class Channel: Synchronized {
+public final class Channel: Publisher, Synchronized {
+    public typealias Output = Channel.Event
+    public typealias Failure = Never
+
+    typealias SocketOutput = ChannelSpecificSocketMessage
+    typealias SocketFailure = Never
+
     typealias JoinPayloadBlock = () -> Payload
     typealias RejoinTimeout = (Int) -> DispatchTimeInterval
     
-    private var subject = SimpleSubject<Output, Failure>()
+    private var subject = PassthroughSubject<Output, Failure>()
     private var refGenerator = Ref.Generator.global
     private var pending: [Push] = []
     private var inFlight: [Ref: PushedMessage] = [:]
@@ -16,9 +22,8 @@ public final class Channel: Synchronized {
     private var state: State = .closed
     
     private weak var socket: Socket?
-    
-    // TODO: just know it's going to be a certain type that is Cancellable so we can cancel it
-    private var socketSubscriber: AnySubscriber<SubscriberInput, SubscriberFailure>?
+
+    private var socketSubscriber: AnySubscriber<SocketOutput, SocketFailure>?
     
     private var customTimeout: DispatchTimeInterval? = nil
     
@@ -65,31 +70,7 @@ public final class Channel: Synchronized {
         self.topic = topic
         self.socket = socket
         self.joinPayloadBlock = joinPayloadBlock
-        
-        self.socketSubscriber = internallySubscribe(
-            socket.compactMap { message in
-                switch message {
-                case .closing, .connecting, .unreadableMessage, .websocketError:
-                    return nil // not interesting
-                case .close:
-                    return .socketClose
-                case .open:
-                    return .socketOpen
-                case .incomingMessage(let message):
-                    guard message.topic == topic else {
-                        return nil
-                    }
-                    
-                    return .channelMessage(message)
-                }
-            }
-        )
-    }
-    
-    enum InterestingMessage {
-        case socketClose
-        case socketOpen
-        case channelMessage(IncomingMessage)
+        self.socketSubscriber = makeSocketSubscriber(with: socket, topic: topic)
     }
     
     var joinRef: Ref? { sync {
@@ -175,7 +156,6 @@ extension Channel {
         rejoin()
     }
     
-    
     private func rejoin() {
         sync {
             guard shouldRejoin else { return }
@@ -253,7 +233,7 @@ extension Channel {
     }
 }
 
-// MARK: push
+// MARK: Push
 
 extension Channel {
     public func push(_ eventString: String) {
@@ -285,7 +265,7 @@ extension Channel {
     }
 }
 
-// MARK: push
+// MARK: Push
 
 extension Channel {
     private func send(_ message: OutgoingMessage) {
@@ -311,7 +291,7 @@ extension Channel {
     }
 }
 
-// MARK: flush
+// MARK: Flush messages
 
 extension Channel {
     private func flush() {
@@ -347,7 +327,7 @@ extension Channel {
     }
 }
 
-// MARK: timeout stuffs
+// MARK: Timeouts
 
 extension Channel {
     func timeoutJoinPush() {
@@ -443,47 +423,61 @@ extension Channel {
     }
 }
 
-// MARK: :Publisher
+// MARK: Publisher
 
-extension Channel: Publisher {
-    public typealias Output = Channel.Event
-    public typealias Failure = Never
-    
+extension Channel {
     public func receive<S>(subscriber: S)
         where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
         subject.receive(subscriber: subscriber)
     }
-    
-    func publish(_ output: Output) {
-        subject.send(output)
-    }
 }
 
-// MARK: :Subscriber
+// MARK: Socket Subscriber
 
-extension Channel: DelegatingSubscriberDelegate {
-    typealias SubscriberInput = InterestingMessage
-    typealias SubscriberFailure = Never
-    
-    func receive(_ input: SubscriberInput) {
-        Swift.print("channel input", input)
-        
-        switch input {
-        case .channelMessage(let message):
-            handle(message)
-        case .socketOpen:
-            handleSocketOpen()
-        case .socketClose:
-            handleSocketClose()
+extension Channel {
+    enum ChannelSpecificSocketMessage {
+        case socketOpen
+        case socketClose
+        case channelMessage(IncomingMessage)
+    }
+
+    func makeSocketSubscriber(with socket: Socket, topic: String) -> AnySubscriber<SocketOutput, SocketFailure> {
+        let channelSpecificMessage = { (message: Socket.Message) -> SocketOutput? in
+            switch message {
+            case .closing, .connecting, .unreadableMessage, .websocketError:
+                return nil // not interesting
+            case .close:
+                return .socketClose
+            case .open:
+                return .socketOpen
+            case .incomingMessage(let message):
+                guard message.topic == topic else { return nil }
+                return .channelMessage(message)
+            }
         }
-    }
-    
-    func receive(completion: Subscribers.Completion<SubscriberFailure>) {
-        assertionFailure("Socket Failure = Never, should never complete")
+
+        let completion: (Subscribers.Completion<SocketFailure>) -> Void = { _ in fatalError("`Never` means never") }
+        let receiveValue = { [weak self] (input: SocketOutput) -> Void in
+            Swift.print("channel input", input)
+
+            switch input {
+            case .channelMessage(let message):
+                self?.handle(message)
+            case .socketOpen:
+                self?.handleSocketOpen()
+            case .socketClose:
+                self?.handleSocketClose()
+            }
+        }
+
+        let socketSubscriber = socket
+            .compactMap(channelSpecificMessage)
+            .forever(receiveCompletion: completion, receiveValue: receiveValue)
+        return AnySubscriber(socketSubscriber)
     }
 }
 
-// MARK: input handlers
+// MARK: Input handlers
 
 extension Channel {
     private func handleSocketOpen() {

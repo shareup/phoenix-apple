@@ -1,18 +1,16 @@
 import Combine
 import Forever
 import Foundation
-import SimplePublisher
 import Synchronized
 
 public final class Socket: Synchronized {
     public typealias Output = Socket.Message
     public typealias Failure = Never
     
-    private var subject = SimpleSubject<Output, Failure>()
-    private var canceller = CancelDelegator()
+    private var subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed
     private var shouldReconnect = true
-    private var webSocketSubscriber: AnySubscriber<SubscriberInput, SubscriberFailure>?
+    private var webSocketSubscriber: AnySubscriber<WebSocketOutput, WebSocketFailure>?
     private var channels = [String: WeakChannel]()
     
     public var joinedChannels: [Channel] {
@@ -86,8 +84,6 @@ public final class Socket: Synchronized {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = Ref.Generator()
         self.url = Socket.webSocketURLV2(url: url)
-        
-        canceller.delegate = self
     }
     
     init(url: URL,
@@ -98,8 +94,6 @@ public final class Socket: Synchronized {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = refGenerator
         self.url = Socket.webSocketURLV2(url: url)
-        
-        canceller.delegate = self
     }
 
     deinit {
@@ -117,16 +111,12 @@ extension Socket {
     }
 }
 
-// MARK: :Publisher
+// MARK: Publisher
 
 extension Socket: Publisher {
     public func receive<S>(subscriber: S)
         where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
         subject.receive(subscriber: subscriber)
-    }
-    
-    func publish(_ output: Output) {
-        subject.send(output)
     }
 }
 
@@ -138,11 +128,11 @@ extension Socket: ConnectablePublisher {
     //
     // I could make the Socket cancellable and just have cancel call
     // disconnect, but I don't really like that idea right now
-    private struct CancelDelegator: Cancellable {
-        weak var delegate: Socket?
+    private struct Canceller: Cancellable {
+        weak var socket: Socket?
         
         func cancel() {
-            delegate?.disconnect()
+            socket?.disconnect()
         }
     }
 
@@ -157,17 +147,17 @@ extension Socket: ConnectablePublisher {
 
                 subject.send(.connecting)
                 
-                self.webSocketSubscriber = internallySubscribe(ws)
+                self.webSocketSubscriber = makeWebSocketSubscriber(with: ws)
                 cancelHeartbeatTimer()
                 createHeartbeatTimer()
                 
-                return canceller
+                return Canceller(socket: self)
             case .connecting, .open:
                 // NOOP
-                return canceller
+                return Canceller(socket: self)
             case .closing:
                 // let the reconnect logic handle this case
-                return canceller
+                return Canceller(socket: self)
             }
         }
     }
@@ -191,7 +181,7 @@ extension Socket: ConnectablePublisher {
     }
 }
 
-// MARK: join
+// MARK: Join channel
 
 extension Socket {
     public func join(_ topic: String, payload: Payload = [:]) -> Channel {
@@ -218,7 +208,7 @@ extension Socket {
     }
 }
 
-// MARK: push
+// MARK: Push event
 
 extension Socket {
     public func push(topic: String, event: PhxEvent) {
@@ -248,7 +238,7 @@ extension Socket {
     }
 }
 
-// MARK: flush
+// MARK: Flush
 
 extension Socket {
     private func flush() {
@@ -275,7 +265,7 @@ extension Socket {
     }
 }
 
-// MARK: send
+// MARK: Send
 
 extension Socket {
     func send(_ message: OutgoingMessage) {
@@ -346,7 +336,7 @@ extension Socket {
     }
 }
     
-// MARK: heartbeat
+// MARK: Heartbeat
 
 extension Socket {
     func sendHeartbeat() {
@@ -400,48 +390,57 @@ extension Socket {
     }
 }
 
-// MARK: :Subscriber
+// MARK: WebSocket subscriber
 
-extension Socket: DelegatingSubscriberDelegate {
-    // Creating an indirect internal Subscriber sub-type so the methods can remain internal
-    typealias SubscriberInput = Result<WebSocket.Message, Swift.Error>
-    typealias SubscriberFailure = Swift.Error
-    
-    func receive(_ input: SubscriberInput) {
-        Swift.print("socket input", input)
+extension Socket {
+    typealias WebSocketOutput = Result<WebSocket.Message, Swift.Error>
+    typealias WebSocketFailure = Swift.Error
+
+    func makeWebSocketSubscriber(with webSocket: WebSocket) -> AnySubscriber<WebSocketOutput, WebSocketFailure> {
+        let value: (WebSocketOutput) -> Void = { [weak self] in self?.receive(value: $0) }
+        let completion: (Subscribers.Completion<Swift.Error>) -> Void = { [weak self] in self?.receive(completion: $0) }
+
+        let webSocketSubscriber = webSocket.forever(receiveCompletion: completion, receiveValue: value)
+
+        return AnySubscriber(webSocketSubscriber)
+    }
+
+    private func receive(value: WebSocketOutput) {
+        Swift.print("socket input", value)
         
-        switch input {
+        switch value {
         case .success(let message):
             switch message {
             case .open:
                 // TODO: check if we are already open
-                switch state {
-                case .closed:
-                    assertionFailure("We shouldn't receive an open message if we are in a closed state")
-                    return
-                case .closing:
-                    assertionFailure("We shouldn't recieve an open message if we are in a closing state")
-                    return
-                case .open:
-                    // NOOP
-                    return
-                case .connecting(let ws):
-                    self.state = .open(ws)
-                    subject.send(.open)
-                    flushAsync()
+                sync {
+                    switch state {
+                    case .closed:
+                        assertionFailure("We shouldn't receive an open message if we are in a closed state")
+                        return
+                    case .closing:
+                        assertionFailure("We shouldn't recieve an open message if we are in a closing state")
+                        return
+                    case .open:
+                        // NOOP
+                        return
+                    case .connecting(let ws):
+                        self.state = .open(ws)
+                        subject.send(.open)
+                        flushAsync()
+                    }
                 }
-
             case .data:
                 // TODO: Are we going to use data frames from the server for anything?
                 assertionFailure("We are not currently expecting any data frames from the server")
             case .string(let string):
                 do {
                     let message = try IncomingMessage(string: string)
-                    
+
                     if message.event == .heartbeat &&
                         pendingHeartbeatRef != nil &&
                         message.ref == pendingHeartbeatRef {
-                        
+
                         Swift.print("heartbeat OK")
                         self.pendingHeartbeatRef = nil
                     } else {
@@ -459,7 +458,7 @@ extension Socket: DelegatingSubscriberDelegate {
         }
     }
     
-    func receive(completion: Subscribers.Completion<SubscriberFailure>) {
+    private func receive(completion: Subscribers.Completion<WebSocketFailure>) {
         sync {
             switch state {
             case .closed:
@@ -468,9 +467,9 @@ extension Socket: DelegatingSubscriberDelegate {
             case .open, .connecting, .closing:
                 self.state = .closed
                 self.webSocketSubscriber = nil
-                
+
                 subject.send(.close)
-                
+
                 if shouldReconnect {
                     let deadline = DispatchTime.now().advanced(by: .milliseconds(200))
                     DispatchQueue.global().asyncAfter(deadline: deadline) {

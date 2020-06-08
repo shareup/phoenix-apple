@@ -1,9 +1,11 @@
 import Combine
 import Foundation
-import SimplePublisher
 import Synchronized
 
-class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
+class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
+    typealias Output = Result<WebSocket.Message, Swift.Error>
+    typealias Failure = Swift.Error
+
     private enum State {
         case unopened
         case connecting
@@ -24,6 +26,7 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
     
     private let url: URL
     private var state: State = .unopened
+    private let subject = PassthroughSubject<Output, Failure>()
     
     private lazy var delegateQueue: OperationQueue = {
         let queue = OperationQueue()
@@ -32,17 +35,18 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, SimplePublisher {
         return queue
     }()
     
-    typealias Output = Result<WebSocket.Message, Swift.Error>
-    typealias Failure = Swift.Error
-
-    var subject = SimpleSubject<Output, Failure>()
-    
     required init(url: URL) {
         self.url = url
         
         super.init()
         
         connect()
+    }
+
+    func receive<S: Subscriber>(subscriber: S)
+        where S.Input == Result<WebSocket.Message, Swift.Error>, S.Failure == Swift.Error
+    {
+        subject.receive(subscriber: subscriber)
     }
 
     private func connect() {
