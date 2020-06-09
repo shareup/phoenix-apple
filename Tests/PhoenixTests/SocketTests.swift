@@ -192,6 +192,8 @@ class SocketTests: XCTestCase {
     }
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L344
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L277
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L287
     func testSocketIsClosed() throws {
         let socket = Socket(url: testHelper.defaultURL)
 
@@ -213,63 +215,69 @@ class SocketTests: XCTestCase {
     func testSocketIsConnectedEvenAfterSubscriptionIsCancelled() throws {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
-        
-        let closeMessageEx = expectation(description: "Shouldn't have received any close or closing messages")
+
+        let closeMessageEx = expectation(description: "Shouldn't have closed")
         closeMessageEx.isInverted = true
-        
+
         let openEx = expectation(description: "Should have gotten an open message")
 
-        let sub = socket.forever {
-            switch($0) {
-            case .open:
-                openEx.fulfill()
-            case .close, .closing:
-                closeMessageEx.fulfill()
-            default:
-                break
-            }
-        }
+        var sub: Subscribers.Forever<Socket>? = nil
+        sub = socket.forever(receiveValue:
+            onResults([
+                .open: { openEx.fulfill(); sub?.cancel() },
+                .closing: { closeMessageEx.fulfill() },
+                .close: { closeMessageEx.fulfill() },
+            ])
+        )
 
         socket.connect()
 
-        wait(for: [openEx], timeout: 1)
-        
-        XCTAssertEqual(socket.connectionState, "open")
-        
-        sub.cancel()
-        
-        wait(for: [closeMessageEx], timeout: 1)
-        
+        waitForExpectations(timeout: 2)
         XCTAssertEqual(socket.connectionState, "open")
     }
-    
+
     func testSocketIsDisconnectedAfterAutconnectSubscriptionIsCancelled() throws {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
-        
-        let openEx = expectation(description: "Should have gotten an open message")
-        let closeMessageEx = expectation(description: "Should have received a close message")
-            
-        let sub = socket.autoconnect().forever {
-            switch($0) {
-            case .open:
-                openEx.fulfill()
-            case .closing:
-                closeMessageEx.fulfill()
-            default:
-                break
-            }
-        }
 
-        wait(for: [openEx], timeout: 1)
-        
-        XCTAssertEqual(socket.connectionState, "open")
-        
-        sub.cancel()
-        
-        wait(for: [closeMessageEx], timeout: 1)
-      
-        XCTAssert(["closed", "closing"].contains(socket.connectionState))
+        let openEx = expectation(description: "Should have gotten an open message")
+        let closeMessageEx = expectation(description: "Should have gotten a closing message")
+
+        var sub: Subscribers.Forever<Publishers.Autoconnect<Socket>>? = nil
+        sub = socket.autoconnect().forever(receiveValue:
+            onResults([
+                .open: { openEx.fulfill(); sub?.cancel() },
+                .closing: { closeMessageEx.fulfill() },
+            ])
+        )
+
+        waitForExpectations(timeout: 2)
+    }
+
+    // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L268
+    // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L297
+    func testDisconnectTwiceOnlySendsMessagesOnce() throws {
+        let socket = Socket(url: testHelper.defaultURL)
+        defer { socket.disconnect() }
+
+        let openEx = expectation(description: "Should have opened once")
+        let closeMessageEx = expectation(description: "Should closed once")
+
+        let sub = socket.forever(receiveValue:
+            onResults([
+                .open: { openEx.fulfill(); socket.disconnect() },
+                .close: {
+                    socket.disconnect()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100)) { closeMessageEx.fulfill()
+                    }
+                },
+            ])
+        )
+        defer { sub.cancel() }
+
+        socket.connect()
+
+        waitForExpectations(timeout: 2)
     }
     
     // MARK: Channel join

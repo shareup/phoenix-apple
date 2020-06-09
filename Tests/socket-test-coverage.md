@@ -41,47 +41,55 @@
 - [x] sets callbacks for connection
 	- testSocketConnectDisconnectAndReconnect()
 
-- [x] connect with long poll
+- [x] is idempotent
+	- testSocketConnectIsNoOp()
+
+## connect with long poll
+
+- [x] establishes long poll connection with endpoint
 	- _not applicable_
 
-- [ ]
-	-
+- [x] sets callbacks for connection
+	- _not applicable_
 
-- [ ]
-	-
+- [x] is idempotent
+	- _not applicable_
 
-- [ ]
-	-
+## disconnect
 
-- [ ]
-	-
+- [x] removes existing connection
+	- testDisconnectTwiceOnlySendsMessagesOnce()
 
-- [ ]
-	-
+- [x] calls callback
+	- testSocketIsClosed()
 
-- [ ]
-	-
+- [x] calls connection close callback
+	- testSocketIsClosed()
 
-- [ ]
-	-
+- [x] does not throw when no connection
+	- testDisconnectTwiceOnlySendsMessagesOnce()
 
-- [ ]
-	-
+## connectionState
 
-- [ ]
-	-
+- [x] defaults to closed
+	- testSocketDefaultsToClosed()
 
-- [ ]
-	-
+- [x] returns closed if readyState unrecognized
+	- _not applicable_
 
-- [ ]
-	-
+- [x] returns connecting
+	- testSocketIsConnecting()
 
-- [ ]
-	-
+- [x] returns open
+	- testSocketIsOpen()
 
-- [ ]
-	-
+- [x] returns closing
+	- testSocketIsClosing()
+
+- [x] returns closed
+	- testSocketIsClosed()
+
+## channel
 
 - [ ]
 	-
