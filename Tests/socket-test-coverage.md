@@ -91,20 +91,22 @@
 
 ## channel
 
-- [ ]
-	-
+- [x] returns channel with given topic and params
+	- testChannelInitWithParams()
 
-- [ ]
-	-
+- [x] adds channel to sockets channels list
+	- testChannelsAreTracked()
 
-- [ ]
-	-
+- [x] removes given channel from channels
+	- testChannelsAreRemoved()
 
-- [ ]
-	-
+## push
 
-- [ ]
-	-
+- [x] sends data to connection when connected
+	- testPushOntoSocket()
+
+- [x] buffers data when not connected
+	- testPushOntoDisconnectedSocketBuffers()
 
 - [ ]
 	-

@@ -46,7 +46,6 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L242
     func testSocketConnectIsNoOp() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
 
         socket.connect()
         socket.connect() // calling connect again doesn't blow up
@@ -214,7 +213,6 @@ class SocketTests: XCTestCase {
     
     func testSocketIsConnectedEvenAfterSubscriptionIsCancelled() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
 
         let closeMessageEx = expectation(description: "Shouldn't have closed")
         closeMessageEx.isInverted = true
@@ -238,7 +236,6 @@ class SocketTests: XCTestCase {
 
     func testSocketIsDisconnectedAfterAutconnectSubscriptionIsCancelled() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
 
         let openEx = expectation(description: "Should have gotten an open message")
         let closeMessageEx = expectation(description: "Should have gotten a closing message")
@@ -258,7 +255,6 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L297
     func testDisconnectTwiceOnlySendsMessagesOnce() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
 
         let openEx = expectation(description: "Should have opened once")
         let closeMessageEx = expectation(description: "Should closed once")
@@ -280,27 +276,22 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 2)
     }
     
-    // MARK: Channel join
+    // MARK: Channel
     
     func testChannelInit() throws {
-        let channelJoinedEx = expectation(description: "Should have received join event")
-        
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
         socket.connect()
-        
+
         let channel = socket.join("room:lobby")
         defer { channel.leave() }
-        
-        let sub = channel.forever {
-            if case .join = $0 { channelJoinedEx.fulfill() }
-        }
+
+        let sub = channel.forever(receiveValue: expect(.join))
         defer { sub.cancel() }
-        
-        wait(for: [channelJoinedEx], timeout: 0.5)
+
+        waitForExpectations(timeout: 2.0)
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L360
     func testChannelInitWithParams() throws {
         let socket = Socket(url: testHelper.defaultURL)
         let channel = socket.join("room:lobby", payload: ["success": true])
@@ -308,9 +299,8 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(channel.topic, "room:lobby")
         XCTAssertEqual(channel.joinPush.payload["success"] as? Bool, true)
     }
-    
-    // MARK: track channels
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L368
     func testChannelsAreTracked() throws {
         let socket = Socket(url: testHelper.defaultURL)
         let channel1 = socket.join("room:lobby")
@@ -324,61 +314,70 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(channel1.connectionState, "joining")
         XCTAssertEqual(channel2.connectionState, "joining")
     }
-    
-    // MARK: push
-    
-    func testPushOntoSocket() throws {
+
+    // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L385
+    func testChannelsAreRemoved() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let openEx = expectation(description: "Should have opened")
-        let sentEx = expectation(description: "Should have sent")
-        let failedEx = expectation(description: "Shouldn't have failed")
-        failedEx.isInverted = true
-        
-        let sub = socket.autoconnect().forever { message in
-            if case .open = message {
-                openEx.fulfill()
-            }
-        }
-        defer { sub.cancel() }
-        
-        wait(for: [openEx], timeout: 0.5)
-        
-        socket.push(topic: "phoenix", event: .heartbeat, payload: [:]) { error in
-            if let error = error {
-                print("Couldn't write to socket with error", error)
-                failedEx.fulfill()
-            } else {
-                sentEx.fulfill()
-            }
-        }
-        
-        waitForExpectations(timeout: 0.5)
+        socket.connect()
+
+        let channel1 = socket.channel("room:lobby")
+        let channel2 = socket.channel("room:lobby2")
+
+        let sub1 = channel1.forever(receiveValue: expect(.join))
+        let sub2 = channel2.forever(receiveValue: expect(.join))
+        defer { [sub1, sub2].forEach { $0.cancel() } }
+
+        socket.join(channel1)
+        socket.join(channel2)
+
+        waitForExpectations(timeout: 2)
+
+        XCTAssertEqual(Set(["room:lobby", "room:lobby2"]), Set(socket.joinedChannels.map(\.topic)))
+
+        socket.leave(channel1)
+
+        let sub3 = channel1.forever(receiveValue: expect(.leave))
+        defer { sub3.cancel() }
+
+        waitForExpectations(timeout: 2)
+
+        XCTAssertEqual(["room:lobby2"], socket.joinedChannels.map(\.topic))
     }
     
+    // MARK: push
+
+    // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L413
+    func testPushOntoSocket() throws {
+        let socket = Socket(url: testHelper.defaultURL)
+
+        let expectPushSuccess = self.expectPushSuccess()
+        let sub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .open: {
+                    socket.push(topic: "phoenix", event: .heartbeat, callback: expectPushSuccess)
+                }
+            ])
+        )
+        defer { sub.cancel() }
+
+        waitForExpectations(timeout: 2)
+    }
+
+    // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L424
     func testPushOntoDisconnectedSocketBuffers() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let sentEx = expectation(description: "Should have sent")
-        let failedEx = expectation(description: "Shouldn't have failed")
-        failedEx.isInverted = true
-        
-        socket.push(topic: "phoenix", event: .heartbeat, payload: [:]) { error in
-            if let error = error {
-                print("Couldn't write to socket with error", error)
-                failedEx.fulfill()
-            } else {
-                sentEx.fulfill()
-            }
-        }
-        
-        DispatchQueue.global().async {
-            socket.connect()
-        }
-        
-        waitForExpectations(timeout: 0.5)
+
+        let expectPushSuccess = self.expectPushSuccess()
+        socket.push(topic: "phoenix", event: .heartbeat, callback: expectPushSuccess)
+
+        XCTAssertTrue(socket.isClosed)
+        XCTAssertEqual(1, socket.pendingPushes.count)
+        XCTAssertEqual("phoenix", socket.pendingPushes.first?.topic)
+        XCTAssertEqual(PhxEvent.heartbeat, socket.pendingPushes.first?.event)
+
+        socket.connect()
+
+        waitForExpectations(timeout: 2)
     }
     
     // MARK: heartbeat
@@ -831,6 +830,18 @@ private extension SocketTests {
         socket.connect()
 
         wait(for: [joinedEx, leftEx], timeout: 1)
+    }
+
+    func expectPushSuccess() -> (Error?) -> Void {
+        let pushSuccess = self.expectation(description: "Should have received response")
+        return { e in
+            if let error = e {
+                Swift.print("Couldn't write to socket with error '\(error)'")
+                XCTFail()
+            } else {
+                pushSuccess.fulfill()
+            }
+        }
     }
 
     func expect<T: RawCaseConvertible>(_ value: T.RawCase) -> (T) -> Void {
