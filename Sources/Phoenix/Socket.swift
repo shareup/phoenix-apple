@@ -14,57 +14,48 @@ public final class Socket: Synchronized {
     private var channels = [String: WeakChannel]()
     
     public var joinedChannels: [Channel] {
-        var _channels: [Channel] = []
-        
-        sync {
-            for (_, weakChannel) in channels {
-                if let channel = weakChannel.channel {
-                    _channels.append(channel)
-                }
-            }
-        }
-        
-        return _channels
+        let channels = sync { self.channels }
+        return channels.compactMap { $0.value.channel }
     }
-    
+
     private var pending: [Push] = []
-    
-    private let refGenerator: Ref.Generator
+    var pendingPushes: [Push] { sync { return pending } } // For testing
+
     public let url: URL
     public let timeout: DispatchTimeInterval
     public let heartbeatInterval: DispatchTimeInterval
-    
+
+    private let refGenerator: Ref.Generator
     private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
     private var pendingHeartbeatRef: Ref? = nil
     private var heartbeatTimer: Timer? = nil
-    
+
     public static let defaultTimeout: DispatchTimeInterval = .seconds(10)
     public static let defaultHeartbeatInterval: DispatchTimeInterval = .seconds(30)
-    static let defaultRefGenerator = Ref.Generator()
     
     public var currentRef: Ref { refGenerator.current }
     
-    public var isClosed: Bool { sync {
+    var isClosed: Bool { sync {
         guard case .closed = state else { return false }
         return true
     } }
     
-    public var isConnecting: Bool { sync {
+    var isConnecting: Bool { sync {
         guard case .connecting = state else { return false }
         return true
     } }
     
-    public var isOpen: Bool { sync {
+    var isOpen: Bool { sync {
         guard case .open = state else { return false }
         return true
     } }
     
-    public var isClosing: Bool { sync {
+    var isClosing: Bool { sync {
         guard case .closing = state else { return false }
         return true
     } }
     
-    public var connectionState: String { sync {
+    var connectionState: String { sync {
         switch state {
         case .closed:
             return "closed"
@@ -181,9 +172,13 @@ extension Socket: ConnectablePublisher {
     }
 }
 
-// MARK: Join channel
+// MARK: Channel
 
 extension Socket {
+    public func join(_ channel: Channel) {
+        return channel.join()
+    }
+
     public func join(_ topic: String, payload: Payload = [:]) -> Channel {
         sync {
             let _channel = channel(topic, payload: payload)
@@ -206,6 +201,20 @@ extension Socket {
             return _channel
         }
     }
+
+    public func leave(_ channel: Channel) {
+        leave(channel.topic)
+    }
+
+    public func leave(_ topic: String) {
+        let removeChannel: () -> Channel? = {
+            guard let weakChannel = self.channels[topic], let channel = weakChannel.channel else { return nil }
+            self.channels.removeValue(forKey: topic)
+            return channel
+        }
+
+        sync(removeChannel)?.leave()
+    }
 }
 
 // MARK: Push event
@@ -221,20 +230,20 @@ extension Socket {
     
     public func push(topic: String,
                      event: PhxEvent,
-                     payload: Payload,
+                     payload: Payload = [:],
                      callback: @escaping Callback) {
-        let thePush = Socket.Push(topic: topic,
-                                  event: event,
-                                  payload: payload,
-                                  callback: callback)
+        let thePush = Socket.Push(
+            topic: topic,
+            event: event,
+            payload: payload,
+            callback: callback
+        )
         
         sync {
             pending.append(thePush)
         }
-        
-        DispatchQueue.global().async {
-            self.flushAsync()
-        }
+
+        self.flushAsync()
     }
 }
 
@@ -244,7 +253,7 @@ extension Socket {
     private func flush() {
         sync {
             guard case .open = state else { return }
-            
+
             guard let push = pending.first else { return }
             self.pending = Array(self.pending.dropFirst())
             
