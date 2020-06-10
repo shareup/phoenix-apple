@@ -27,11 +27,13 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
     private let url: URL
     private var state: State = .unopened
     private let subject = PassthroughSubject<Output, Failure>()
-    
+
+    private let serialQueue: DispatchQueue = DispatchQueue(label: "WebSocket.serialQueue")
     private lazy var delegateQueue: OperationQueue = {
         let queue = OperationQueue()
         queue.name = "WebSocket.delegateQueue"
         queue.maxConcurrentOperationCount = 1
+        queue.underlyingQueue = serialQueue
         return queue
     }()
     
