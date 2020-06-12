@@ -381,69 +381,89 @@ class SocketTests: XCTestCase {
     }
     
     // MARK: heartbeat
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L470
     func testHeartbeatTimeoutMovesSocketToClosedState() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
 
         let sub = socket.autoconnect().forever(receiveValue:
             expectAndThen([
-                // Call internal methods to simulate sending heartbeats before the timeout period
+                // Attempting to send a heartbeat before the previous one has returned causes the socket to timeout
                 .open: { socket.sendHeartbeat(); socket.sendHeartbeat() },
                 .close: { }
             ])
         )
         defer { sub.cancel() }
 
-        waitForExpectations(timeout: 1)
+        waitForExpectations(timeout: 2)
+    }
+
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L481
+    func testPushesHeartbeatWhenConnected() throws {
+        let socket = Socket(url: testHelper.defaultURL)
+
+        let heartbeatExpectation = self.expectation(description: "Sends heartbeat when connected")
+
+        let sub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .open: { socket.sendHeartbeat { heartbeatExpectation.fulfill(); socket.disconnect() } },
+                .close: { }
+            ])
+        )
+        defer { sub.cancel() }
+
+        waitForExpectations(timeout: 2)
     }
     
     func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
         let socket = Socket(url: testHelper.defaultURL, heartbeatInterval: .milliseconds(1))
-        defer { socket.disconnect() }
-        
-        let closeEx = expectation(description: "Should have closed")
-        
-        let sub = socket.autoconnect().forever { message in
-            switch message {
-            case .close:
-                closeEx.fulfill()
-            default:
-                break
-            }
-        }
+
+        let sub = socket.autoconnect().forever(receiveValue: expect(.close))
         defer { sub.cancel() }
-        
-        wait(for: [closeEx], timeout: 1)
+
+        waitForExpectations(timeout: 2)
+    }
+
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L491
+    func testHeartbeatIsNotSentWhenDisconnected() {
+        let socket = Socket(url: testHelper.defaultURL)
+
+        let noHeartbeatExpectation = self.expectation(description: "Does not send heartbeat when disconnected")
+        noHeartbeatExpectation.isInverted = true
+
+        let sub = socket.forever(receiveValue: onResult(.close, noHeartbeatExpectation.fulfill()))
+        defer { sub.cancel() }
+
+        socket.sendHeartbeat { noHeartbeatExpectation.fulfill() }
+
+        waitForExpectations(timeout: 0.1)
     }
     
     // MARK: on open
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L508
     func testFlushesPushesOnOpen() throws {
         let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let boomEx = expectation(description: "Should have gotten something back from the boom event")
-        
-        let boom: PhxEvent = .custom("boom")
-        
-        socket.push(topic: "unknown", event: boom)
-        
+
+        let receivedResponses = self.expectation(description: "Received response")
+        receivedResponses.expectedFulfillmentCount = 2
+
+        socket.push(topic: "unknown", event: .custom("first"))
+        socket.push(topic: "unknown", event: .custom("second"))
+
         let sub = socket.autoconnect().forever { message in
             switch message {
-            case .incomingMessage(let incomingMessage):
-                Swift.print(incomingMessage)
-                
-                if incomingMessage.topic == "unknown" && incomingMessage.event == .reply {
-                    boomEx.fulfill()
-                }
+            case .incomingMessage(let incoming):
+                guard let response = incoming.payload["response"] as? Dictionary<String, String> else { return }
+                guard let reason = response["reason"], reason == "unmatched topic" else { return }
+                receivedResponses.fulfill()
             default:
                 break
             }
         }
         defer { sub.cancel() }
-        
-        waitForExpectations(timeout: 0.5)
+
+        waitForExpectations(timeout: 2)
     }
     
     // MARK: remote close publishes close
@@ -725,7 +745,8 @@ class SocketTests: XCTestCase {
         let channel = socket.join("room:lobby")
         
         assertJoinAndLeave(channel, socket)
-        
+
+        // TODO: Don't use inverted expectations because they cause the test to take the entire time of the timeout
         let erroredEx = expectation(description: "Channel not should have errored")
         erroredEx.isInverted = true
 

@@ -108,23 +108,29 @@
 - [x] buffers data when not connected
 	- testPushOntoDisconnectedSocketBuffers()
 
-- [ ]
-	-
+## makeRef
 
-- [ ]
-	-
+- [x] returns next message ref
+	- testRefGeneratorReturnsCurrentAndNextRef()
 
-- [ ]
-	-
+- [x] restarts for overflow
+	- testRefGeneratorRestartsForOverflow()
 
-- [ ]
-	-
+## sendHeartbeat
 
-- [ ]
-	-
+- [x] closes socket when heartbeat is not ack'd within heartbeat window
+	- testHeartbeatTimeoutMovesSocketToClosedState()
 
-- [ ]
-	-
+- [x] pushes heartbeat data when connected
+	- testPushesHeartbeatWhenConnected()
+
+- [x] no ops when not connected
+	- testHeartbeatIsNotSentWhenDisconnected()
+
+## flushSendBuffer
+
+- [x] calls callbacks in buffer when connected
+	- testFlushesPushesOnOpen()
 
 - [ ]
 	-

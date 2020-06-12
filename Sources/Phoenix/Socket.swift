@@ -23,17 +23,18 @@ public final class Socket: Synchronized {
 
     public let url: URL
     public let timeout: DispatchTimeInterval
-    public let heartbeatInterval: DispatchTimeInterval
 
     private let refGenerator: Ref.Generator
+    var currentRef: Ref { refGenerator.current }
+
     private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
     private var pendingHeartbeatRef: Ref? = nil
     private var heartbeatTimer: Timer? = nil
 
     public static let defaultTimeout: DispatchTimeInterval = .seconds(10)
     public static let defaultHeartbeatInterval: DispatchTimeInterval = .seconds(30)
-    
-    public var currentRef: Ref { refGenerator.current }
+    public let heartbeatInterval: DispatchTimeInterval
+
     
     var isClosed: Bool { sync {
         guard case .closed = state else { return false }
@@ -348,25 +349,32 @@ extension Socket {
 // MARK: Heartbeat
 
 extension Socket {
-    func sendHeartbeat() {
-        sync {
+    typealias HeartbeatSuccessHandler = () -> Void
+
+    func sendHeartbeat(_ onSuccess: HeartbeatSuccessHandler? = nil) {
+        let msg: OutgoingMessage? = sync {
             guard pendingHeartbeatRef == nil else {
                 heartbeatTimeout()
-                return
+                return nil
             }
             
-            guard case .open = state else { return }
+            guard case .open = state else { return nil }
+
+            let pendingHeartbeatRef = refGenerator.advance()
+            self.pendingHeartbeatRef = pendingHeartbeatRef
+            return OutgoingMessage(heartbeatPush, ref: pendingHeartbeatRef)
+        }
+
+        guard let message = msg else { return }
             
-            self.pendingHeartbeatRef = refGenerator.advance()
-            let message = OutgoingMessage(heartbeatPush, ref: pendingHeartbeatRef!)
-            
-            Swift.print("writing heartbeat")
-            
-            send(message) { error in
-                if let error = error {
-                    Swift.print("error writing heartbeat push", error)
-                    self.heartbeatTimeout()
-                }
+        Swift.print("writing heartbeat")
+
+        send(message) { error in
+            if let error = error {
+                Swift.print("error writing heartbeat push", error)
+                self.heartbeatTimeout()
+            } else if let onSuccess = onSuccess {
+                onSuccess()
             }
         }
     }
