@@ -132,41 +132,46 @@
 - [x] calls callbacks in buffer when connected
 	- testFlushesPushesOnOpen()
 
-- [ ]
+- [x] empties sendBuffer
+	- testFlushesAllQueuedMessages()
+
+## onConnOpen
+
+- [x] flushes the send buffer
+	- testFlushesPushesOnOpen()
+
+- [x] resets reconnectTimer
+	- testConnectionOpenResetsReconnectTimer()
+
+- [x] triggers onOpen callback
+	- testConnectionOpenPublishesOpenMessage()
+
+## onConnClose
+
+- [x] schedules reconnectTimer timeout if normal close
+	- testSocketReconnectAfterRemoteClose()
+
+- [x] does not schedule reconnectTimer timeout if normal close after explicit disconnect
+	- testSocketDoesNotReconnectIfExplicitDisconnect()
+
+- [x] schedules reconnectTimer timeout if not normal close
+	- testSocketReconnectAfterRemoteException()
+
+- [x] schedules reconnectTimer timeout if connection cannot be made after a previous clean disconnect
+	- testSocketReconnectsAfterExplicitDisconnectAndThenConnect()
+
+- [x] triggers onClose callback
+	- testRemoteClosePublishesClose()
+
+- [ ] triggers channel error if joining
 	-
 
-- [ ]
-	-
+- [x] triggers channel error if joined
+	- testRemoteExceptionErrorsChannels()
+	- testSocketCloseErrorsChannels()
 
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
+- [x] does not trigger channel error after leave
+	- testSocketCloseDoesNotErrorChannelsIfLeft()
 
 - [ ]
 	-

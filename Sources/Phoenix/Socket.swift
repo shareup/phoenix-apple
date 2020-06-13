@@ -3,9 +3,13 @@ import Forever
 import Foundation
 import Synchronized
 
+private let backgroundQueue = DispatchQueue(label: "Socket.backgroundQueue")
+
 public final class Socket: Synchronized {
     public typealias Output = Socket.Message
     public typealias Failure = Never
+
+    public typealias ReconnectTimeInterval = (Int) -> DispatchTimeInterval
     
     private var subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed
@@ -35,6 +39,24 @@ public final class Socket: Synchronized {
     public static let defaultHeartbeatInterval: DispatchTimeInterval = .seconds(30)
     public let heartbeatInterval: DispatchTimeInterval
 
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/js/phoenix.js#L790
+    public var reconnectTimeInterval: ReconnectTimeInterval = { (attempt: Int) -> DispatchTimeInterval in
+        let milliseconds = [10, 50, 100, 150, 200, 250, 500, 1000, 2000, 5000]
+        switch attempt {
+        case 0:
+            assertionFailure("`attempt` should start at 1")
+            return .milliseconds(milliseconds[5])
+        case (1..<milliseconds.count):
+            return .milliseconds(milliseconds[attempt - 1])
+        default:
+            return .milliseconds(milliseconds[milliseconds.count - 1])
+        }
+    }
+    private var _reconnectAttempts: Int = 0
+    var reconnectAttempts: Int {
+        get { sync { _reconnectAttempts } }
+        set { sync { _reconnectAttempts = newValue } }
+    }
     
     var isClosed: Bool { sync {
         guard case .closed = state else { return false }
@@ -115,11 +137,6 @@ extension Socket: Publisher {
 // MARK: ConnectablePublisher
 
 extension Socket: ConnectablePublisher {
-    // This is how I can provide something that knows how to
-    // cancel the Socket as an opaque return value to connect() below
-    //
-    // I could make the Socket cancellable and just have cancel call
-    // disconnect, but I don't really like that idea right now
     private struct Canceller: Cancellable {
         weak var socket: Socket?
         
@@ -271,7 +288,7 @@ extension Socket {
     }
     
     private func flushAsync() {
-        DispatchQueue.global().async { self.flush() }
+        backgroundQueue.async { self.flush() }
     }
 }
 
@@ -431,6 +448,8 @@ extension Socket {
             case .open:
                 // TODO: check if we are already open
                 sync {
+                    _reconnectAttempts = 0
+                    
                     switch state {
                     case .closed:
                         assertionFailure("We shouldn't receive an open message if we are in a closed state")
@@ -488,8 +507,9 @@ extension Socket {
                 subject.send(.close)
 
                 if shouldReconnect {
-                    let deadline = DispatchTime.now().advanced(by: .milliseconds(200))
-                    DispatchQueue.global().asyncAfter(deadline: deadline) {
+                    _reconnectAttempts += 1
+                    let deadline = DispatchTime.now().advanced(by: reconnectTimeInterval(_reconnectAttempts))
+                    backgroundQueue.asyncAfter(deadline: deadline) {
                         self.connect()
                     }
                 }
