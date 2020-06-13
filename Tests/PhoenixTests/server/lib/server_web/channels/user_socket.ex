@@ -14,6 +14,17 @@ defmodule ServerWeb.Socket do
     {:ok, {state, socket}}
   end
 
+  def handle_in({"boom", opts}, {state, socket}) do
+    IO.inspect("boom")
+
+    # only support text commands
+    :text = Keyword.fetch!(opts, :opcode)
+
+    raise "boom"
+
+    {:ok, {state, socket}}
+  end
+
   use Phoenix.Socket
 
   channel("room:*", ServerWeb.RoomChannel)
