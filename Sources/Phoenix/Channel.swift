@@ -3,6 +3,8 @@ import Foundation
 import Forever
 import Synchronized
 
+private let backgroundQueue = DispatchQueue(label: "Channel.backgroundQueue")
+
 public final class Channel: Publisher, Synchronized {
     public typealias Output = Channel.Event
     public typealias Failure = Never
@@ -169,7 +171,7 @@ extension Channel {
                 let ref = refGenerator.advance()
                 self.state = .joining(ref)
                 
-                DispatchQueue.global().async {
+                backgroundQueue.async {
                     self.writeJoinPush()
                 }
             }
@@ -198,7 +200,7 @@ extension Channel {
     }
     
     private func writeJoinPushAsync() {
-        DispatchQueue.global().async {
+        backgroundQueue.async {
             self.writeJoinPush()
         }
     }
@@ -222,7 +224,7 @@ extension Channel {
                 let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
                 self.state = .leaving(joinRef: joinRef, leavingRef: ref)
                 
-                DispatchQueue.global().async {
+                backgroundQueue.async {
                     self.send(message)
                 }
             case .leaving, .errored, .closed:
@@ -323,7 +325,7 @@ extension Channel {
     }
     
     private func flushAsync() {
-        DispatchQueue.global().async { self.flush() }
+        backgroundQueue.async { self.flush() }
     }
 }
 
@@ -402,7 +404,7 @@ extension Channel {
     }
     
     private func timeoutPushedMessagesAsync() {
-        DispatchQueue.global().async { self.timeoutPushedMessages() }
+        backgroundQueue.async { self.timeoutPushedMessages() }
     }
     
     private func createPushedMessagesTimer() {
@@ -568,7 +570,7 @@ extension Channel {
                 
                 createPushedMessagesTimer()
                 
-                DispatchQueue.global().async {
+                backgroundQueue.async {
                     pushed.callback(reply: reply)
                 }
                 
