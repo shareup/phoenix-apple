@@ -28,6 +28,8 @@ public final class Socket: Synchronized {
     public let url: URL
     public let timeout: DispatchTimeInterval
 
+    private let notifySubjectQueue = DispatchQueue(label: "Socket.notifySubjectQueue")
+
     private let refGenerator: Ref.Generator
 
     var currentRef: Ref { refGenerator.current }
@@ -132,7 +134,7 @@ extension Socket {
 extension Socket: Publisher {
     public func receive<S>(subscriber: S)
         where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
-        subject.receive(subscriber: subscriber)
+            subject.receive(subscriber: subscriber)
     }
 }
 
@@ -156,7 +158,8 @@ extension Socket: ConnectablePublisher {
                 let ws = WebSocket(url: url)
                 self.state = .connecting(ws)
 
-                subject.send(.connecting)
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.connecting) }
                 
                 self.webSocketSubscriber = makeWebSocketSubscriber(with: ws)
                 cancelHeartbeatTimer()
@@ -185,7 +188,10 @@ extension Socket: ConnectablePublisher {
                 return
             case .open(let ws), .connecting(let ws):
                 self.state = .closing(ws)
-                subject.send(.closing)
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.closing) }
+
                 ws.close()
             }
         }
@@ -400,18 +406,22 @@ extension Socket {
     
     func heartbeatTimeout() {
         Swift.print("heartbeat timeout")
-        
-        self.pendingHeartbeatRef = nil
-        
-        switch state {
-        case .closed, .closing:
-            // NOOP
-            return
-        case .open(let ws), .connecting(let ws):
-            ws.close()
-            // TODO: shouldn't this be an errored state?
-            self.state = .closed
-            subject.send(.close)
+
+        sync {
+            self.pendingHeartbeatRef = nil
+            
+            switch state {
+            case .closed, .closing:
+                // NOOP
+                return
+            case .open(let ws), .connecting(let ws):
+                ws.close()
+                // TODO: shouldn't this be an errored state?
+                self.state = .closed
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.close) }
+            }
         }
     }
     
@@ -464,7 +474,10 @@ extension Socket {
                         return
                     case .connecting(let ws):
                         self.state = .open(ws)
-                        subject.send(.open)
+
+                        let subject = self.subject
+                        notifySubjectQueue.async { subject.send(.open) }
+
                         flushAsync()
                     }
                 }
@@ -475,14 +488,18 @@ extension Socket {
                 do {
                     let message = try IncomingMessage(string: string)
 
-                    if message.event == .heartbeat &&
-                        pendingHeartbeatRef != nil &&
-                        message.ref == pendingHeartbeatRef {
+                    sync {
+                        if message.event == .heartbeat &&
+                            pendingHeartbeatRef != nil &&
+                            message.ref == pendingHeartbeatRef {
 
-                        Swift.print("heartbeat OK")
-                        self.pendingHeartbeatRef = nil
-                    } else {
-                        subject.send(.incomingMessage(message))
+                            Swift.print("heartbeat OK")
+                            self.pendingHeartbeatRef = nil
+                        } else {
+
+                            let subject = self.subject
+                            notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
+                        }
                     }
                 } catch {
                     Swift.print("Could not decode the WebSocket message data: \(error)")
@@ -506,7 +523,10 @@ extension Socket {
                 self.state = .closed
                 self.webSocketSubscriber = nil
 
-                subject.send(.close)
+                let subject = self.subject
+                notifySubjectQueue.async {
+                    subject.send(.close)
+                }
 
                 if shouldReconnect {
                     _reconnectAttempts += 1
