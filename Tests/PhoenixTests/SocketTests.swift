@@ -131,7 +131,6 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L309
     func testSocketDefaultsToClosed() throws {
         let socket = makeSocket()
-        
         XCTAssertEqual(socket.connectionState, "closed")
         XCTAssert(socket.isClosed)
     }
@@ -140,15 +139,8 @@ class SocketTests: XCTestCase {
     func testSocketIsConnecting() throws {
         let socket = makeSocket()
 
-        let sub = socket.autoconnect().forever(receiveValue:
-            expectAndThen([
-                .connecting: {
-                    XCTAssertEqual(socket.connectionState, "connecting")
-                    XCTAssert(socket.isConnecting)
-                    XCTAssertFalse(socket.isOpen)
-                }
-            ])
-        )
+        self.expectationWithTest(description: "Socket enters connecting state", test: socket.isConnecting)
+        let sub = socket.autoconnect().forever(receiveValue: expect(.connecting))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -158,14 +150,8 @@ class SocketTests: XCTestCase {
     func testSocketIsOpen() throws {
         let socket = makeSocket()
 
-        let sub = socket.autoconnect().forever(receiveValue:
-            expectAndThen([
-                .open: {
-                    XCTAssertEqual(socket.connectionState, "open")
-                    XCTAssert(socket.isOpen)
-                }
-            ])
-        )
+        self.expectationWithTest(description: "Socket enters open state", test: socket.isOpen)
+        let sub = socket.autoconnect().forever(receiveValue: expect(.open))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -175,14 +161,11 @@ class SocketTests: XCTestCase {
     func testSocketIsClosing() throws {
         let socket = makeSocket()
 
+        self.expectationWithTest(description: "Socket enters closing state", test: socket.isClosing)
         let sub = socket.autoconnect().forever(receiveValue:
             expectAndThen([
                 .open: { socket.disconnect() },
-                .closing: {
-                    XCTAssertEqual(socket.connectionState, "closing")
-                    XCTAssert(socket.isClosing)
-                    XCTAssertFalse(socket.isOpen)
-                }
+                .closing: { }
             ])
         )
         defer { sub.cancel() }
@@ -237,16 +220,14 @@ class SocketTests: XCTestCase {
     func testSocketIsDisconnectedAfterAutconnectSubscriptionIsCancelled() throws {
         let socket = makeSocket()
 
-        let openEx = expectation(description: "Should have gotten an open message")
-        let closeMessageEx = expectation(description: "Should have gotten a closing message")
-
         var sub: Subscribers.Forever<Publishers.Autoconnect<Socket>>? = nil
         sub = socket.autoconnect().forever(receiveValue:
-            onResults([
-                .open: { openEx.fulfill(); sub?.cancel() },
-                .closing: { closeMessageEx.fulfill() },
+            expectAndThen([
+                 .open: { sub?.cancel() },
             ])
         )
+
+        self.expectationWithTest(description: "Socket did close", test: socket.isClosed)
 
         waitForExpectations(timeout: 2)
     }
@@ -728,7 +709,29 @@ class SocketTests: XCTestCase {
         waitForExpectations(timeout: 2)
     }
     
-    // MARK: decoding messages
+    // MARK: channel messages
+
+    func testChannelReceivesMessages() throws {
+        let socket = makeSocket()
+
+        let channel = socket.join("room:lobby")
+        let echoEcho = "yahoo"
+        let echoEx = expectation(description: "Should have received the echo text response")
+
+        channel.push("echo", payload: ["echo": echoEcho]) { result in
+            guard case .success(let reply) = result else { return }
+            XCTAssertTrue(reply.isOk)
+            XCTAssertEqual(socket.currentRef, reply.ref)
+            XCTAssertEqual(channel.topic, reply.incomingMessage.topic)
+            XCTAssertEqual(["echo": echoEcho], reply.response as? Dictionary<String, String>)
+            XCTAssertEqual(channel.joinRef, reply.joinRef)
+            echoEx.fulfill()
+        }
+
+        socket.connect()
+
+        waitForExpectations(timeout: 2)
+    }
     
     func testSocketDecodesAndPublishesMessage() throws {
         let socket = makeSocket()
@@ -753,28 +756,6 @@ class SocketTests: XCTestCase {
         defer { sub.cancel() }
         
         channel.push("echo", payload: ["echo": echoEcho])
-        
-        waitForExpectations(timeout: 1)
-    }
-    
-    func testChannelReceivesMessages() throws {
-        let socket = makeSocket()
-        defer { socket.disconnect() }
-        
-        let channel = socket.join("room:lobby")
-        let echoEcho = "yahoo"
-        let echoEx = expectation(description: "Should have received the echo text response")
-        
-        channel.push("echo", payload: ["echo": echoEcho]) { result in
-            if case .success(let reply) = result,
-                reply.isOk,
-                reply.response["echo"] as? String == echoEcho {
-                
-                echoEx.fulfill()
-            }
-        }
-        
-        socket.connect()
         
         waitForExpectations(timeout: 1)
     }
