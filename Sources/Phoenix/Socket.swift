@@ -29,7 +29,9 @@ public final class Socket: Synchronized {
     public let timeout: DispatchTimeInterval
 
     private let refGenerator: Ref.Generator
+
     var currentRef: Ref { refGenerator.current }
+    func advanceRef() -> Ref { refGenerator.advance() }
 
     private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
     private var pendingHeartbeatRef: Ref? = nil
@@ -275,7 +277,7 @@ extension Socket {
             guard let push = pending.first else { return }
             self.pending = Array(self.pending.dropFirst())
             
-            let ref = refGenerator.advance()
+            let ref = advanceRef()
             let message = OutgoingMessage(push, ref: ref)
             
             send(message) { error in
@@ -377,7 +379,7 @@ extension Socket {
             
             guard case .open = state else { return nil }
 
-            let pendingHeartbeatRef = refGenerator.advance()
+            let pendingHeartbeatRef = advanceRef()
             self.pendingHeartbeatRef = pendingHeartbeatRef
             return OutgoingMessage(heartbeatPush, ref: pendingHeartbeatRef)
         }

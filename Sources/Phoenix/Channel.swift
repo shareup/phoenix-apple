@@ -16,7 +16,6 @@ public final class Channel: Publisher, Synchronized {
     typealias RejoinTimeout = (Int) -> DispatchTimeInterval
     
     private var subject = PassthroughSubject<Output, Failure>()
-    private var refGenerator = Ref.Generator.global
     private var pending: [Push] = []
     private var inFlight: [Ref: PushedMessage] = [:]
     
@@ -74,7 +73,7 @@ public final class Channel: Publisher, Synchronized {
         self.joinPayloadBlock = joinPayloadBlock
         self.socketSubscriber = makeSocketSubscriber(with: socket, topic: topic)
     }
-    
+
     var joinRef: Ref? { sync {
         switch state {
         case .joining(let ref):
@@ -159,6 +158,8 @@ extension Channel {
     }
     
     private func rejoin() {
+        guard let socket = self.socket else { return assertionFailure("No socket") }
+
         sync {
             guard shouldRejoin else { return }
             
@@ -168,7 +169,7 @@ extension Channel {
             case .joining, .joined:
                 return
             case .closed, .errored, .leaving:
-                let ref = refGenerator.advance()
+                let ref = socket.advanceRef()
                 self.state = .joining(ref)
                 
                 backgroundQueue.async {
@@ -215,12 +216,14 @@ extension Channel {
     }
     
     public func leave() {
+        guard let socket = self.socket else { return assertionFailure("No socket") }
+
         sync {
             self.shouldRejoin = false
             
             switch state {
             case .joining(let joinRef), .joined(let joinRef):
-                let ref = refGenerator.advance()
+                let ref = socket.advanceRef()
                 let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
                 self.state = .leaving(joinRef: joinRef, leavingRef: ref)
                 
@@ -297,13 +300,15 @@ extension Channel {
 
 extension Channel {
     private func flush() {
+        guard let socket = self.socket else { return assertionFailure("No socket") }
+
         sync {
             guard case .joined(let joinRef) = state else { return }
             
             guard let push = pending.first else { return }
             self.pending = Array(self.pending.dropFirst())
             
-            let ref = refGenerator.advance()
+            let ref = socket.advanceRef()
             let message = OutgoingMessage(push, ref: ref, joinRef: joinRef)
             
             let pushed = PushedMessage(push: push, message: message)
@@ -483,12 +488,14 @@ extension Channel {
 
 extension Channel {
     private func handleSocketOpen() {
+        guard let socket = self.socket else { return assertionFailure("No socket") }
+
         sync {
             switch state {
             case .joining:
                 writeJoinPushAsync()
             case .errored:
-                let ref = refGenerator.advance()
+                let ref = socket.advanceRef()
                 self.state = .joining(ref)
                 writeJoinPushAsync()
             case .closed:

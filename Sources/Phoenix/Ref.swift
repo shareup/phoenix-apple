@@ -49,7 +49,5 @@ extension Ref {
                 return _current
             }
         }
-        
-        static var global: Generator = Generator()
     }
 }
