@@ -11,7 +11,7 @@ public final class Socket: Synchronized {
 
     public typealias ReconnectTimeInterval = (Int) -> DispatchTimeInterval
     
-    private var subject = PassthroughSubject<Output, Failure>()
+    private let subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed
     private var shouldReconnect = true
     private var webSocketSubscriber: AnySubscriber<WebSocketOutput, WebSocketFailure>?
