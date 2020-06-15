@@ -213,7 +213,8 @@ class SocketTests: XCTestCase {
 
         socket.connect()
 
-        waitForExpectations(timeout: 2)
+        wait(for: [openEx], timeout: 2)
+        wait(for: [closeMessageEx], timeout: 0.2)
         XCTAssertEqual(socket.connectionState, "open")
     }
 
