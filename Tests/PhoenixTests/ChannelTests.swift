@@ -154,17 +154,6 @@ class ChannelTests: XCTestCase {
     }
     
     func testJoinRetriesWithBackoffIfTimeout() throws {
-        let openEx = expectation(description: "Socket should have opened")
-
-        let sub = socket.forever {
-            if case .open = $0 { openEx.fulfill() }
-        }
-        defer { sub.cancel() }
-
-        socket.connect()
-
-        wait(for: [openEx], timeout: 1)
-
         var counter = 0
 
         let channel = Channel(
@@ -174,7 +163,7 @@ class ChannelTests: XCTestCase {
                 if (counter >= 4) {
                     return ["join": true]
                 } else {
-                    return ["timeout": 20, "join": true]
+                    return ["timeout": 110, "join": true]
                 }
             },
             socket: socket
@@ -183,29 +172,29 @@ class ChannelTests: XCTestCase {
             switch attempt {
             case 0: XCTFail("Rejoin timeouts start at 1"); return .seconds(1)
             case 1, 2, 3, 4: return .milliseconds(10 * attempt)
-            default: XCTFail("Too many attempts: \(attempt)"); return .seconds(1)
+            default: return .seconds(2)
             }
         }
 
-        let joinEx = expectation(description: "Should have joined")
+        let socketSub = socket.forever(receiveValue:
+            expectAndThen([.open: { channel.join(timeout: .milliseconds(100)) }])
+        )
+        defer { socketSub.cancel() }
 
-        let sub2 = channel.forever {
-            if case .join = $0 {
-                joinEx.fulfill()
-            }
-        }
-        defer { sub2.cancel() }
+        let channelSub = channel.forever(receiveValue:
+            expectAndThen([
+                .join: { Swift.print("?? channelSub join"); XCTAssertEqual(4, counter)  }
+                // 1st is the first backoff amount of 10 milliseconds
+                // 2nd is the second backoff amount of 20 milliseconds
+                // 3rd is the third backoff amount of 30 milliseconds
+                // 4th is the successful join, where we don't ask the server to sleep
+            ])
+        )
+        defer { channelSub.cancel() }
 
-        channel.join(timeout: .milliseconds(10))
+        socket.connect()
 
         waitForExpectations(timeout: 4)
-
-        XCTAssert(channel.isJoined)
-        XCTAssertEqual(counter, 4)
-        // 1st is the first backoff amount of 10 milliseconds
-        // 2nd is the second backoff amount of 20 milliseconds
-        // 3rd is the third backoff amount of 30 milliseconds
-        // 4th is the successful join, where we don't ask the server to sleep
     }
     
     func testSetsStateToErroredAfterJoinTimeout() throws {
