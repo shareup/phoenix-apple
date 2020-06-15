@@ -180,18 +180,17 @@ extension Channel {
     }
     
     private func writeJoinPush() {
-        // TODO: set a timer for timeout for the join push
         sync {
             switch self.state {
             case .joining(let joinRef):
                 let message = OutgoingMessage(joinPush, ref: joinRef, joinRef: joinRef)
-                
+
+                createJoinTimer()
+
                 send(message) { error in
                     if let error = error {
                         Swift.print("There was a problem writing to the socket: \(error)")
-                        // TODO: create the rejoin timer now?
-                    } else {
-                        self.createJoinTimer()
+                        self.createRejoinTimer()
                     }
                 }
             default:
@@ -344,45 +343,30 @@ extension Channel {
     
     private func createJoinTimer() {
         sync {
-            let attempt: Int
-            
-            if case .rejoin(_, let newAttempt) = joinTimer {
-                attempt = newAttempt
-            } else {
-                attempt = 1
-            }
-            
+            let attempt = (joinTimer.attempt ?? 0) + 1
             self.joinTimer = .off
-            
-            let timer = Timer(timeout) { [weak self] in
-                self?.timeoutJoinPush()
-            }
-            
+
+            let timer = Timer(timeout) { [weak self] in self?.timeoutJoinPush() }
+
             Swift.print("$$ creating join timer", timeout, attempt)
-            
-            self.joinTimer = .joining(timer: timer, attempt: attempt)
+
+            self.joinTimer = .join(timer: timer, attempt: attempt)
         }
     }
     
     private func createRejoinTimer() {
         sync {
-            guard case .joining(_, let attempt) = joinTimer else {
-                // NOTE: does this make sense?
-                createJoinTimer()
-                return
-            }
-            
+            let attempt = joinTimer.attempt ?? 0
+            assert(attempt > 0, "we should always join before rejoining")
             self.joinTimer = .off
-            
+
             let interval = rejoinTimeout(attempt)
             
-            let timer = Timer(interval) { [weak self] in
-                self?.rejoin()
-            }
+            let timer = Timer(interval) { [weak self] in self?.rejoin() }
             
             Swift.print("$$ creating rejoin timer", interval, attempt)
             
-            self.joinTimer = .rejoin(timer: timer, attempt: attempt + 1)
+            self.joinTimer = .rejoin(timer: timer, attempt: attempt)
         }
     }
     
