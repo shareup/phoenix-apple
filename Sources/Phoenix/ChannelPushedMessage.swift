@@ -1,7 +1,7 @@
 import Foundation
 
 extension Channel {
-    struct PushedMessage: Comparable {
+    struct PushedMessage {
         let push: Push
         let message: OutgoingMessage
         
@@ -19,13 +19,11 @@ extension Channel {
         func callback(error: Swift.Error) {
             push.asyncCallback(result: .failure(error))
         }
-        
-        static func < (lhs: Self, rhs: Self) -> Bool {
-            return lhs.timeoutDate < rhs.timeoutDate
-        }
-        
-        static func == (lhs: Self, rhs: Self) -> Bool {
-            return lhs.timeoutDate == rhs.timeoutDate
-        }
+    }
+}
+
+extension Sequence where Self.Element == Channel.PushedMessage {
+    func sortedByTimeoutDate() -> [Self.Element] {
+        return self.sorted(by: { $0.timeoutDate < $1.timeoutDate })
     }
 }

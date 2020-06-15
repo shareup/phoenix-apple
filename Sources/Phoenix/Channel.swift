@@ -395,7 +395,7 @@ extension Channel {
             
             let now = DispatchTime.now()
         
-            let messages = inFlight.values.sorted().filter {
+            let messages = inFlight.values.sortedByTimeoutDate().filter {
                 $0.timeoutDate < now
             }
             
@@ -418,8 +418,8 @@ extension Channel {
                 pushedMessagesTimer == nil else {
                     return
             }
-            
-            let possibleNext = inFlight.values.sorted().first
+
+            let possibleNext = inFlight.values.sortedByTimeoutDate().first
             
             guard let next = possibleNext else { return }
             
