@@ -3,7 +3,7 @@ import Foundation
 struct OutgoingMessage {
     let joinRef: Ref?
     let ref: Ref
-    let topic: String
+    let topic: Topic
     let event: PhxEvent
     let payload: Payload
     let sentAt: DispatchTime = DispatchTime.now()
@@ -12,7 +12,7 @@ struct OutgoingMessage {
         case missingChannelJoinRef
     }
     
-    init(ref: Ref, topic: String, event: PhxEvent, payload: Payload) {
+    init(ref: Ref, topic: Topic, event: PhxEvent, payload: Payload) {
         self.joinRef = nil
         self.ref = ref
         self.topic = topic

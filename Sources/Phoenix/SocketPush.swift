@@ -4,12 +4,12 @@ extension Socket {
     public typealias Callback = (Swift.Error?) -> Void
     
     struct Push {
-        public let topic: String
+        public let topic: Topic
         public let event: PhxEvent
         public let payload: Payload
         public let callback: Callback?
         
-        init(topic: String, event: PhxEvent, payload: Payload = [:], callback: Callback? = nil) {
+        init(topic: Topic, event: PhxEvent, payload: Payload = [:], callback: Callback? = nil) {
             self.topic = topic
             self.event = event
             self.payload = payload

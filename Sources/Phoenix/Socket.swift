@@ -15,7 +15,7 @@ public final class Socket: Synchronized {
     private var state: State = .closed
     private var shouldReconnect = true
     private var webSocketSubscriber: AnySubscriber<WebSocketOutput, WebSocketFailure>?
-    private var channels = [String: WeakChannel]()
+    private var channels = [Topic: WeakChannel]()
     
     public var joinedChannels: [Channel] {
         let channels = sync { self.channels }
@@ -205,7 +205,7 @@ extension Socket {
         return channel.join()
     }
 
-    public func join(_ topic: String, payload: Payload = [:]) -> Channel {
+    public func join(_ topic: Topic, payload: Payload = [:]) -> Channel {
         sync {
             let _channel = channel(topic, payload: payload)
             _channel.join()
@@ -213,7 +213,7 @@ extension Socket {
         }
     }
     
-    public func channel(_ topic: String, payload: Payload = [:]) -> Channel {
+    public func channel(_ topic: Topic, payload: Payload = [:]) -> Channel {
         sync {
             if let weakChannel = channels[topic],
                 let _channel = weakChannel.channel {
@@ -232,7 +232,7 @@ extension Socket {
         leave(channel.topic)
     }
 
-    public func leave(_ topic: String) {
+    public func leave(_ topic: Topic) {
         let removeChannel: () -> Channel? = {
             guard let weakChannel = self.channels[topic], let channel = weakChannel.channel else { return nil }
             self.channels.removeValue(forKey: topic)
@@ -246,15 +246,15 @@ extension Socket {
 // MARK: Push event
 
 extension Socket {
-    public func push(topic: String, event: PhxEvent) {
+    public func push(topic: Topic, event: PhxEvent) {
         push(topic: topic, event: event, payload: [:])
     }
     
-    public func push(topic: String, event: PhxEvent, payload: Payload) {
+    public func push(topic: Topic, event: PhxEvent, payload: Payload) {
         push(topic: topic, event: event, payload: payload) { _ in }
     }
     
-    public func push(topic: String,
+    public func push(topic: Topic,
                      event: PhxEvent,
                      payload: Payload = [:],
                      callback: @escaping Callback) {

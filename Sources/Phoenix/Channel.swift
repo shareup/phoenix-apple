@@ -53,21 +53,21 @@ public final class Channel: Publisher, Synchronized {
         }
     }
     
-    public let topic: String
+    public let topic: Topic
     
     let joinPayloadBlock: JoinPayloadBlock
     var joinPayload: Payload { joinPayloadBlock() }
     
     // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
-    convenience init(topic: String, socket: Socket) {
+    convenience init(topic: Topic, socket: Socket) {
         self.init(topic: topic, joinPayloadBlock: { [:] }, socket: socket)
     }
     
-    convenience init(topic: String, joinPayload: Payload, socket: Socket) {
+    convenience init(topic: Topic, joinPayload: Payload, socket: Socket) {
         self.init(topic: topic, joinPayloadBlock: { joinPayload }, socket: socket)
     }
     
-    init(topic: String, joinPayloadBlock: @escaping JoinPayloadBlock, socket: Socket) {
+    init(topic: Topic, joinPayloadBlock: @escaping JoinPayloadBlock, socket: Socket) {
         self.topic = topic
         self.socket = socket
         self.joinPayloadBlock = joinPayloadBlock
@@ -432,7 +432,11 @@ extension Channel {
         case channelMessage(IncomingMessage)
     }
 
-    func makeSocketSubscriber(with socket: Socket, topic: String) -> AnySubscriber<SocketOutput, SocketFailure> {
+    func makeSocketSubscriber(
+        with socket: Socket,
+        topic: Topic
+    ) -> AnySubscriber<SocketOutput, SocketFailure>
+    {
         let channelSpecificMessage = { (message: Socket.Message) -> SocketOutput? in
             switch message {
             case .closing, .connecting, .unreadableMessage, .websocketError:

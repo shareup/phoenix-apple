@@ -9,7 +9,7 @@ public struct IncomingMessage {
 
     let joinRef: Ref?
     let ref: Ref?
-    let topic: String
+    let topic: Topic
     let event: PhxEvent
     let payload: Payload
     
@@ -27,7 +27,7 @@ public struct IncomingMessage {
         let joinRef: Ref? = _ref(arr[0])
         let ref: Ref? = _ref(arr[1])
 
-        guard let topic = arr[2] as? String else {
+        guard let topic = arr[2] as? Topic else {
             throw DecodingError.missingValue("topic")
         }
 
@@ -50,7 +50,7 @@ public struct IncomingMessage {
         )
     }
 
-    init(joinRef: Ref? = nil, ref: Ref?, topic: String, event: PhxEvent, payload: Payload = [:]) {
+    init(joinRef: Ref? = nil, ref: Ref?, topic: Topic, event: PhxEvent, payload: Payload = [:]) {
         self.joinRef = joinRef
         self.ref = ref
         self.topic = topic
