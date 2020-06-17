@@ -3,16 +3,15 @@ import Combine
 @testable import Phoenix
 
 class ChannelTests: XCTestCase {
-    lazy var socket: Socket = {
-        Socket(url: testHelper.defaultURL)
-    }()
+    var socket: Socket!
     
     override func setUp() {
-        self.socket = Socket(url: testHelper.defaultURL)
+        socket = makeSocket()
     }
     
     override func tearDown() {
         socket.disconnect()
+        socket = nil
     }
     
     func testChannelInit() throws {
@@ -142,7 +141,7 @@ class ChannelTests: XCTestCase {
         
         let time = DispatchTime.now().advanced(by: .milliseconds(200))
         DispatchQueue.global().asyncAfter(deadline: time) { [socket] in
-            socket.connect()
+            socket!.connect()
         }
         
         wait(for: [joinEx], timeout: 2)
@@ -533,5 +532,14 @@ class ChannelTests: XCTestCase {
         socket.send("disconnect")
         
         waitForExpectations(timeout: 1)
+    }
+}
+
+extension ChannelTests {
+    func makeSocket() -> Socket {
+        let socket = Socket(url: testHelper.defaultURL)
+        // We don't want the socket to reconnect unless the test requires it to.
+        socket.reconnectTimeInterval = { _ in .seconds(30) }
+        return socket
     }
 }

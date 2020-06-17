@@ -769,19 +769,6 @@ private extension SocketTests {
         return socket
     }
 
-    func assertOpen(_ socket: Socket) {
-        let openEx = expectation(description: "Should have gotten an open message");
-
-        let sub = socket.forever {
-            if case .open = $0 { openEx.fulfill() }
-        }
-        defer { sub.cancel() }
-
-        socket.connect()
-
-        wait(for: [openEx], timeout: 1)
-    }
-
     func expectPushSuccess() -> (Error?) -> Void {
         let pushSuccess = self.expectation(description: "Should have received response")
         return { e in

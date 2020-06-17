@@ -179,92 +179,22 @@
 - [x] triggers onMessage callback
 	- testSocketDecodesAndPublishesMessage()
 
-- [ ]
-	-
+## custom encoder and decoder
 
-- [ ]
-	-
+- [x] encodes to JSON array by default
+	- _not applicable_
 
-- [ ]
-	-
+- [x] allows custom encoding when using WebSocket transport
+	- _not applicable_
 
-- [ ]
-	-
+- [x] forces JSON encoding when using LongPoll transport
+	- _not applicable_
 
-- [ ]
-	-
+- [x] decodes JSON by default
+	- _not applicable_
 
-- [ ]
-	-
+- [x] allows custom decoding when using WebSocket transport
+	- _not applicable_
 
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
-
-- [ ]
-	-
+- [x] forces JSON decoding when using LongPoll transport
+	- _not applicable_
