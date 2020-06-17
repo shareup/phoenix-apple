@@ -2,7 +2,7 @@ import Combine
 import Foundation
 import Synchronized
 
-class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
+class WebSocket: NSObject, WebSocketProtocol, Publisher {
     typealias Output = Result<WebSocket.Message, Swift.Error>
     typealias Failure = Swift.Error
 
@@ -23,7 +23,10 @@ class WebSocket: NSObject, WebSocketProtocol, Synchronized, Publisher {
         guard case .closed = state else { return false }
         return true
     } }
-    
+
+    private let lock: RecursiveLock = RecursiveLock()
+    private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
+
     private let url: URL
     private var state: State = .unopened
     private let subject = PassthroughSubject<Output, Failure>()

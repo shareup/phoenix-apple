@@ -5,7 +5,7 @@ import Synchronized
 
 private let backgroundQueue = DispatchQueue(label: "Channel.backgroundQueue")
 
-public final class Channel: Publisher, Synchronized {
+public final class Channel: Publisher {
     public typealias Output = Channel.Event
     public typealias Failure = Never
 
@@ -14,6 +14,9 @@ public final class Channel: Publisher, Synchronized {
 
     typealias JoinPayloadBlock = () -> Payload
     typealias RejoinTimeout = (Int) -> DispatchTimeInterval
+
+    private let lock: RecursiveLock = RecursiveLock()
+    private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
     
     private var subject = PassthroughSubject<Output, Failure>()
     private var pending: [Push] = []

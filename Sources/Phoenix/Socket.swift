@@ -5,11 +5,14 @@ import Synchronized
 
 private let backgroundQueue = DispatchQueue(label: "Socket.backgroundQueue")
 
-public final class Socket: Synchronized {
+public final class Socket {
     public typealias Output = Socket.Message
     public typealias Failure = Never
 
     public typealias ReconnectTimeInterval = (Int) -> DispatchTimeInterval
+
+    private let lock: RecursiveLock = RecursiveLock()
+    private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
     
     private let subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed

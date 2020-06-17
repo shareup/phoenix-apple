@@ -25,8 +25,11 @@ public struct Ref: Comparable, Hashable, ExpressibleByIntegerLiteral {
 let maxSafeInt: UInt64 = 9007199254740991
 
 extension Ref {
-    final class Generator: Synchronized {
+    final class Generator  {
         var current: Ref { sync { _current } }
+
+        private let lock: RecursiveLock = RecursiveLock()
+        private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
 
         private var _current: Ref
         
