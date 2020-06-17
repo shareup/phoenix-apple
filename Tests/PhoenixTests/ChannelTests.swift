@@ -163,7 +163,7 @@ class ChannelTests: XCTestCase {
                 if (counter >= 4) {
                     return ["join": true]
                 } else {
-                    return ["timeout": 110, "join": true]
+                    return ["timeout": 120, "join": true]
                 }
             },
             socket: socket
@@ -183,7 +183,7 @@ class ChannelTests: XCTestCase {
 
         let channelSub = channel.forever(receiveValue:
             expectAndThen([
-                .join: { Swift.print("?? channelSub join"); XCTAssertEqual(4, counter)  }
+                .join: { XCTAssertEqual(4, counter)  }
                 // 1st is the first backoff amount of 10 milliseconds
                 // 2nd is the second backoff amount of 20 milliseconds
                 // 3rd is the third backoff amount of 30 milliseconds
