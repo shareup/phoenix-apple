@@ -712,6 +712,7 @@ class SocketTests: XCTestCase {
     
     // MARK: channel messages
 
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L771
     func testChannelReceivesMessages() throws {
         let socket = makeSocket()
 
@@ -733,32 +734,30 @@ class SocketTests: XCTestCase {
 
         waitForExpectations(timeout: 2)
     }
-    
+
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L788
     func testSocketDecodesAndPublishesMessage() throws {
         let socket = makeSocket()
-        defer { socket.disconnect() }
-        
+
         let channel = socket.join("room:lobby")
         
         let echoEcho = "kapow"
         let echoEx = expectation(description: "Should have received the echo text response")
         
-        let sub = socket.autoconnect().forever {
-            if case .incomingMessage(let message) = $0,
-                message.topic == channel.topic,
-                message.event == .reply,
-                message.payload["status"] as? String == "ok",
-                let response = message.payload["response"] as? [String: String],
-                response["echo"] == echoEcho {
-                
-                echoEx.fulfill()
-            }
+        let sub = socket.autoconnect().forever { msg in
+            guard case .incomingMessage(let message) = msg else { return }
+            guard "ok" == message.payload["status"] as? String else { return }
+            guard .reply == message.event else { return }
+            guard channel.topic == message.topic else { return }
+            guard let response = message.payload["response"] as? [String: String] else { return }
+            guard echoEcho == response["echo"] else { return }
+            echoEx.fulfill()
         }
         defer { sub.cancel() }
         
         channel.push("echo", payload: ["echo": echoEcho])
         
-        waitForExpectations(timeout: 1)
+        waitForExpectations(timeout: 2)
     }
 }
 

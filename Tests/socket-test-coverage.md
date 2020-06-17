@@ -173,11 +173,11 @@
 - [x] does not trigger channel error after leave
 	- testSocketCloseDoesNotErrorChannelsIfLeft()
 
-- [ ]
-	-
+- [x] parses raw message and triggers channel event
+	- testChannelReceivesMessages()
 
-- [ ]
-	-
+- [x] triggers onMessage callback
+	- testSocketDecodesAndPublishesMessage()
 
 - [ ]
 	-

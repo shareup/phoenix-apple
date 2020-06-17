@@ -461,7 +461,6 @@ extension Socket {
         case .success(let message):
             switch message {
             case .open:
-                // TODO: check if we are already open
                 sync {
                     _reconnectAttempts = 0
                     
@@ -485,7 +484,6 @@ extension Socket {
                     }
                 }
             case .data:
-                // TODO: Are we going to use data frames from the server for anything?
                 assertionFailure("We are not currently expecting any data frames from the server")
             case .string(let string):
                 do {
@@ -494,12 +492,10 @@ extension Socket {
                     sync {
                         if message.event == .heartbeat &&
                             pendingHeartbeatRef != nil &&
-                            message.ref == pendingHeartbeatRef {
-
-                            Swift.print("heartbeat OK")
+                            message.ref == pendingHeartbeatRef
+                        {
                             self.pendingHeartbeatRef = nil
                         } else {
-
                             let subject = self.subject
                             notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
                         }
@@ -520,7 +516,6 @@ extension Socket {
         sync {
             switch state {
             case .closed:
-                // NOOP
                 return
             case .open, .connecting, .closing:
                 self.state = .closed
