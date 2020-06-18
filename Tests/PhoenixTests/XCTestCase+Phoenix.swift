@@ -1,4 +1,5 @@
 import XCTest
+import Phoenix
 
 extension XCTestCase {
     func expect<T: RawCaseConvertible>(_ value: T.RawCase) -> (T) -> Void {
@@ -38,6 +39,19 @@ extension XCTestCase {
         return { v in
             if let block = valueToAction[v.toRawCase()] {
                 block()
+            }
+        }
+    }
+}
+
+extension XCTestCase {
+    func expect(response expected: [String: String]) -> Channel.Callback {
+        let expectation = self.expectation(description: "Received successful response")
+        return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
+            if case .success(let reply) = result {
+                guard let response = reply.response as? [String: String] else { return }
+                XCTAssertEqual(expected, response)
+                expectation.fulfill()
             }
         }
     }

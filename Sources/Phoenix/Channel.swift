@@ -556,6 +556,7 @@ extension Channel {
                 }
                 
                 self.state = .joined(joinRef)
+                self.joinedOnce = true
                 subject.send(.join)
                 self.joinTimer = .off
                 flushAsync()
