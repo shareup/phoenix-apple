@@ -401,7 +401,9 @@ class ChannelTests: XCTestCase {
         
         waitForExpectations(timeout: 2)
         
-        XCTAssertTrue(channel.joinTimer.isRejoinTimer)
+        expectationWithTest(description: "Should have tried to rejoin", test: channel.joinTimer.isRejoinTimer)
+        
+        waitForExpectations(timeout: 2)
     }
     
     // MARK: receives error

@@ -301,7 +301,6 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L385
     func testChannelsAreRemoved() throws {
         let socket = makeSocket()
-        socket.connect()
 
         let channel1 = socket.channel("room:lobby")
         let channel2 = socket.channel("room:lobby2")
@@ -310,9 +309,13 @@ class SocketTests: XCTestCase {
         let sub2 = channel2.forever(receiveValue: expect(.join))
         defer { [sub1, sub2].forEach { $0.cancel() } }
 
-        socket.join(channel1)
-        socket.join(channel2)
-
+        let socketSub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([
+                .open: { socket.join(channel1); socket.join(channel2) }
+            ])
+        )
+        defer { socketSub.cancel() }
+        
         waitForExpectations(timeout: 2)
 
         XCTAssertEqual(Set(["room:lobby", "room:lobby2"]), Set(socket.joinedChannels.map(\.topic)))
