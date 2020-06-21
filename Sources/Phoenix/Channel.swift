@@ -92,8 +92,6 @@ public final class Channel: Publisher {
         }
     } }
     
-    var joinedOnce = false
-    
     var joinPush: Push {
         Push(channel: self, event: .join, payload: joinPayload, timeout: timeout)
     }
@@ -556,9 +554,10 @@ extension Channel {
                 }
                 
                 self.state = .joined(joinRef)
-                self.joinedOnce = true
+
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.join) }
+
                 self.joinTimer = .off
                 
                 flushAsync()

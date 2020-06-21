@@ -28,7 +28,7 @@
 
 - [x] sets joinedOnce to true
 	- https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L111
-	- `testSetsJoinedOnceToTrue()`
+	- _not applicable_
 
 - [x] throws if attempting to join multiple times
 	- https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L119

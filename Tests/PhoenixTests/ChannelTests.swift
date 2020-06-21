@@ -21,7 +21,6 @@ class ChannelTests: XCTestCase {
         let channel = Channel(topic: "rooms:lobby", socket: socket)
         XCTAssert(channel.isClosed)
         XCTAssertEqual(channel.connectionState, "closed")
-        XCTAssertFalse(channel.joinedOnce)
         XCTAssertEqual(channel.topic, "rooms:lobby")
         XCTAssertEqual(channel.timeout, Socket.defaultTimeout)
         XCTAssertTrue(channel === channel.joinPush.channel)
@@ -68,26 +67,8 @@ class ChannelTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L105
     func testIsJoiningAfterJoin() throws {
         let channel = Channel(topic: "rooms:lobby", socket: socket)
-        XCTAssertFalse(channel.joinedOnce)
         channel.join()
         XCTAssertEqual(channel.connectionState, "joining")
-    }
-
-    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L111
-    func testSetsJoinedOnceToTrue() throws {
-        let channel = Channel(topic: "room:lobby", socket: socket)
-        XCTAssertFalse(channel.joinedOnce)
-
-        let channelSub = channel.forever(receiveValue: expect(.join))
-        defer { channelSub.cancel() }
-
-        let socketSub = socket.autoconnect().forever(receiveValue:
-            expectAndThen([.open: { channel.join() }])
-        )
-        defer { socketSub.cancel() }
-
-        waitForExpectations(timeout: 2)
-        XCTAssertTrue(channel.joinedOnce)
     }
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L119
