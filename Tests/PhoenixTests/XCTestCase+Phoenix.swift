@@ -45,13 +45,34 @@ extension XCTestCase {
 }
 
 extension XCTestCase {
-    func expect(response expected: [String: String]) -> Channel.Callback {
-        let expectation = self.expectation(description: "Received successful response")
+    func expectOk(response expected: [String: String]? = nil) -> Channel.Callback {
+        let expectation = self.expectation(description: "Should have received successful response")
         return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
             if case .success(let reply) = result {
-                guard let response = reply.response as? [String: String] else { return }
-                XCTAssertEqual(expected, response)
-                expectation.fulfill()
+                guard reply.isOk else { return }
+                if let expected = expected {
+                    guard let response = reply.response as? [String: String] else { return }
+                    XCTAssertEqual(expected, response)
+                    expectation.fulfill()
+                } else {
+                    expectation.fulfill()
+                }
+            }
+        }
+    }
+    
+    func expectError(response expected: [String: String]? = nil) -> Channel.Callback {
+        let expectation = self.expectation(description: "Should have received successful response")
+        return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
+            if case .success(let reply) = result {
+                guard reply.isNotOk else { return }
+                if let expected = expected {
+                    guard let response = reply.response as? [String: String] else { return }
+                    XCTAssertEqual(expected, response)
+                    expectation.fulfill()
+                } else {
+                    expectation.fulfill()
+                }
             }
         }
     }

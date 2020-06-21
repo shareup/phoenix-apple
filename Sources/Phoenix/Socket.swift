@@ -369,6 +369,9 @@ extension Socket {
                 }
             default:
                 completionHandler(Socket.Error.notOpen)
+                
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.close) }
             }
         }
     }
@@ -503,12 +506,14 @@ extension Socket {
                 } catch {
                     Swift.print("Could not decode the WebSocket message data: \(error)")
                     Swift.print("Message data: \(string)")
-                    subject.send(.unreadableMessage(string))
+                    let subject = self.subject
+                    notifySubjectQueue.async { subject.send(.unreadableMessage(string)) }
                 }
             }
         case .failure(let error):
             Swift.print("WebSocket error, but we are not closed: \(error)")
-            subject.send(.websocketError(error))
+            let subject = self.subject
+            notifySubjectQueue.async { subject.send(.websocketError(error)) }
         }
     }
     
@@ -522,9 +527,7 @@ extension Socket {
                 self.webSocketSubscriber = nil
 
                 let subject = self.subject
-                notifySubjectQueue.async {
-                    subject.send(.close)
-                }
+                notifySubjectQueue.async { subject.send(.close) }
 
                 if shouldReconnect {
                     _reconnectAttempts += 1

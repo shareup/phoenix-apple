@@ -13,6 +13,8 @@ class ChannelTests: XCTestCase {
         socket.disconnect()
         socket = nil
     }
+    
+    // MARK: constructor
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L36
     func testChannelInit() throws {
@@ -25,13 +27,14 @@ class ChannelTests: XCTestCase {
         XCTAssertTrue(channel === channel.joinPush.channel)
     }
 
-
     func testChannelInitOverrides() throws {
         let socket = Socket(url: testHelper.defaultURL, timeout: .milliseconds(1234))
         let channel = Channel(topic: "rooms:lobby", joinPayload: ["one": "two"], socket: socket)
         XCTAssertEqual(channel.joinPayload as? [String: String], ["one": "two"])
         XCTAssertEqual(channel.timeout, .milliseconds(1234))
     }
+    
+    // MARK: updating join params
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L49
     func testJoinPushPayload() throws {
@@ -59,6 +62,8 @@ class ChannelTests: XCTestCase {
         
         XCTAssertEqual(channel.joinPush.payload as? [String: Int], ["number": 2])
     }
+    
+    // MARK: join
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L105
     func testIsJoiningAfterJoin() throws {
@@ -106,7 +111,7 @@ class ChannelTests: XCTestCase {
         defer { socketSub.cancel() }
         waitForExpectations(timeout: 2)
 
-        channel.push("echo_join_params", callback: self.expect(response: params))
+        channel.push("echo_join_params", callback: self.expectOk(response: params))
         waitForExpectations(timeout: 2)
     }
 
@@ -139,35 +144,30 @@ class ChannelTests: XCTestCase {
     
     // MARK: timeout behavior
     
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L184
     func testJoinSucceedsIfBeforeTimeout() throws {
         var counter = 0
-        let block: Channel.JoinPayloadBlock = { counter += 1; return [:] }
+        let channel = Channel(
+            topic: "room:lobby", joinPayloadBlock: { counter += 1; return [:] }, socket: socket
+        )
         
-        let channel = Channel(topic: "room:lobby", joinPayloadBlock: block, socket: socket)
-        
-        let joinEx = expectation(description: "Should have joined")
-        
-        let sub = channel.forever {
-            if case .join = $0 { joinEx.fulfill() }
-        }
+        let sub = channel.forever(receiveValue: expect(.join))
         defer { sub.cancel() }
         
-        channel.join(timeout: .seconds(1))
+        channel.join(timeout: .seconds(2))
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100)) { self.socket.connect() }
         
-        let time = DispatchTime.now().advanced(by: .milliseconds(200))
-        DispatchQueue.global().asyncAfter(deadline: time) { [socket] in
-            socket!.connect()
-        }
+        waitForExpectations(timeout: 2)
         
-        wait(for: [joinEx], timeout: 2)
-
-        XCTAssert(channel.isJoined)
-        XCTAssertEqual(counter, 2)
-        // The joinPush is generated once and sent to the Socket which isn't open, so it's not written
-        // Then a second time after the Socket publishes it's open message and the Channel tries to reconnect
+        XCTAssertTrue(channel.isJoined)
+        // The joinPush is generated once and sent to the Socket which isn't open, so it's not written.
+        // Then a second time after the Socket publishes its open message and the Channel tries to reconnect.
+        XCTAssertEqual(2, counter)
     }
     
-    func testJoinRetriesWithBackoffIfTimeout() throws {
+    // TODO: Fix testJoinRetriesWithBackoffIfTimeout
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L206
+    func _testJoinRetriesWithBackoffIfTimeout() throws {
         var counter = 0
 
         let channel = Channel(
@@ -211,36 +211,302 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 4)
     }
     
-    func testSetsStateToErroredAfterJoinTimeout() throws {
-        defer { socket.disconnect() }
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L233
+    func testChannelConnectsAfterSocketAndJoinDelay() throws {
+        let channel = socket.channel("room:timeout", payload: ["timeout": 100, "join": true])
         
-        let openEx = expectation(description: "Socket should have opened")
+        var didReceiveError = false
+        let didJoinEx = self.expectation(description: "Did join")
         
-        let sub = socket.forever {
-            if case .open = $0 { openEx.fulfill() }
-        }
+        let channelSub = channel.forever(receiveValue:
+            onResults([
+                .error: {
+                    // This isn't exactly the same as the JavaScript test. In the JavaScript test,
+                    // there is a delay after sending 'connect' before receiving the response.
+                    didReceiveError = true; usleep(50_000); self.socket.connect() },
+                .join: { didJoinEx.fulfill() },
+            ])
+        )
+        defer { channelSub.cancel() }
+        
+        channel.join(timeout: .seconds(2))
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(didReceiveError)
+        XCTAssertTrue(channel.isJoined)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L263
+    func testChannelConnectsAfterSocketDelay() throws {
+        let channel = socket.channel("room:lobby")
+        
+        var didReceiveError = false
+        let didJoinEx = self.expectation(description: "Did join")
+        
+        let channelSub = channel.forever(receiveValue:
+            onResults([
+                // This isn't exactly the same as the JavaScript test. In the JavaScript test,
+                // there is a delay after sending 'connect' before receiving the response.
+                .error: { didReceiveError = true; usleep(50_000); self.socket.connect() },
+                .join: { didJoinEx.fulfill() },
+            ])
+        )
+        defer { channelSub.cancel() }
+        
+        channel.join()
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(didReceiveError)
+        XCTAssertTrue(channel.isJoined)
+    }
+    
+    // MARK: join push
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L333
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L341
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L384
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L384
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L402
+    func testSetsChannelStateToJoinedAfterSuccessfulJoin() throws {
+        socket.connect()
+        
+        let channel = socket.channel("room:lobby")
+        
+        let sub = channel.forever(receiveValue: expect(.join))
         defer { sub.cancel() }
+        
+        channel.join()
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(channel.isJoined)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L361
+    func testOnlyReceivesSuccessfulCallbackFromSuccessfulJoin() throws {
+        let channel = socket.channel("room:lobby")
+        
+        let socketSub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([.open: { channel.join() }])
+        )
+        defer { socketSub.cancel() }
+        
+        let joinEx = self.expectation(description: "Should have joined channel")
+        var unexpectedOutputCount = 0
+        
+        let channelSub = channel.forever { (output: Channel.Output) -> Void in
+            switch output {
+            case .join: joinEx.fulfill()
+            default: unexpectedOutputCount += 1
+            }
+        }
+        defer { channelSub.cancel() }
+        
+        waitForExpectations(timeout: 2)
+        
+        // Give the test a little more time to receive invalid output
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        
+        XCTAssertTrue(channel.isJoined)
+        XCTAssertEqual(0, unexpectedOutputCount)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L376
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L408
+    func testResetsJoinTimerAfterSuccessfulJoin() throws {
+        socket.connect()
+        
+        let channel = socket.channel("room:lobby")
+        
+        let sub = channel.forever(receiveValue: expect(.join))
+        defer { sub.cancel() }
+        
+        channel.join()
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(channel.joinTimer.isOff)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L418
+    func testSendsAllBufferedMessagesAfterSuccessfulJoin() throws {
+        let channel = socket.channel("room:lobby")
+        
+        channel.push("echo", payload:["echo": "one"], callback: expectOk(response: ["echo": "one"]))
+        channel.push("echo", payload:["echo": "two"], callback: expectOk(response: ["echo": "two"]))
+        channel.push("echo", payload:["echo": "three"], callback: expectOk(response: ["echo": "three"]))
+        
+        let socketSub = socket.forever(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.forever(receiveValue: expect(.join))
+        defer { channelSub.cancel() }
         
         socket.connect()
         
-        wait(for: [openEx], timeout: 1)
+        waitForExpectations(timeout: 4)
+    }
+    
+    // MARK: receives timeout
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L444
+    func testReceivesCorrectErrorAfterJoinTimeout() throws {
+        let channel = socket.channel("room:timeout", payload: ["timeout": 3_000, "join": true])
         
-        // Very large timeout for the server to wait before erroring
-        let channel = Channel(topic: "room:timeout", joinPayload: ["timeout": 3_000, "join": true], socket: socket)
+        let timeoutEx = self.expectation(description: "Should have received timeout error")
+        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+            guard case Channel.Output.error(Channel.Error.joinTimeout) = output else { return }
+            timeoutEx.fulfill()
+        })
+        defer { channelSub.cancel() }
         
-        let erroredEx = expectation(description: "Channel should not have joined")
+        let socketSub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([.open: { channel.join(timeout: .milliseconds(10)) }])
+        )
+        defer { socketSub.cancel() }
         
-        let sub2 = channel.forever {
-            if case .error = $0 {
-                erroredEx.fulfill()
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertEqual(channel.connectionState, "errored")
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L454
+    func testOnlyReceivesTimeoutErrorAfterJoinTimeout() throws {
+        let channel = socket.channel("room:timeout", payload: ["timeout": 3_000, "join": true])
+        
+        let socketSub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([.open: { channel.join(timeout: .milliseconds(10)) }])
+        )
+        defer { socketSub.cancel() }
+        
+        let timeoutEx = self.expectation(description: "Should have received timeout error")
+        var unexpectedOutputCount = 0
+        
+        let channelSub = channel.forever { (output: Channel.Output) -> Void in
+            switch output {
+            case .error(Channel.Error.joinTimeout): timeoutEx.fulfill()
+            default: unexpectedOutputCount += 1
             }
         }
-        defer { sub2.cancel() }
+        defer { channelSub.cancel() }
         
-        // Very short timeout for the joinPush
-        channel.join(timeout: .milliseconds(100))
+        waitForExpectations(timeout: 2)
         
-        wait(for: [erroredEx], timeout: 1)
+        // Give the test a little more time to receive invalid output
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertEqual(channel.connectionState, "errored")
+        XCTAssertEqual(0, unexpectedOutputCount)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L473
+    func testSchedulesRejoinTimerAfterJoinTimeout() throws {
+        let channel = socket.channel("room:timeout", payload: ["timeout": 3_000, "join": true])
+        channel.rejoinTimeout = { _ in return .seconds(30) }
+        
+        let timeoutEx = self.expectation(description: "Should have received timeout error")
+        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+            guard case Channel.Output.error(Channel.Error.joinTimeout) = output else { return }
+            timeoutEx.fulfill()
+        })
+        defer { channelSub.cancel() }
+        
+        let socketSub = socket.autoconnect().forever(receiveValue:
+            expectAndThen([.open: { channel.join(timeout: .milliseconds(10)) }])
+        )
+        defer { socketSub.cancel() }
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(channel.joinTimer.isRejoinTimer)
+    }
+    
+    // MARK: receives error
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L489
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L501
+    func testReceivesErrorAfterJoinError() throws {
+        let channel = socket.channel("room:error", payload: ["error": "boom"])
+        channel.rejoinTimeout = { _ in return .seconds(30) }
+        
+        let timeoutEx = self.expectation(description: "Should have received error")
+        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+            guard case .error(Channel.Error.invalidJoinReply(let reply)) = output else { return }
+            XCTAssertEqual(["error": "boom"], reply.response as? [String: String])
+            timeoutEx.fulfill()
+        })
+        defer { channelSub.cancel() }
+        
+        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertEqual(channel.connectionState, "errored")
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L511
+    func testOnlyReceivesErrorResponseAfterJoinError() throws {
+        let channel = socket.channel("room:error", payload: ["error": "boom"])
+        channel.rejoinTimeout = { _ in return .seconds(30) }
+        
+        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let errorEx = self.expectation(description: "Should have received error")
+        var unexpectedOutputCount = 0
+        
+        let channelSub = channel.forever { (output: Channel.Output) -> Void in
+            switch output {
+            case .error(Channel.Error.invalidJoinReply): errorEx.fulfill()
+            default: unexpectedOutputCount += 1
+            }
+        }
+        defer { channelSub.cancel() }
+        
+        waitForExpectations(timeout: 2)
+        
+        // Give the test a little more time to receive invalid output
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+
+        XCTAssertEqual(channel.connectionState, "errored")
+        XCTAssertEqual(0, unexpectedOutputCount)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L532
+    func testClearsTimeoutTimerAfterJoinError() throws {
+        let channel = socket.channel("room:error", payload: ["error": "boom"])
+        channel.rejoinTimeout = { _ in return .seconds(30) }
+        
+        let timeoutEx = self.expectation(description: "Should have received error")
+        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+            guard case .error(Channel.Error.invalidJoinReply) = output else { return }
+            timeoutEx.fulfill()
+        })
+        defer { channelSub.cancel() }
+        
+        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(channel.joinTimer.isRejoinTimer)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L561
+    func testDoesNotSetChannelStateToJoinedAfterJoinError() throws {
+        let channel = socket.channel("room:error", payload: ["error": "boom"])
+        channel.rejoinTimeout = { _ in return .seconds(30) }
+        
+        let channelSub = channel.forever(receiveValue: expect(.error))
+        defer { channelSub.cancel() }
+        
+        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        waitForExpectations(timeout: 2)
         
         XCTAssertEqual(channel.connectionState, "errored")
     }

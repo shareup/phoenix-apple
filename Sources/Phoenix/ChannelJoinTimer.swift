@@ -23,5 +23,25 @@ extension Channel {
                 return attempt
             }
         }
+        
+        var isOn: Bool { return self.isJoinTimer || self.isRejoinTimer }
+        var isOff: Bool { return self.isOn == false }
+
+        var isJoinTimer: Bool {
+            switch self {
+            case .off: return false
+            case .join: return true
+            case .rejoin: return false
+            }
+        }
+
+        var isNotRejoinTimer: Bool { return self.isRejoinTimer == false }
+        var isRejoinTimer: Bool {
+            switch self {
+            case .off: return false
+            case .join: return false
+            case .rejoin: return true
+            }
+        }
     }
 }

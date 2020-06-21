@@ -41,9 +41,11 @@ public final class Channel: Publisher {
         }
     }
     
+    private let notifySubjectQueue = DispatchQueue(label: "Channel.notifySubjectQueue")
+    
     private var pushedMessagesTimer: Timer?
     
-    private var joinTimer: JoinTimer = .off
+    private(set) var joinTimer: JoinTimer = .off
 
     var rejoinTimeout: RejoinTimeout = { attempt in
         // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
@@ -128,7 +130,8 @@ public final class Channel: Publisher {
     func errored(_ error: Swift.Error) {
         sync {
             self.state = .errored(error)
-            subject.send(.error(error))
+            let subject = self.subject
+            notifySubjectQueue.async { subject.send(.error(error)) }
         }
     }
     
@@ -151,12 +154,8 @@ public final class Channel: Publisher {
 // MARK: join
 
 extension Channel {
-    public func join(timeout customTimeout: DispatchTimeInterval) {
-        self.customTimeout = customTimeout
-        join()
-    }
-    
-    public func join() {
+    public func join(timeout customTimeout: DispatchTimeInterval? = nil) {
+        sync { self.customTimeout = customTimeout }
         rejoin()
     }
     
@@ -212,16 +211,13 @@ extension Channel {
 // MARK: leave
 
 extension Channel {
-    public func leave(timeout: DispatchTimeInterval) {
-        self.customTimeout = timeout
-        leave()
-    }
-    
-    public func leave() {
+    public func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
         guard let socket = self.socket else { return assertionFailure("No socket") }
 
         sync {
             self.shouldRejoin = false
+            
+            self.customTimeout = customTimeout
             
             switch state {
             case .joining(let joinRef), .joined(let joinRef):
@@ -359,6 +355,8 @@ extension Channel {
     
     private func createRejoinTimer() {
         sync {
+            guard joinTimer.isNotRejoinTimer else { return }
+            
             let attempt = joinTimer.attempt ?? 0
             assert(attempt > 0, "we should always join before rejoining")
             self.joinTimer = .off
@@ -532,7 +530,8 @@ extension Channel {
             //            sync {
             //                if isLeaving {
             //                    left()
-            //                    subject.send(.success(.leave))
+            //                    let subject = self.subject
+            //                    notifySubjectQueue.async { subject.send(.success(.leave)) }
             //                }
             //            }
             // TODO: What should we do when we get a close?
@@ -551,14 +550,17 @@ extension Channel {
                 guard reply.ref == joinRef,
                     reply.joinRef == joinRef,
                     reply.isOk else {
-//                    self.errored(Channel.Error.invalidJoinReply(reply))
+                        self.errored(Channel.Error.invalidJoinReply(reply))
+                        self.createRejoinTimer()
                     break
                 }
                 
                 self.state = .joined(joinRef)
                 self.joinedOnce = true
-                subject.send(.join)
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.join) }
                 self.joinTimer = .off
+                
                 flushAsync()
                 
             case .joined(let joinRef):
@@ -580,9 +582,11 @@ extension Channel {
                 }
                 
                 self.state = .closed
-                subject.send(.leave)
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.leave) }
                 // TODO: send completion instead if we leave
-                // subject.send(completion: Never)
+                // let subject = self.subject
+                // notifySubjectQueue.async { subject.send(completion: Never) }
                 
             default:
                 // sorry, not processing replies in other states
@@ -599,7 +603,8 @@ extension Channel {
                 return
             }
 
-            subject.send(.message(message))
+            let subject = self.subject
+            notifySubjectQueue.async { subject.send(.message(message)) }
         }
     }
 }
