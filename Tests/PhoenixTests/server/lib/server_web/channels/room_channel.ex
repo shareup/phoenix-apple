@@ -15,6 +15,10 @@ defmodule ServerWeb.RoomChannel do
     end
   end
 
+  def join("room:error", %{"error" => error_msg} = params, socket) do
+    {:error, %{error: error_msg}}
+  end
+
   def join("room:" <> _room_id, params, socket) do
     case socket.assigns.user_id do
       nil -> {:error, %{reason: "unauthorized"}}
