@@ -287,8 +287,7 @@ class ChannelTests: XCTestCase {
         
         waitForExpectations(timeout: 2)
         
-        // Give the test a little more time to receive invalid output
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        waitForTimeout(0.1)
         
         XCTAssertTrue(channel.isJoined)
         XCTAssertEqual(0, unexpectedOutputCount)
@@ -376,7 +375,7 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 2)
         
         // Give the test a little more time to receive invalid output
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        waitForTimeout(0.1)
 
         XCTAssertEqual(channel.connectionState, "errored")
         XCTAssertEqual(0, unexpectedOutputCount)
@@ -452,7 +451,7 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 2)
         
         // Give the test a little more time to receive invalid output
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.1))
+        waitForTimeout(0.1)
 
         XCTAssertEqual(channel.connectionState, "errored")
         XCTAssertEqual(0, unexpectedOutputCount)
@@ -492,6 +491,32 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 2)
         
         XCTAssertEqual(channel.connectionState, "errored")
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L567
+    func testDoesNotSendAnyBufferedMessagesAfterJoinError() throws {
+        let channel = socket.channel("room:error", payload: ["error": "boom"])
+        channel.rejoinTimeout = { _ in return .seconds(30) }
+        
+        var pushed = 0
+        let callback: Channel.Callback = { _ in pushed += 1; Swift.print("Callback triggered") }
+        channel.push("echo", payload:["echo": "one"], callback: callback)
+        channel.push("echo", payload:["echo": "two"], callback: callback)
+        channel.push("echo", payload:["echo": "three"], callback: callback)
+        
+        let socketSub = socket.forever(receiveValue: expectAndThen(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.forever(receiveValue: expect(.error))
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+        
+        waitForTimeout(0.1)
+        
+        XCTAssertEqual(0, pushed)
     }
     
     // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4

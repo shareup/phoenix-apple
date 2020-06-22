@@ -27,6 +27,15 @@ extension XCTestCase {
             }
         }
     }
+    
+    func expectAndThen<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
+        let expectation = self.expectation(description: "Should have received '\(String(describing: value))'")
+        return { v in
+            guard v.matches(value) else { return }
+            expectation.fulfill()
+            block()
+        }
+    }
 
     func onResult<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
         return { v in
@@ -75,6 +84,12 @@ extension XCTestCase {
                 }
             }
         }
+    }
+}
+
+extension XCTestCase {
+    func waitForTimeout(_ secondsFromNow: TimeInterval) {
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: secondsFromNow))
     }
 }
 

@@ -154,13 +154,13 @@
 	- https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L551
 	- _not applicable_
 
-- [ ] does not set channel state to joined
+- [x] does not set channel state to joined
 	- https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L561
-	- ``
+	- `testDoesNotSetChannelStateToJoinedAfterJoinError()`
 
-- [ ] does not trigger channel's buffered pushEvents
+- [x] does not trigger channel's buffered pushEvents
 	- https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L567
-	- ``
+	- `testDoesNotSendAnyBufferedMessagesAfterJoinError()`
 
 - [ ]
 	-
