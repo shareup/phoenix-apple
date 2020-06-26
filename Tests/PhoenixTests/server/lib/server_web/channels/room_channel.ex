@@ -15,7 +15,7 @@ defmodule ServerWeb.RoomChannel do
     end
   end
 
-  def join("room:error", %{"error" => error_msg} = params, socket) do
+  def join("room:error", %{"error" => error_msg} = _params, _socket) do
     {:error, %{error: error_msg}}
   end
 
@@ -50,6 +50,10 @@ defmodule ServerWeb.RoomChannel do
 
   def handle_in("echo_error", %{"error" => echo_text}, socket) do
     {:reply, {:error, %{error: echo_text}}, socket}
+  end
+
+  def handle_in("echo_close", %{"close" => echo_text}, socket) do
+    {:stop, :shutdown, {:ok, %{close: echo_text}}, socket}
   end
 
   def handle_in("repeat", %{"echo" => echo_text, "amount" => amount}, socket)

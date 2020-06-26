@@ -1,5 +1,24 @@
 import XCTest
+import Combine
 import Phoenix
+
+extension XCTestCase {
+    func expectFinished<E: Error>() -> (Subscribers.Completion<E>) -> Void {
+        let expectation = self.expectation(description: "Should have finished successfully")
+        return { completion in
+            guard case Subscribers.Completion.finished = completion else { return }
+            expectation.fulfill()
+        }
+    }
+
+    func expectFailure<E>(_ error: E) -> (Subscribers.Completion<E>) -> Void where E: Error, E: Equatable {
+        let expectation = self.expectation(description: "Should have failed")
+        return { completion in
+            guard case Subscribers.Completion.failure(error) = completion else { return }
+            expectation.fulfill()
+        }
+    }
+}
 
 extension XCTestCase {
     func expect<T: RawCaseConvertible>(_ value: T.RawCase) -> (T) -> Void {

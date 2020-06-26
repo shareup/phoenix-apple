@@ -523,7 +523,7 @@ class ChannelTests: XCTestCase {
     // MARK: onError
 
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L627
-    func testDoesNotRejoinChannelAfterLeaving() {
+    func testDoesNotRejoinChannelAfterLeaving() throws {
         socket.reconnectTimeInterval = { _ in .milliseconds(1) }
         let channel = makeChannel(topic: "room:lobby")
         channel.rejoinTimeout = { _ in .milliseconds(5) }
@@ -558,7 +558,7 @@ class ChannelTests: XCTestCase {
     }
 
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L643
-    func testDoesNotRejoinChannelAfterClosing() {
+    func testDoesNotRejoinChannelAfterClosing() throws {
         socket.reconnectTimeInterval = { _ in .milliseconds(1) }
         let channel = makeChannel(topic: "room:lobby")
         channel.rejoinTimeout = { _ in .milliseconds(5) }
@@ -594,7 +594,7 @@ class ChannelTests: XCTestCase {
     }
 
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L659
-    func testChannelSendsChannelErrorsToSubscribersAfterJoin() {
+    func testChannelSendsChannelErrorsToSubscribersAfterJoin() throws {
         let channel = makeChannel(topic: "room:lobby")
 
         let callback = expectError(response: ["error": "whatever"])
@@ -612,6 +612,31 @@ class ChannelTests: XCTestCase {
         defer { socketSub.cancel() }
 
         waitForExpectations(timeout: 2)
+    }
+
+    // MARK: onClose
+
+    func testClosingChannelSetsStateToClosed() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        let callback = expectOk(response: ["close": "whatever"])
+        let channelSub = channel.sink(
+            receiveCompletion: expectFinished(),
+            receiveValue: expectAndThen([
+                .join: { channel.push("echo_close", payload: ["close": "whatever"], callback: callback) },
+                .leave: { }
+            ])
+        )
+        defer { channelSub.cancel() }
+
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+
+        waitForExpectations(timeout: 2)
+
+//        expectationWithTest(description: "Should have closed", test: channel.isClosed)
+//        waitForExpectations(timeout: 0.2)
+        XCTAssertEqual(channel.connectionState, "closed")
     }
 
     // MARK: Error

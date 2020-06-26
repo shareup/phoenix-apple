@@ -205,12 +205,11 @@ extension Channel {
 // MARK: leave
 
 extension Channel {
-    public func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
+    func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
         guard let socket = self.socket else { return assertionFailure("No socket") }
 
         sync {
             self.shouldRejoin = false
-            
             self.customTimeout = customTimeout
             
             switch state {
@@ -509,6 +508,8 @@ extension Channel {
     }
     
     private func handle(_ input: IncomingMessage) {
+        guard isClosed == false else { return }
+
         switch input.event {
         case .custom:
             let message = Channel.Message(incomingMessage: input)
@@ -522,22 +523,22 @@ extension Channel {
             }
             
         case .close:
-            //            sync {
-            //                if isLeaving {
-            //                    left()
-            //                    let subject = self.subject
-            //                    notifySubjectQueue.async { subject.send(.success(.leave)) }
-            //                }
-            //            }
-            // TODO: What should we do when we get a close?
-            Swift.print("Not sure what to do with a close event yet")
-            
+            sync {
+                self.shouldRejoin = false
+                state = .closed
+                let subject = self.subject
+                notifySubjectQueue.async {
+                    subject.send(.leave)
+                    subject.send(completion: .finished)
+                }
+            }
+
         default:
             Swift.print("Need to handle \(input.event) types of events soon")
             Swift.print("> \(input)")
         }
     }
-    
+
     private func handle(_ reply: Channel.Reply) {
         sync {
             switch state {
@@ -579,11 +580,14 @@ extension Channel {
                 
                 self.state = .closed
                 let subject = self.subject
-                notifySubjectQueue.async { subject.send(.leave) }
-                // TODO: send completion instead if we leave
-                // let subject = self.subject
-                // notifySubjectQueue.async { subject.send(completion: Never) }
-                
+                notifySubjectQueue.async {
+                    subject.send(.leave)
+                    subject.send(completion: .finished)
+                }
+
+            case .closed:
+                break
+
             default:
                 // sorry, not processing replies in other states
                 Swift.print("Received reply that we are not expecting in this state (\(state)): \(reply)")

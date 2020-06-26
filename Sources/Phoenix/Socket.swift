@@ -117,7 +117,12 @@ public final class Socket {
     }
 
     deinit {
-        disconnect()
+        sync {
+            shouldReconnect = false
+            cancelHeartbeatTimer()
+            state.webSocket?.close()
+            state = .closed
+        }
     }
 }
 
@@ -235,13 +240,16 @@ extension Socket {
     }
 
     public func leave(_ topic: Topic) {
-        let removeChannel: () -> Channel? = {
+        removeChannel(for: topic)?.leave()
+    }
+
+    @discardableResult
+    private func removeChannel(for topic: Topic) -> Channel? {
+        return sync {
             guard let weakChannel = self.channels[topic], let channel = weakChannel.channel else { return nil }
             self.channels.removeValue(forKey: topic)
             return channel
         }
-
-        sync(removeChannel)?.leave()
     }
 }
 
@@ -458,6 +466,10 @@ extension Socket {
         Swift.print("socket input", value)
         
         switch value {
+        case .failure(let error):
+            Swift.print("WebSocket error, but we are not closed: \(error)")
+            let subject = self.subject
+            notifySubjectQueue.async { subject.send(.websocketError(error)) }
         case .success(let message):
             switch message {
             case .open:
@@ -488,15 +500,16 @@ extension Socket {
             case .string(let string):
                 do {
                     let message = try IncomingMessage(string: string)
+                    let subject = self.subject
 
                     sync {
-                        if message.event == .heartbeat &&
-                            pendingHeartbeatRef != nil &&
-                            message.ref == pendingHeartbeatRef
-                        {
+                        switch message.event {
+                        case .heartbeat where pendingHeartbeatRef != nil && message.ref == pendingHeartbeatRef:
                             self.pendingHeartbeatRef = nil
-                        } else {
-                            let subject = self.subject
+                        case .close:
+                            notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
+                            removeChannel(for: message.topic)
+                        default:
                             notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
                         }
                     }
@@ -507,10 +520,6 @@ extension Socket {
                     notifySubjectQueue.async { subject.send(.unreadableMessage(string)) }
                 }
             }
-        case .failure(let error):
-            Swift.print("WebSocket error, but we are not closed: \(error)")
-            let subject = self.subject
-            notifySubjectQueue.async { subject.send(.websocketError(error)) }
         }
     }
     
