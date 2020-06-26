@@ -65,7 +65,7 @@
 - [x] with socket delay only
 	- https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L263
 	- `testChannelConnectsAfterSocketDelay()`
-	
+
 ## joinPush
 
 ### receives 'ok'
@@ -137,7 +137,7 @@
 	- https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L501
 	- `testReceivesErrorAfterJoinError()`
 	- _all responses are funneled to the channel's observers_
-	
+
 - [x] does not trigger other receive callbacks after error response
 	- https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L511
 	- `testOnlyReceivesErrorResponseAfterJoinError()`
@@ -162,6 +162,60 @@
 	- https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L567
 	- `testDoesNotSendAnyBufferedMessagesAfterJoinError()`
 
+### onError
+
+- [x] sets state to 'errored'
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L603
+	- `testReceivesErrorAfterJoinError()`
+
+- [x] does not trigger redundant errors during backoff
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L611
+	- `testOnlyReceivesErrorResponseAfterJoinError()`
+
+- [x] does not rejoin if channel leaving
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L627
+	- `testDoesNotRejoinChannelAfterLeaving()`
+
+- [x] does not rejoin if channel closed
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L643
+	- `testDoesNotRejoinChannelAfterClosing()`
+
+- [x] triggers additional callbacks after join
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L659
+	- `testChannelSendsChannelErrorsToSubscribersAfterJoin()`
+
+- [ ]
+	-
+	- ``
+
+- [ ]
+	-
+	- ``
+
+- [ ]
+	-
+	- ``
+
+- [ ]
+	-
+	- ``
+
+- [ ]
+	-
+	- ``
+
+- [ ]
+	-
+	- ``
+
+- [ ]
+	-
+	- ``
+
+- [ ]
+	-
+	- ``
+
 - [ ]
 	-
 	- ``
@@ -201,10 +255,6 @@
 - [ ]
 	-
 	- ``
-	
-- [ ]
-	-
-	- ``
 
 - [ ]
 	-
@@ -225,55 +275,7 @@
 - [ ]
 	-
 	- ``
-	
-- [ ]
-	-
-	- ``
 
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-	
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-	
 - [ ]
 	-
 	- ``

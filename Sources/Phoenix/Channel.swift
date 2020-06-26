@@ -171,10 +171,7 @@ extension Channel {
             case .closed, .errored, .leaving:
                 let ref = socket.advanceRef()
                 self.state = .joining(ref)
-                
-                backgroundQueue.async {
-                    self.writeJoinPush()
-                }
+                self.writeJoinPushAsync()
             }
         }
     }
@@ -481,10 +478,12 @@ extension Channel {
             switch state {
             case .joining:
                 writeJoinPushAsync()
-            case .errored:
+            case .errored where shouldRejoin:
                 let ref = socket.advanceRef()
                 self.state = .joining(ref)
                 writeJoinPushAsync()
+            case .errored:
+                break
             case .closed:
                 break // NOOP
             case .joined, .leaving:
@@ -569,10 +568,10 @@ extension Channel {
                 }
                 
                 createPushedMessagesTimer()
-                
-                backgroundQueue.async {
-                    pushed.callback(reply: reply)
-                }
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.message(reply.message)) }
+                backgroundQueue.async { pushed.callback(reply: reply) }
                 
             case .leaving(let joinRef, let leavingRef):
                 guard reply.ref == leavingRef,

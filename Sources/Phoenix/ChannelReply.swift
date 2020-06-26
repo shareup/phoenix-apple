@@ -37,5 +37,7 @@ extension Channel {
             
             return Error(message: err)
         }
+
+        public var message: Channel.Message { .init(incomingMessage: self.incomingMessage) }
     }
 }
