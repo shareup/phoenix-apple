@@ -1,5 +1,4 @@
 import Combine
-import Forever
 import Foundation
 import Synchronized
 
@@ -17,7 +16,7 @@ public final class Socket {
     private let subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed
     private var shouldReconnect = true
-    private var webSocketSubscriber: AnySubscriber<WebSocketOutput, WebSocketFailure>?
+    private var webSocketSubscriber: AnyCancellable?
     private var channels = [Topic: WeakChannel]()
     
     public var joinedChannels: [Channel] {
@@ -448,13 +447,11 @@ extension Socket {
     typealias WebSocketOutput = Result<WebSocket.Message, Swift.Error>
     typealias WebSocketFailure = Swift.Error
 
-    func makeWebSocketSubscriber(with webSocket: WebSocket) -> AnySubscriber<WebSocketOutput, WebSocketFailure> {
+    func makeWebSocketSubscriber(with webSocket: WebSocket) -> AnyCancellable {
         let value: (WebSocketOutput) -> Void = { [weak self] in self?.receive(value: $0) }
         let completion: (Subscribers.Completion<Swift.Error>) -> Void = { [weak self] in self?.receive(completion: $0) }
 
-        let webSocketSubscriber = webSocket.forever(receiveCompletion: completion, receiveValue: value)
-
-        return AnySubscriber(webSocketSubscriber)
+        return webSocket.sink(receiveCompletion: completion, receiveValue: value)
     }
 
     private func receive(value: WebSocketOutput) {

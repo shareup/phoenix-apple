@@ -438,7 +438,7 @@ class SocketTests: XCTestCase {
         socket.push(topic: "unknown", event: .custom("one"))
         socket.push(topic: "unknown", event: .custom("two"))
 
-        let sub = socket.autoconnect().forever { message in
+        let sub = socket.autoconnect().sink { message in
             switch message {
             case .incomingMessage(let incoming):
                 guard let response = incoming.payload["response"] as? Dictionary<String, String> else { return }
@@ -464,7 +464,7 @@ class SocketTests: XCTestCase {
         socket.push(topic: "unknown", event: .custom("two"))
         socket.push(topic: "unknown", event: .custom("three"))
 
-        let sub = socket.autoconnect().forever { message in
+        let sub = socket.autoconnect().sink { message in
             switch message {
             case .incomingMessage:
                 receivedResponses.fulfill()
@@ -747,7 +747,7 @@ class SocketTests: XCTestCase {
         let echoEcho = "kapow"
         let echoEx = expectation(description: "Should have received the echo text response")
         
-        let sub = socket.autoconnect().forever { msg in
+        let sub = socket.autoconnect().sink { msg in
             guard case .incomingMessage(let message) = msg else { return }
             guard "ok" == message.payload["status"] as? String else { return }
             guard .reply == message.event else { return }

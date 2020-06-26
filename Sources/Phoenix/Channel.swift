@@ -1,6 +1,5 @@
 import Combine
 import Foundation
-import Forever
 import Synchronized
 
 private let backgroundQueue = DispatchQueue(label: "Channel.backgroundQueue")
@@ -27,7 +26,7 @@ public final class Channel: Publisher {
     
     private weak var socket: Socket?
 
-    private var socketSubscriber: AnySubscriber<SocketOutput, SocketFailure>?
+    private var socketSubscriber: AnyCancellable?
     
     private var customTimeout: DispatchTimeInterval? = nil
     
@@ -431,7 +430,7 @@ extension Channel {
     func makeSocketSubscriber(
         with socket: Socket,
         topic: Topic
-    ) -> AnySubscriber<SocketOutput, SocketFailure>
+    ) -> AnyCancellable
     {
         let channelSpecificMessage = { (message: Socket.Message) -> SocketOutput? in
             switch message {
@@ -461,10 +460,9 @@ extension Channel {
             }
         }
 
-        let socketSubscriber = socket
+        return socket
             .compactMap(channelSpecificMessage)
-            .forever(receiveCompletion: completion, receiveValue: receiveValue)
-        return AnySubscriber(socketSubscriber)
+            .sink(receiveCompletion: completion, receiveValue: receiveValue)
     }
 }
 

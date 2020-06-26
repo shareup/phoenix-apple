@@ -277,7 +277,7 @@ class ChannelTests: XCTestCase {
         let joinEx = self.expectation(description: "Should have joined channel")
         var unexpectedOutputCount = 0
         
-        let channelSub = channel.forever { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink { (output: Channel.Output) -> Void in
             switch output {
             case .join: joinEx.fulfill()
             default: unexpectedOutputCount += 1
@@ -364,7 +364,7 @@ class ChannelTests: XCTestCase {
         let timeoutEx = self.expectation(description: "Should have received timeout error")
         var unexpectedOutputCount = 0
         
-        let channelSub = channel.forever { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink { (output: Channel.Output) -> Void in
             switch output {
             case .error(Channel.Error.joinTimeout): timeoutEx.fulfill()
             default: unexpectedOutputCount += 1
@@ -440,7 +440,7 @@ class ChannelTests: XCTestCase {
         let errorEx = self.expectation(description: "Should have received error")
         var unexpectedOutputCount = 0
         
-        let channelSub = channel.forever { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink { (output: Channel.Output) -> Void in
             switch output {
             case .error(Channel.Error.invalidJoinReply): errorEx.fulfill()
             default: unexpectedOutputCount += 1
@@ -645,7 +645,7 @@ class ChannelTests: XCTestCase {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
-        let sub = socket.forever {
+        let sub = socket.sink {
             if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
@@ -661,7 +661,7 @@ class ChannelTests: XCTestCase {
         
         let channel = socket.join("room:lobby")
         
-        let sub2 = channel.forever { result in
+        let sub2 = channel.sink { result in
             switch result {
             case .join:
                 channelJoinedEx.fulfill()
@@ -685,7 +685,7 @@ class ChannelTests: XCTestCase {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
-        let sub = socket.forever {
+        let sub = socket.sink {
             if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
@@ -698,7 +698,7 @@ class ChannelTests: XCTestCase {
         
         let channel = socket.join("room:lobby")
         
-        let sub2 = channel.forever { result in
+        let sub2 = channel.sink { result in
             if case .join = result { channelJoinedEx.fulfill() }
         }
         defer { sub2.cancel() }
@@ -749,7 +749,7 @@ class ChannelTests: XCTestCase {
         let socket = Socket(url: testHelper.defaultURL)
         defer { socket.disconnect() }
         
-        let sub = socket.forever {
+        let sub = socket.sink {
             if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
@@ -765,7 +765,7 @@ class ChannelTests: XCTestCase {
         let channel = socket.join("room:lobby")
         var messageCounter = 0
         
-        let sub2 = channel.forever { result in
+        let sub2 = channel.sink { result in
             if case .join = result {
                 return channelJoinedEx.fulfill()
             }
@@ -807,8 +807,8 @@ class ChannelTests: XCTestCase {
             socket2.disconnect()
         }
         
-        let sub1 = socket1.forever { if case .open = $0 { openMesssageEx1.fulfill() } }
-        let sub2 = socket2.forever { if case .open = $0 { openMesssageEx2.fulfill() } }
+        let sub1 = socket1.sink { if case .open = $0 { openMesssageEx1.fulfill() } }
+        let sub2 = socket2.sink { if case .open = $0 { openMesssageEx2.fulfill() } }
         defer {
             sub1.cancel()
             sub2.cancel()
@@ -830,7 +830,7 @@ class ChannelTests: XCTestCase {
         let channel2ReceivedMessageEx = expectation(description: "Channel 2 received the message which was not right")
         channel2ReceivedMessageEx.isInverted = true
         
-        let sub3 = channel1.forever { result in
+        let sub3 = channel1.sink { result in
             switch result {
             case .join:
                 channel1JoinedEx.fulfill()
@@ -845,7 +845,7 @@ class ChannelTests: XCTestCase {
         }
         defer { sub3.cancel() }
         
-        let sub4 = channel2.forever { result in
+        let sub4 = channel2.sink { result in
             switch result {
             case .join:
                 channel2JoinedEx.fulfill()
@@ -871,7 +871,7 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
         openMesssageEx.expectedFulfillmentCount = 2
         
-        let sub = socket.forever {
+        let sub = socket.sink {
             if case .open = $0 { openMesssageEx.fulfill() }
         }
         defer { sub.cancel() }
@@ -883,7 +883,7 @@ class ChannelTests: XCTestCase {
         
         let channel = socket.join("room:lobby")
         
-        let sub2 = channel.forever {
+        let sub2 = channel.sink {
             if case .join = $0 {
                 socket.send("disconnect")
                 channelJoinedEx.fulfill()
@@ -902,7 +902,7 @@ class ChannelTests: XCTestCase {
         let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
         openMesssageEx.expectedFulfillmentCount = 2
         
-        let sub = socket.forever {
+        let sub = socket.sink {
             if case .open = $0 { openMesssageEx.fulfill(); return }
         }
         defer { sub.cancel() }
@@ -913,7 +913,7 @@ class ChannelTests: XCTestCase {
         
         let channel = socket.join("room:lobby")
         
-        let sub2 = channel.forever {
+        let sub2 = channel.sink {
             if case .join = $0 { channelJoinedEx.fulfill(); return }
         }
         
@@ -925,7 +925,7 @@ class ChannelTests: XCTestCase {
         let channelRejoinEx = expectation(description: "Channel should not have rejoined")
         channelRejoinEx.isInverted = true
         
-        let sub3 = channel.forever { result in
+        let sub3 = channel.sink { result in
             switch result {
             case .join: channelRejoinEx.fulfill()
             case .leave: channelLeftEx.fulfill()
