@@ -9,7 +9,7 @@ class WebSocketTests: XCTestCase {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket is open")
         
-        let sub = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.sink(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -33,7 +33,7 @@ class WebSocketTests: XCTestCase {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket is open")
         
-        let sub = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.sink(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -61,7 +61,7 @@ class WebSocketTests: XCTestCase {
         
         let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
-        let sub = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.sink(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -154,7 +154,7 @@ class WebSocketTests: XCTestCase {
         
         let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
-        let sub = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.sink(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -200,7 +200,7 @@ class WebSocketTests: XCTestCase {
          It's possible the response from asking for the repeat to happen could be before, during, or after the repeat messages themselves.
          */
         
-        let sub2 = webSocket.forever(receiveCompletion: {
+        let sub2 = webSocket.sink(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
         }) { result in
             let message: WebSocket.Message

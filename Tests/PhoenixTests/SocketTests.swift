@@ -56,7 +56,7 @@ class SocketTests: XCTestCase {
     func testSocketConnectAndDisconnect() throws {
         let socket = makeSocket()
 
-        let sub = socket.forever(receiveValue:
+        let sub = socket.sink(receiveValue:
             expectAndThen([
                 .open: { socket.disconnect() },
                 .close: { }
@@ -79,7 +79,7 @@ class SocketTests: XCTestCase {
         
         var openExs = [reopenMessageEx, openMesssageEx]
 
-        let sub = socket.forever(receiveValue:
+        let sub = socket.sink(receiveValue:
             onResults([
                 .open: { openExs.popLast()?.fulfill(); if !openExs.isEmpty { socket.disconnect() } },
                 .close: { closeMessageEx.fulfill(); socket.connect() }
@@ -96,7 +96,7 @@ class SocketTests: XCTestCase {
         let conn = makeSocket().autoconnect()
         defer { conn.upstream.disconnect() }
 
-        let sub = conn.forever(receiveValue: expect(.open))
+        let sub = conn.sink(receiveValue: expect(.open))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -105,15 +105,15 @@ class SocketTests: XCTestCase {
     func testSocketAutoconnectSubscriberCancelDisconnects() throws {
         let socket = makeSocket()
 
-        let sub = socket.forever(receiveValue:
+        let sub = socket.sink(receiveValue:
             expectAndThen([
                 .close: { XCTAssertEqual(socket.connectionState, "closed") }
             ])
         )
         defer { sub.cancel() }
 
-        var autoSub: Subscribers.Forever<Publishers.Autoconnect<Socket>>? = nil
-        autoSub = socket.autoconnect().forever(receiveValue:
+        var autoSub: AnyCancellable? = nil
+        autoSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: {
                     XCTAssertEqual(socket.connectionState, "open")
@@ -140,7 +140,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
 
         self.expectationWithTest(description: "Socket enters connecting state", test: socket.isConnecting)
-        let sub = socket.autoconnect().forever(receiveValue: expect(.connecting))
+        let sub = socket.autoconnect().sink(receiveValue: expect(.connecting))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -151,7 +151,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
 
         self.expectationWithTest(description: "Socket enters open state", test: socket.isOpen)
-        let sub = socket.autoconnect().forever(receiveValue: expect(.open))
+        let sub = socket.autoconnect().sink(receiveValue: expect(.open))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -162,7 +162,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
 
         self.expectationWithTest(description: "Socket enters closing state", test: socket.isClosing)
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.disconnect() },
                 .closing: { }
@@ -179,7 +179,7 @@ class SocketTests: XCTestCase {
     func testSocketIsClosed() throws {
         let socket = makeSocket()
 
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.disconnect() },
                 .close: {
@@ -202,8 +202,8 @@ class SocketTests: XCTestCase {
 
         let openEx = expectation(description: "Should have gotten an open message")
 
-        var sub: Subscribers.Forever<Socket>? = nil
-        sub = socket.forever(receiveValue:
+        var sub: AnyCancellable? = nil
+        sub = socket.sink(receiveValue:
             onResults([
                 .open: { openEx.fulfill(); sub?.cancel() },
                 .closing: { closeMessageEx.fulfill() },
@@ -221,8 +221,8 @@ class SocketTests: XCTestCase {
     func testSocketIsDisconnectedAfterAutconnectSubscriptionIsCancelled() throws {
         let socket = makeSocket()
 
-        var sub: Subscribers.Forever<Publishers.Autoconnect<Socket>>? = nil
-        sub = socket.autoconnect().forever(receiveValue:
+        var sub: AnyCancellable? = nil
+        sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                  .open: { sub?.cancel() },
             ])
@@ -241,7 +241,7 @@ class SocketTests: XCTestCase {
         let openEx = expectation(description: "Should have opened once")
         let closeMessageEx = expectation(description: "Should closed once")
 
-        let sub = socket.forever(receiveValue:
+        let sub = socket.sink(receiveValue:
             onResults([
                 .open: { openEx.fulfill(); socket.disconnect() },
                 .close: {
@@ -267,7 +267,7 @@ class SocketTests: XCTestCase {
         let channel = socket.join("room:lobby")
         defer { channel.leave() }
 
-        let sub = channel.forever(receiveValue: expect(.join))
+        let sub = channel.sink(receiveValue: expect(.join))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2.0)
@@ -305,11 +305,11 @@ class SocketTests: XCTestCase {
         let channel1 = socket.channel("room:lobby")
         let channel2 = socket.channel("room:lobby2")
 
-        let sub1 = channel1.forever(receiveValue: expect(.join))
-        let sub2 = channel2.forever(receiveValue: expect(.join))
+        let sub1 = channel1.sink(receiveValue: expect(.join))
+        let sub2 = channel2.sink(receiveValue: expect(.join))
         defer { [sub1, sub2].forEach { $0.cancel() } }
 
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.join(channel1); socket.join(channel2) }
             ])
@@ -322,7 +322,7 @@ class SocketTests: XCTestCase {
 
         socket.leave(channel1)
 
-        let sub3 = channel1.forever(receiveValue: expect(.leave))
+        let sub3 = channel1.sink(receiveValue: expect(.leave))
         defer { sub3.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -337,7 +337,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
 
         let expectPushSuccess = self.expectPushSuccess()
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: {
                     socket.push(topic: "phoenix", event: .heartbeat, callback: expectPushSuccess)
@@ -372,7 +372,7 @@ class SocketTests: XCTestCase {
     func testHeartbeatTimeoutMovesSocketToClosedState() throws {
         let socket = makeSocket()
 
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 // Attempting to send a heartbeat before the previous one has returned causes the socket to timeout
                 .open: { socket.sendHeartbeat(); socket.sendHeartbeat() },
@@ -390,7 +390,7 @@ class SocketTests: XCTestCase {
 
         let heartbeatExpectation = self.expectation(description: "Sends heartbeat when connected")
 
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.sendHeartbeat { heartbeatExpectation.fulfill(); socket.disconnect() } },
                 .close: { }
@@ -404,7 +404,7 @@ class SocketTests: XCTestCase {
     func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
         let socket = Socket(url: testHelper.defaultURL, heartbeatInterval: .milliseconds(1))
 
-        let sub = socket.autoconnect().forever(receiveValue: expect(.close))
+        let sub = socket.autoconnect().sink(receiveValue: expect(.close))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -417,7 +417,7 @@ class SocketTests: XCTestCase {
         let noHeartbeatExpectation = self.expectation(description: "Does not send heartbeat when disconnected")
         noHeartbeatExpectation.isInverted = true
 
-        let sub = socket.forever(receiveValue: onResult(.close, noHeartbeatExpectation.fulfill()))
+        let sub = socket.sink(receiveValue: onResult(.close, noHeartbeatExpectation.fulfill()))
         defer { sub.cancel() }
 
         socket.sendHeartbeat { noHeartbeatExpectation.fulfill() }
@@ -507,7 +507,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
         socket.reconnectAttempts = 123
 
-        let sub = socket.autoconnect().forever(receiveValue: expect(.open))
+        let sub = socket.autoconnect().sink(receiveValue: expect(.open))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -519,7 +519,7 @@ class SocketTests: XCTestCase {
     func testConnectionOpenPublishesOpenMessage() {
         let socket = makeSocket()
 
-        let sub = socket.autoconnect().forever(receiveValue: expect(.open))
+        let sub = socket.autoconnect().sink(receiveValue: expect(.open))
         defer { sub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -536,7 +536,7 @@ class SocketTests: XCTestCase {
         open.assertForOverFulfill = false
         open.expectedFulfillmentCount = 2
 
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             onResults([
                 .open: { open.fulfill(); socket.send("disconnect") }
             ])
@@ -551,7 +551,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
         socket.reconnectTimeInterval = { _ in .milliseconds(10) }
 
-        let sub1 = socket.autoconnect().forever(receiveValue:
+        let sub1 = socket.autoconnect().sink(receiveValue:
             expectAndThen([.open: { socket.disconnect() }])
         )
         defer { sub1.cancel() }
@@ -560,7 +560,7 @@ class SocketTests: XCTestCase {
 
         let notOpen = self.expectation(description: "Not opened again")
         notOpen.isInverted = true
-        let sub2 = socket.forever(receiveValue: onResult(.open, notOpen.fulfill()))
+        let sub2 = socket.sink(receiveValue: onResult(.open, notOpen.fulfill()))
         defer { sub2.cancel() }
 
         waitForExpectations(timeout: 0.1)
@@ -575,7 +575,7 @@ class SocketTests: XCTestCase {
         open.assertForOverFulfill = false
         open.expectedFulfillmentCount = 2
 
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             onResults([
                 .open: { open.fulfill(); socket.send("boom") }
             ])
@@ -590,7 +590,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
         socket.reconnectTimeInterval = { _ in .milliseconds(10) }
 
-        let sub1 = socket.autoconnect().forever(receiveValue:
+        let sub1 = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.disconnect() },
                 .close: { },
@@ -601,14 +601,14 @@ class SocketTests: XCTestCase {
 
         let doesNotReconnect = self.expectation(description: "Does not reconnect after disconnect")
         doesNotReconnect.isInverted = true
-        let sub2 = socket.forever(receiveValue: onResult(.open, doesNotReconnect.fulfill()))
+        let sub2 = socket.sink(receiveValue: onResult(.open, doesNotReconnect.fulfill()))
         waitForExpectations(timeout: 0.1)
         sub2.cancel()
 
         let reconnects = self.expectation(description: "Reconnects again after explicit connect")
         reconnects.expectedFulfillmentCount = 2
         reconnects.assertForOverFulfill = false
-        let sub3 = socket.forever(receiveValue:
+        let sub3 = socket.sink(receiveValue:
             onResults([
                 .open: {
                     reconnects.fulfill()
@@ -625,7 +625,7 @@ class SocketTests: XCTestCase {
     func testRemoteClosePublishesClose() throws {
         let socket = makeSocket()
 
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.send("disconnect") },
                 .close: { },
@@ -641,7 +641,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
         let channel = socket.join("room:lobby")
 
-        let sub = channel.forever(receiveValue:
+        let sub = channel.sink(receiveValue:
             expectAndThen([
                 .join: { socket.send("boom") },
                 .error: { },
@@ -658,7 +658,7 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
         let channel = socket.join("room:lobby")
 
-        let sub = channel.forever(receiveValue:
+        let sub = channel.sink(receiveValue:
             expectAndThen([
                 .join: { socket.send("disconnect") },
                 .error: { }
@@ -677,7 +677,7 @@ class SocketTests: XCTestCase {
 
         let channel = socket.join("room:lobby")
 
-        let sub1 = channel.forever(receiveValue:
+        let sub1 = channel.sink(receiveValue:
             expectAndThen([
                 .join: { socket.leave(channel) },
                 .leave: { }
@@ -691,7 +691,7 @@ class SocketTests: XCTestCase {
         let noError = self.expectation(description: "Should not have received an error")
         noError.isInverted = true
 
-        let sub2 = channel.forever(receiveValue: onResult(.error, noError.fulfill()))
+        let sub2 = channel.sink(receiveValue: onResult(.error, noError.fulfill()))
         defer { sub2.cancel() }
 
         socket.send("disconnect")
@@ -702,7 +702,7 @@ class SocketTests: XCTestCase {
     func testRemoteExceptionPublishesError() throws {
         let socket = makeSocket()
 
-        let sub = socket.autoconnect().forever(receiveValue:
+        let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.send("boom") },
                 .websocketError: { }

@@ -83,10 +83,10 @@ class ChannelTests: XCTestCase {
         let params = ["did": "make it"]
         let channel = Channel(topic: "room:lobby", joinPayload: params, socket: socket)
 
-        let channelSub = channel.forever(receiveValue: expect(.join))
+        let channelSub = channel.sink(receiveValue: expect(.join))
         defer { channelSub.cancel() }
 
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([.open: { channel.join() }])
         )
         defer { socketSub.cancel() }
@@ -108,10 +108,10 @@ class ChannelTests: XCTestCase {
     func testJoinSameTopicTwiceReturnsSameChannel() throws {
         let channel = makeChannel(topic: "room:lobby")
 
-        let channelSub = channel.forever(receiveValue: expect(.join))
+        let channelSub = channel.sink(receiveValue: expect(.join))
         defer { channelSub.cancel() }
 
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([.open: { channel.join() }])
         )
         defer { socketSub.cancel() }
@@ -132,7 +132,7 @@ class ChannelTests: XCTestCase {
             topic: "room:lobby", joinPayloadBlock: { counter += 1; return [:] }, socket: socket
         )
         
-        let sub = channel.forever(receiveValue: expect(.join))
+        let sub = channel.sink(receiveValue: expect(.join))
         defer { sub.cancel() }
         
         channel.join(timeout: .seconds(2))
@@ -171,12 +171,12 @@ class ChannelTests: XCTestCase {
             }
         }
 
-        let socketSub = socket.forever(receiveValue:
+        let socketSub = socket.sink(receiveValue:
             expectAndThen([.open: { channel.join(timeout: .milliseconds(100)) }])
         )
         defer { socketSub.cancel() }
 
-        let channelSub = channel.forever(receiveValue:
+        let channelSub = channel.sink(receiveValue:
             expectAndThen([
                 .join: { XCTAssertEqual(4, counter)  }
                 // 1st is the first backoff amount of 10 milliseconds
@@ -199,7 +199,7 @@ class ChannelTests: XCTestCase {
         var didReceiveError = false
         let didJoinEx = self.expectation(description: "Did join")
         
-        let channelSub = channel.forever(receiveValue:
+        let channelSub = channel.sink(receiveValue:
             onResults([
                 .error: {
                     // This isn't exactly the same as the JavaScript test. In the JavaScript test,
@@ -225,7 +225,7 @@ class ChannelTests: XCTestCase {
         var didReceiveError = false
         let didJoinEx = self.expectation(description: "Did join")
         
-        let channelSub = channel.forever(receiveValue:
+        let channelSub = channel.sink(receiveValue:
             onResults([
                 // This isn't exactly the same as the JavaScript test. In the JavaScript test,
                 // there is a delay after sending 'connect' before receiving the response.
@@ -255,7 +255,7 @@ class ChannelTests: XCTestCase {
         
         let channel = makeChannel(topic: "room:lobby")
         
-        let sub = channel.forever(receiveValue: expect(.join))
+        let sub = channel.sink(receiveValue: expect(.join))
         defer { sub.cancel() }
         
         channel.join()
@@ -269,7 +269,7 @@ class ChannelTests: XCTestCase {
     func testOnlyReceivesSuccessfulCallbackFromSuccessfulJoin() throws {
         let channel = makeChannel(topic: "room:lobby")
         
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([.open: { channel.join() }])
         )
         defer { socketSub.cancel() }
@@ -300,7 +300,7 @@ class ChannelTests: XCTestCase {
         
         let channel = makeChannel(topic: "room:lobby")
         
-        let sub = channel.forever(receiveValue: expect(.join))
+        let sub = channel.sink(receiveValue: expect(.join))
         defer { sub.cancel() }
         
         channel.join()
@@ -318,10 +318,10 @@ class ChannelTests: XCTestCase {
         channel.push("echo", payload:["echo": "two"], callback: expectOk(response: ["echo": "two"]))
         channel.push("echo", payload:["echo": "three"], callback: expectOk(response: ["echo": "three"]))
         
-        let socketSub = socket.forever(receiveValue: onResult(.open, channel.join()))
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
         
-        let channelSub = channel.forever(receiveValue: expect(.join))
+        let channelSub = channel.sink(receiveValue: expect(.join))
         defer { channelSub.cancel() }
         
         socket.connect()
@@ -336,13 +336,13 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 3_000, "join": true])
         
         let timeoutEx = self.expectation(description: "Should have received timeout error")
-        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
             guard case Channel.Output.error(Channel.Error.joinTimeout) = output else { return }
             timeoutEx.fulfill()
         })
         defer { channelSub.cancel() }
         
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([.open: { channel.join(timeout: .milliseconds(10)) }])
         )
         defer { socketSub.cancel() }
@@ -356,7 +356,7 @@ class ChannelTests: XCTestCase {
     func testOnlyReceivesTimeoutErrorAfterJoinTimeout() throws {
         let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 3_000, "join": true])
         
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([.open: { channel.join(timeout: .milliseconds(10)) }])
         )
         defer { socketSub.cancel() }
@@ -387,13 +387,13 @@ class ChannelTests: XCTestCase {
         channel.rejoinTimeout = { _ in return .seconds(30) }
         
         let timeoutEx = self.expectation(description: "Should have received timeout error")
-        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
             guard case Channel.Output.error(Channel.Error.joinTimeout) = output else { return }
             timeoutEx.fulfill()
         })
         defer { channelSub.cancel() }
         
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             expectAndThen([.open: { channel.join(timeout: .milliseconds(10)) }])
         )
         defer { socketSub.cancel() }
@@ -414,14 +414,14 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:error", payload: ["error": "boom"])
 
         let timeoutEx = self.expectation(description: "Should have received error")
-        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
             guard case .error(Channel.Error.invalidJoinReply(let reply)) = output else { return }
             XCTAssertEqual(["error": "boom"], reply.response as? [String: String])
             timeoutEx.fulfill()
         })
         defer { channelSub.cancel() }
         
-        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
         
         waitForExpectations(timeout: 2)
@@ -434,7 +434,7 @@ class ChannelTests: XCTestCase {
     func testOnlyReceivesErrorResponseAfterJoinError() throws {
         let channel = makeChannel(topic: "room:error", payload: ["error": "boom"])
 
-        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
         
         let errorEx = self.expectation(description: "Should have received error")
@@ -462,13 +462,13 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:error", payload: ["error": "boom"])
 
         let timeoutEx = self.expectation(description: "Should have received error")
-        let channelSub = channel.forever(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
             guard case .error(Channel.Error.invalidJoinReply) = output else { return }
             timeoutEx.fulfill()
         })
         defer { channelSub.cancel() }
         
-        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
 
         expectationWithTest(
@@ -484,10 +484,10 @@ class ChannelTests: XCTestCase {
     func testDoesNotSetChannelStateToJoinedAfterJoinError() throws {
         let channel = makeChannel(topic: "room:error", payload: ["error": "boom"])
 
-        let channelSub = channel.forever(receiveValue: expect(.error))
+        let channelSub = channel.sink(receiveValue: expect(.error))
         defer { channelSub.cancel() }
         
-        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
         
         waitForExpectations(timeout: 2)
@@ -505,10 +505,10 @@ class ChannelTests: XCTestCase {
         channel.push("echo", payload:["echo": "two"], callback: callback)
         channel.push("echo", payload:["echo": "three"], callback: callback)
         
-        let socketSub = socket.forever(receiveValue: expectAndThen(.open, channel.join()))
+        let socketSub = socket.sink(receiveValue: expectAndThen(.open, channel.join()))
         defer { socketSub.cancel() }
         
-        let channelSub = channel.forever(receiveValue: expect(.error))
+        let channelSub = channel.sink(receiveValue: expect(.error))
         defer { channelSub.cancel() }
         
         socket.connect()
@@ -528,7 +528,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:lobby")
         channel.rejoinTimeout = { _ in .milliseconds(5) }
 
-        let channelSub = channel.forever(receiveValue:
+        let channelSub = channel.sink(receiveValue:
             expectAndThen([
                 .join: { channel.leave(); self.socket.send("boom") },
             ])
@@ -539,7 +539,7 @@ class ChannelTests: XCTestCase {
         let socketOpenEx = self.expectation(description: "Should have opened socket")
         socketOpenEx.expectedFulfillmentCount = 2
         socketOpenEx.assertForOverFulfill = false
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             onResults([
                 .open: {
                     socketOpenEx.fulfill()
@@ -563,7 +563,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:lobby")
         channel.rejoinTimeout = { _ in .milliseconds(5) }
 
-        let channelSub = channel.forever(receiveValue:
+        let channelSub = channel.sink(receiveValue:
             expectAndThen([
                 .join: { channel.leave() },
                 .leave: { self.socket.send("boom") }
@@ -575,7 +575,7 @@ class ChannelTests: XCTestCase {
         let socketOpenEx = self.expectation(description: "Should have opened socket")
         socketOpenEx.expectedFulfillmentCount = 2
         socketOpenEx.assertForOverFulfill = false
-        let socketSub = socket.autoconnect().forever(receiveValue:
+        let socketSub = socket.autoconnect().sink(receiveValue:
             onResults([
                 .open: {
                     socketOpenEx.fulfill()
@@ -598,7 +598,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:lobby")
 
         let callback = expectError(response: ["error": "whatever"])
-        let channelSub = channel.forever(receiveValue:
+        let channelSub = channel.sink(receiveValue:
             expectAndThen([
                 .join: {
                     channel.push("echo_error", payload: ["error": "whatever"], callback: callback)
@@ -608,7 +608,7 @@ class ChannelTests: XCTestCase {
         )
         defer { channelSub.cancel() }
 
-        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
 
         waitForExpectations(timeout: 2)
@@ -620,7 +620,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:lobby")
 
         let callback = expectError(response: ["error": "whatever"])
-        let channelSub = channel.forever(receiveValue:
+        let channelSub = channel.sink(receiveValue:
             expectAndThen([
                 .join: {
                     channel.push("echo_error", payload: ["error": "whatever"], callback: callback)
@@ -629,7 +629,7 @@ class ChannelTests: XCTestCase {
         )
         defer { channelSub.cancel() }
 
-        let socketSub = socket.autoconnect().forever(receiveValue: onResult(.open, channel.join()))
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
 
         waitForExpectations(timeout: 2)
