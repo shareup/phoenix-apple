@@ -71,7 +71,7 @@ extension XCTestCase {
     }
     
     func expectError(response expected: [String: String]? = nil) -> Channel.Callback {
-        let expectation = self.expectation(description: "Should have received successful response")
+        let expectation = self.expectation(description: "Should have received error response")
         return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
             if case .success(let reply) = result {
                 guard reply.isNotOk else { return }
