@@ -40,6 +40,8 @@ public final class Channel: Publisher {
         }
     }
     
+    var canPush: Bool { return self.isJoined }
+    
     private let notifySubjectQueue = DispatchQueue(label: "Channel.notifySubjectQueue")
     
     private var pushedMessagesTimer: Timer?

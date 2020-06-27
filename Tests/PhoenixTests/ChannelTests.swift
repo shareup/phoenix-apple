@@ -616,6 +616,8 @@ class ChannelTests: XCTestCase {
 
     // MARK: onClose
 
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L694
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L714
     func testClosingChannelSetsStateToClosed() throws {
         let channel = makeChannel(topic: "room:lobby")
 
@@ -634,14 +636,236 @@ class ChannelTests: XCTestCase {
 
         waitForExpectations(timeout: 2)
 
-//        expectationWithTest(description: "Should have closed", test: channel.isClosed)
-//        waitForExpectations(timeout: 0.2)
         XCTAssertEqual(channel.connectionState, "closed")
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L702
+    func testChannelDoesNotRejoinAfterClosing() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        channel.rejoinTimeout = { _ in .milliseconds(10) }
+
+        let callback = expectOk(response: ["close": "whatever"])
+        let channelSub = channel.sink(
+            receiveCompletion: expectFinished(),
+            receiveValue: expectAndThen([
+                .join: { channel.push("echo_close", payload: ["close": "whatever"], callback: callback) },
+                .leave: { }
+            ])
+        )
+        defer { channelSub.cancel() }
+
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+
+        waitForExpectations(timeout: 2)
+
+        XCTAssertEqual(channel.connectionState, "closed")
+        
+        // Wait to see if the channel tries to reconnect
+        waitForTimeout(0.1)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L725
+    func testChannelIsRemovedFromSocketsListOfChannelsAfterClose() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        channel.rejoinTimeout = { _ in .milliseconds(10) }
+
+        let callback = expectOk(response: ["close": "whatever"])
+        let channelSub = channel.sink(
+            receiveCompletion: expectFinished(),
+            receiveValue: expectAndThen([
+                .join: { channel.push("echo_close", payload: ["close": "whatever"], callback: callback) },
+                .leave: { }
+            ])
+        )
+        defer { channelSub.cancel() }
+
+        let socketSub = socket.autoconnect().sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(socket.joinedChannels.isEmpty)
+    }
+    
+    // MARK: onMessage
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L742
+    func testIncomingMessageIncludesPayload() throws {
+         let channel = makeChannel(topic: "room:lobby")
+         
+         channel.push("echo", payload:["echo": "one"], callback: expectOk(response: ["echo": "one"]))
+         
+         let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+         defer { socketSub.cancel() }
+         
+         let channelSub = channel.sink(receiveValue: expect(.join))
+         defer { channelSub.cancel() }
+         
+         socket.connect()
+         
+         waitForExpectations(timeout: 2)
+    }
+    
+    // MARK: canPush
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L757
+    func testCanPushIsTrueWhenSocketAndChannelAreConnected() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.sink(receiveValue: expect(.join))
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(channel.canPush)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L764
+    func testCanPushIsFalseWhenSocketIsDisconnectedOrChannelIsNotJoined() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        XCTAssertFalse(channel.canPush)
+        
+        let socketSub = socket.sink(receiveValue:
+            expectAndThen([
+                .open: {
+                    XCTAssertFalse(channel.canPush)
+                    channel.join()
+                }
+            ])
+        )
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.sink(receiveValue: expect(.join))
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(channel.canPush)
+    }
+    
+    // MARK: on
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L792
+    func testCallsCallbackAndNotifiesSubscriberForMessage() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        
+        channel.push("echo", callback: expectOk(response: [:]))
+        
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let messageEx = self.expectation(description: "Should have received message")
+        let channelSub = channel.sink { (output) in
+            switch output {
+            case .message(let message):
+                XCTAssertEqual("phx_reply", message.event)
+                XCTAssertEqual([:], message.payload["response"] as! [String:String])
+                messageEx.fulfill()
+            default: break
+            }
+        }
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L805
+    func testDoesNotCallCallbackForOtherMessages() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        
+        let callbackEx = self.expectation(description: "Should only call callback for its event")
+        channel.push("echo") { (result: Result<Channel.Reply, Error>) in
+            callbackEx.fulfill()
+            guard case let .success(reply) = result else { return XCTFail() }
+            XCTAssertTrue(reply.isOk)
+            XCTAssertEqual("phx_reply", reply.message.event)
+        }
+        channel.push("echo", payload:["echo": "one"], callback: expectOk(response: ["echo": "one"]))
+        
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.sink(receiveValue: expect(.join))
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L820
+    func testChannelGeneratesUniqueRefsForEachEvent() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        
+        var refs = Set<Ref>()
+        let callbackEx = self.expectation(description: "Should have called two callbacks")
+        callbackEx.expectedFulfillmentCount = 2
+        let callback = { (result: Result<Channel.Reply, Error>) in
+            guard case let .success(reply) = result else { return }
+            refs.insert(reply.ref)
+            callbackEx.fulfill()
+        }
+        
+        channel.push("echo", callback: callback)
+        channel.push("echo", callback: callback)
+        
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.sink(receiveValue: expect(.join))
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertEqual(2, refs.count)
+    }
+    
+    // MARK: off
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L848
+    func testRemovingSubscriberBeforeEventIsPushedPreventsNotification() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        
+        let pushCallbackEx = self.expectation(description: "Should have received callback")
+        channel.push("echo") { _ in pushCallbackEx.fulfill() }
+        
+        let messageEx = self.expectation(description: "Should not have received message")
+        messageEx.isInverted = true
+        let channelSub = channel.sink { _ in messageEx.fulfill() }
+        
+        let joinEx = self.expectation(description: "Should have joined socket")
+        let socketSub = socket.sink(receiveValue:
+            onResults([
+                .open: {
+                    channelSub.cancel()
+                    channel.join()
+                    joinEx.fulfill()
+                }
+            ])
+        )
+        defer { socketSub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [joinEx, pushCallbackEx], timeout: 2, enforceOrder: true)
+        wait(for: [messageEx], timeout: 0.2)
     }
 
     // MARK: Error
 
-    func testReceivingReplyErrorDoesNotSetChannelStateToErrored() {
+    func testReceivingReplyErrorDoesNotSetChannelStateToErrored() throws {
         let channel = makeChannel(topic: "room:lobby")
 
         let callback = expectError(response: ["error": "whatever"])

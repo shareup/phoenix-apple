@@ -48,6 +48,8 @@ defmodule ServerWeb.RoomChannel do
     {:reply, {:ok, %{echo: echo_text}}, socket}
   end
 
+  def handle_in("echo", %{}, socket), do: {:reply, {:ok, %{}}, socket}
+
   def handle_in("echo_error", %{"error" => echo_text}, socket) do
     {:reply, {:error, %{error: echo_text}}, socket}
   end

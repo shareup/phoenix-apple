@@ -162,7 +162,7 @@
 	- https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L567
 	- `testDoesNotSendAnyBufferedMessagesAfterJoinError()`
 
-### onError
+## onError
 
 - [x] sets state to 'errored'
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L603
@@ -184,82 +184,96 @@
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L659
 	- `testChannelSendsChannelErrorsToSubscribersAfterJoin()`
 
-### onClose
+## onClose
 
-- [ ] sets state to 'closed'
+- [x] sets state to 'closed'
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L694
-	- ``
+	- `testClosingChannelSetsStateToClosed()`
 
-- [ ] does not rejoin
+- [x] does not rejoin
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L702
-	- ``
+	- `testChannelDoesNotRejoinAfterClosing()`
 
-- [ ] triggers additional callbacks
+- [x] triggers additional callbacks
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L714
-	- ``
+	- `testClosingChannelSetsStateToClosed()`
 
-- [ ] removes channel from socket
+- [x] removes channel from socket
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L725
+	- `testChannelIsRemovedFromSocketsListOfChannelsAfterClose()`
+	
+## onMessage
+
+- [x] returns payload by default
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L742
+	- `testIncomingMessageIncludesPayload()`
+	
+## canPush
+
+- [x] returns true when socket connected and channel joined
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L757
+	- `testCanPushIsTrueWhenSocketAndChannelAreConnected()`
+
+- [x] otherwise returns false
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L764
+	- `testCanPushIsFalseWhenSocketIsDisconnectedOrChannelIsNotJoined()`
+
+## on
+
+- [x] sets up callback for event
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L792
+	- `testCallsCallbackAndNotifiesSubscriberForMessage()`
+
+- [x] other event callbacks are ignored
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L805
+	- `testDoesNotCallCallbackForOtherMessages()`
+
+- [x] generates unique refs for callbacks
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L820
+	- `testChannelGeneratesUniqueRefsForEachEvent()`
+
+- [x] calls all callbacks for event if they modified during event processing
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L826
+	- _not applicable because we don't allow modifying events_
+	
+## off
+
+- [x] removes all callbacks for event
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L848
+	- `testRemovingSubscriberBeforeEventIsPushedPreventsNotification()`
+
+- [x] removes callback by its ref
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L867
+	- _not applicable because callbacks can't be removed after being added_
+	
+## push
+
+- [ ] sends push event when successfully joined
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L911
 	- ``
 
-- [ ]
-	-
+- [ ] enqueues push event to be sent once join has succeeded
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L918
 	- ``
 
-- [ ]
-	-
+- [ ] does not push if channel join times out
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L930
 	- ``
 
-- [ ]
-	-
+- [ ] uses channel timeout by default
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L942
 	- ``
 
-- [ ]
-	-
+- [ ] accepts timeout arg
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L956
 	- ``
 
-- [ ]
-	-
+- [ ] does not time out after receiving 'ok'
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L970
 	- ``
 
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
+- [ ] throws if channel has not been joined
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L985
 	- ``
 
 - [ ]
