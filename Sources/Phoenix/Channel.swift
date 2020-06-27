@@ -227,6 +227,14 @@ extension Channel {
             }
         }
     }
+
+    private func sendLeaveAndCompletionToSubjectAsync() {
+        let subject = self.subject
+        notifySubjectQueue.async {
+            subject.send(.leave)
+            subject.send(completion: .finished)
+        }
+    }
 }
 
 // MARK: Push
@@ -526,11 +534,7 @@ extension Channel {
             sync {
                 self.shouldRejoin = false
                 state = .closed
-                let subject = self.subject
-                notifySubjectQueue.async {
-                    subject.send(.leave)
-                    subject.send(completion: .finished)
-                }
+                self.sendLeaveAndCompletionToSubjectAsync()
             }
 
         default:
@@ -579,11 +583,7 @@ extension Channel {
                 }
                 
                 self.state = .closed
-                let subject = self.subject
-                notifySubjectQueue.async {
-                    subject.send(.leave)
-                    subject.send(completion: .finished)
-                }
+                self.sendLeaveAndCompletionToSubjectAsync()
 
             case .closed:
                 break
