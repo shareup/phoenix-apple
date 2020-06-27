@@ -184,20 +184,22 @@
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L659
 	- `testChannelSendsChannelErrorsToSubscribersAfterJoin()`
 
-- [ ]
-	-
+### onClose
+
+- [ ] sets state to 'closed'
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L694
 	- ``
 
-- [ ]
-	-
+- [ ] does not rejoin
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L702
 	- ``
 
-- [ ]
-	-
+- [ ] triggers additional callbacks
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L714
 	- ``
 
-- [ ]
-	-
+- [ ] removes channel from socket
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L725
 	- ``
 
 - [ ]
