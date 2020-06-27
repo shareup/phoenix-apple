@@ -1,0 +1,37 @@
+Phoenix test Socket
+
+<script src="./phoenix.js" type="module"></script>
+<script type="module">
+  import {Socket} from './phoenix.js';
+  const socket = new Socket('ws://0.0.0.0:4000/socket', { params: { user_id: 1 } });
+
+  socket.onOpen((data) => console.debug('socket open', data))
+  socket.onError((data) => console.error('socket error', data))
+  socket.onClose((data) => console.error('socket close', data))
+  socket.onMessage((data) => console.debug('socket message', data))
+
+  socket.connect();
+
+  const lobby = socket.channel('room:lobby');
+
+  lobby.onError((data) => console.error('channel error', data));
+  lobby.onClose((data) => console.error('channel close', data));
+
+  lobby.join()
+    .receive('ok', (data) => console.debug('lobby joined', data))
+    .receive('error', (data) => console.error('lobby failed join', data))
+    .receive('timeout', (data) => console.error('lobby timeout'))
+
+  lobby.on('echo', (data) => console.debug('lobby echo', data));
+
+  function echo (message) {
+    lobby.push("echo", { echo: message }, 1000)
+      .receive("ok", (data) => console.debug("echoed", data))
+      .receive("error", (reasons) => console.log("echo failed", reasons))
+      .receive("timeout", () => console.log("echo timed out"))
+  }
+
+  window.socket = socket;
+  window.lobby = lobby;
+  window.echo = echo;
+</script>
