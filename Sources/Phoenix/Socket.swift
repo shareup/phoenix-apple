@@ -452,7 +452,7 @@ extension Socket {
 // MARK: WebSocket subscriber
 
 extension Socket {
-    typealias WebSocketOutput = Result<WebSocket.Message, Swift.Error>
+    typealias WebSocketOutput = Result<WebSocketMessage, Swift.Error>
     typealias WebSocketFailure = Swift.Error
 
     func makeWebSocketSubscriber(with webSocket: WebSocket) -> AnyCancellable {

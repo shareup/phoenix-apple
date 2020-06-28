@@ -862,6 +862,186 @@ class ChannelTests: XCTestCase {
         wait(for: [joinEx, pushCallbackEx], timeout: 2, enforceOrder: true)
         wait(for: [messageEx], timeout: 0.2)
     }
+    
+    // MARK: Push
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L911
+    func testSendsPushEventAfterJoiningChannel() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let pushEx = self.expectation(description: "Should have received push reply")
+        let channelSub = channel.sink(receiveValue:
+            expectAndThen([
+                .join: {
+                    channel.push("echo", payload: ["echo": "word"]) { (result) in
+                        guard case let .success(reply) = result else { return }
+                        guard reply.isOk else { return }
+                        XCTAssertEqual(["echo": "word"], reply.response as? [String: String])
+                        pushEx.fulfill()
+                    }
+                },
+            ])
+        )
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L918
+    func testEnqueuesPushEventToBeSentWhenChannelIsJoined() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        
+        let noPushEx = self.expectation(description: "Should have wait to send push after joining")
+        noPushEx.isInverted = true
+        let pushEx = self.expectation(description: "Should have sent push after joining")
+        
+        channel.push("echo") { _ in noPushEx.fulfill(); pushEx.fulfill() }
+        
+        wait(for: [noPushEx], timeout: 0.2)
+        
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.sink(receiveValue: expect([.join, .message]))
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L930
+    func testDoesNotPushIfChannelJoinTimesOut() throws {
+        let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 500, "join": true])
+        
+        let noPushEx = self.expectation(description: "Should not have sent push")
+        noPushEx.isInverted = true
+        channel.push("echo") { _ in noPushEx.fulfill() }
+        
+        let connectEx = self.expectation(description: "Should have connected to socket")
+        let socketSub = socket.sink { (output) in
+            guard case .open = output else { return }
+            channel.join(timeout: .milliseconds(50))
+            connectEx.fulfill()
+        }
+        defer { socketSub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [connectEx], timeout: 2)
+        wait(for: [noPushEx], timeout: 0.1)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L942
+    func testPushesUseChannelTimeoutByDefault() throws {
+        let channel: Channel = makeChannel(topic: "room:lobby")
+        let channelTimeout = channel.timeout
+
+        channel.push("echo")
+        
+        XCTAssertEqual(channelTimeout, channel.pending[0].timeout)
+        channel.leave()
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L956
+    func testPushesCanAcceptCustomTimeout() throws {
+        let channel = makeChannel(topic: "room:lobby")
+        let channelTimeout = channel.timeout
+
+        let customTimeout = DispatchTimeInterval.microseconds(1)
+        channel.push("echo", payload: [:], timeout: customTimeout, callback: { _ in })
+        
+        let push = channel.pending[0]
+        XCTAssertNotEqual(channelTimeout, push.timeout)
+        XCTAssertEqual(customTimeout, push.timeout)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L956
+    func testPushesTimeoutAfterCustomTimeout() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        channel.push(
+            "echo_timeout",
+            payload: ["echo": "word", "timeout": 2_000],
+            timeout: .milliseconds(20),
+            callback: expectFailure(.pushTimeout)
+        )
+        XCTAssertEqual(1, channel.pending.count)
+        
+        let socketSub = socket.sink(receiveValue: expectAndThen(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+        
+        XCTAssertTrue(channel.inFlight.isEmpty)
+        XCTAssertTrue(channel.pending.isEmpty)
+    }
+    
+    func testShortPushTimeoutsAreCalledAfterLongPushTimeoutsHaveBeenScheduled() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        func payload(_ timeout: Int) -> [String:Any] { ["echo": "word", "timeout": timeout] }
+        let shortTimeoutCallback = expectFailure(.pushTimeout)
+        
+        let socketSub = socket.sink(receiveValue: expectAndThen(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        func pushShortTimeoutAfterFirstPushIsInFlight() {
+            // Make sure the first push is in flight before adding the second one
+            DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(50)) {
+                XCTAssertEqual(1, channel.inFlight.count)
+                channel.push("echo_timeout", payload: payload(100), timeout: .milliseconds(50), callback: shortTimeoutCallback)
+            }
+        }
+        
+        let channelSub = channel.sink(receiveValue:
+            expectAndThen([
+                .join: {
+                    channel.push("echo_timeout", payload: payload(2_000), timeout: .seconds(2), callback: nil)
+                    pushShortTimeoutAfterFirstPushIsInFlight()
+                }
+            ])
+        )
+        defer { channelSub.cancel() }
+        
+        socket.connect()
+        
+        waitForExpectations(timeout: 2)
+    }
+    
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L970
+    func testPushDoesNotTimeoutAfterReceivingReply() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        let okEx = self.expectation(description: "Should have received 'ok'")
+        let timeoutEx = self.expectation(description: "Should not have received a timeout")
+        timeoutEx.isInverted = true
+        channel.push("echo", payload: [:], timeout: .milliseconds(100)) { (result: Result<Channel.Reply, Swift.Error>) in
+            switch result {
+            case .success(let reply) where reply.isOk:
+                okEx.fulfill()
+            case .failure(Channel.Error.pushTimeout):
+                timeoutEx.fulfill()
+            default: XCTFail()
+            }
+        }
+        XCTAssertEqual(1, channel.pending.count)
+        
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+        
+        socket.connect()
+        
+        wait(for: [okEx], timeout: 2)
+        wait(for: [timeoutEx], timeout: 0.15)
+    }
 
     // MARK: Error
 
@@ -1114,33 +1294,32 @@ class ChannelTests: XCTestCase {
     }
     
     func testRejoinsAfterDisconnect() throws {
-        let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
+        socket.reconnectTimeInterval = { _ in .milliseconds(10) }
+        let channel = makeChannel(topic: "room:lobby")
+        channel.rejoinTimeout = { _ in .milliseconds(20) }
+        channel.join()
         
-        let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
-        openMesssageEx.expectedFulfillmentCount = 2
+        let openEx = self.expectation(description: "Should have opened twice (once after disconnect)")
+        openEx.expectedFulfillmentCount = 2
+        openEx.assertForOverFulfill = false
         
-        let sub = socket.sink {
-            if case .open = $0 { openMesssageEx.fulfill() }
+        let joinEx = self.expectation(description: "Should have joined channel twice")
+        joinEx.expectedFulfillmentCount = 2
+        joinEx.assertForOverFulfill = false
+        
+        let socketSub = socket.sink { if case .open = $0 { openEx.fulfill() } }
+        defer { socketSub.cancel() }
+        
+        let channelSub = channel.sink { (event: Channel.Event) in
+            guard case .join = event else { return }
+            self.socket.send("disconnect")
+            joinEx.fulfill()
         }
-        defer { sub.cancel() }
+        defer { channelSub.cancel() }
         
         socket.connect()
         
-        let channelJoinedEx = expectation(description: "Channel should have joined twice (one after disconnecting)")
-        channelJoinedEx.expectedFulfillmentCount = 2
-        
-        let channel = socket.join("room:lobby")
-        
-        let sub2 = channel.sink {
-            if case .join = $0 {
-                socket.send("disconnect")
-                channelJoinedEx.fulfill()
-            }
-        }
-        defer { sub2.cancel() }
-        
-        waitForExpectations(timeout: 1)
+        waitForExpectations(timeout: 2)
     }
     
     // MARK: skipped

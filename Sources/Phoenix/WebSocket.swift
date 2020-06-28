@@ -3,7 +3,7 @@ import Foundation
 import Synchronized
 
 class WebSocket: NSObject, WebSocketProtocol, Publisher {
-    typealias Output = Result<WebSocket.Message, Swift.Error>
+    typealias Output = Result<WebSocketMessage, Swift.Error>
     typealias Failure = Swift.Error
 
     private enum State {
@@ -49,7 +49,7 @@ class WebSocket: NSObject, WebSocketProtocol, Publisher {
     }
 
     func receive<S: Subscriber>(subscriber: S)
-        where S.Input == Result<WebSocket.Message, Swift.Error>, S.Failure == Swift.Error
+        where S.Input == Result<WebSocketMessage, Swift.Error>, S.Failure == Swift.Error
     {
         subject.receive(subscriber: subscriber)
     }
@@ -70,7 +70,7 @@ class WebSocket: NSObject, WebSocketProtocol, Publisher {
     }
     
     private func receiveFromWebSocket(_ result: Result<URLSessionWebSocketTask.Message, Error>) {
-        let _result = result.map { WebSocket.Message($0) }
+        let _result = result.map { WebSocketMessage($0) }
 
         subject.send(_result)
         

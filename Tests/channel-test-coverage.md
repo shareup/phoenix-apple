@@ -248,33 +248,34 @@
 	
 ## push
 
-- [ ] sends push event when successfully joined
+- [x] sends push event when successfully joined
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L911
-	- ``
+	- `testSendsPushEventAfterJoiningChannel()`
 
-- [ ] enqueues push event to be sent once join has succeeded
+- [x] enqueues push event to be sent once join has succeeded
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L918
-	- ``
+	- `testEnqueuesPushEventToBeSentWhenChannelIsJoined()`
 
-- [ ] does not push if channel join times out
+- [x] does not push if channel join times out
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L930
-	- ``
+	- `testDoesNotPushIfChannelJoinTimesOut()`
 
-- [ ] uses channel timeout by default
+- [x] uses channel timeout by default
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L942
-	- ``
+	- `testPushesUseChannelTimeoutByDefault()`
 
-- [ ] accepts timeout arg
+- [x] accepts timeout arg
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L956
-	- ``
+	- `testPushesCanAcceptCustomTimeout()`
+	- `testPushesTimeoutAfterCustomTimeout()`
 
-- [ ] does not time out after receiving 'ok'
+- [x] does not time out after receiving 'ok'
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L970
-	- ``
+	- `testPushDoesNotTimeoutAfterReceivingReply()`
 
-- [ ] throws if channel has not been joined
+- [x] throws if channel has not been joined
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L985
-	- ``
+	- _not applicable because we buffer events until the channel is joined_
 
 - [ ]
 	-

@@ -103,7 +103,7 @@ class WebSocketTests: XCTestCase {
         }) { result in
             guard !hasReplied else { return }
 
-            let message: WebSocket.Message
+            let message: WebSocketMessage
 
             hasReplied = true
 
@@ -206,7 +206,7 @@ class WebSocketTests: XCTestCase {
         let sub2 = webSocket.sink(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
         }) { result in
-            let message: WebSocket.Message
+            let message: WebSocketMessage
 
             switch result {
             case .success(let _message):

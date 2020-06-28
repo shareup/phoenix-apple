@@ -58,6 +58,12 @@ defmodule ServerWeb.RoomChannel do
     {:stop, :shutdown, {:ok, %{close: echo_text}}, socket}
   end
 
+  def handle_in("echo_timeout", %{"echo" => echo_text, "timeout" => timeout}, socket)
+      when is_integer(timeout) do
+    Process.sleep(timeout)
+    {:reply, {:ok, %{echo: echo_text}}, socket}
+  end
+
   def handle_in("repeat", %{"echo" => echo_text, "amount" => amount}, socket)
       when is_integer(amount) do
     for n <- 1..amount do

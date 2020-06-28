@@ -22,12 +22,16 @@ extension XCTestCase {
 
 extension XCTestCase {
     func expect<T: RawCaseConvertible>(_ value: T.RawCase) -> (T) -> Void {
-        let expectation = self.expectation(description: "Should have received '\(String(describing: value))'")
-        return { v in
-            if v.matches(value) {
-                expectation.fulfill()
-            }
-        }
+        return expect([value])
+    }
+    
+    func expect<T: RawCaseConvertible>(_ values: Set<T.RawCase>) -> (T) -> Void {
+        let valueToAction = values.reduce(into: [:]) { $0[$1] = { } }
+        return expectAndThen(valueToAction)
+    }
+    
+    func expectAndThen<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
+        return expectAndThen([value: block])
     }
 
     func expectAndThen<T: RawCaseConvertible>(_ valueToAction: Dictionary<T.RawCase, (() -> Void)>) -> (T) -> Void {
@@ -46,21 +50,9 @@ extension XCTestCase {
             }
         }
     }
-    
-    func expectAndThen<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
-        let expectation = self.expectation(description: "Should have received '\(String(describing: value))'")
-        return { v in
-            guard v.matches(value) else { return }
-            expectation.fulfill()
-            block()
-        }
-    }
 
     func onResult<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
-        return { v in
-            guard v.matches(value) else { return }
-            block()
-        }
+        return onResults([value: block])
     }
 
     func onResults<T: RawCaseConvertible>(_ valueToAction: Dictionary<T.RawCase, (() -> Void)>) -> (T) -> Void {
@@ -74,29 +66,43 @@ extension XCTestCase {
 
 extension XCTestCase {
     func expectOk(response expected: [String: String]? = nil) -> Channel.Callback {
-        let expectation = self.expectation(description: "Should have received successful response")
+        return _expectReply(isSuccess: true, response: expected)
+    }
+    
+    func expectError(response expected: [String: String]? = nil) -> Channel.Callback {
+        return _expectReply(isSuccess: false, response: expected)
+    }
+    
+    func expectFailure(_ error: Channel.Error? = nil) -> Channel.Callback {
+        let expectation = self.expectation(description: "Should have received failure")
         return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
-            if case .success(let reply) = result {
-                guard reply.isOk else { return }
-                if let expected = expected {
-                    guard let response = reply.response as? [String: String] else { return }
-                    XCTAssertEqual(expected, response)
-                    expectation.fulfill()
-                } else {
-                    expectation.fulfill()
+            guard case .failure = result else { return }
+            if let error = error {
+                guard case .failure(let channelError as Channel.Error) = result else { return }
+                switch (error, channelError) {
+                case (.invalidJoinReply, .invalidJoinReply): expectation.fulfill()
+                case (.socketIsClosed, .socketIsClosed): expectation.fulfill()
+                case (.lostSocket, .lostSocket): expectation.fulfill()
+                case (.noLongerJoining, .noLongerJoining): expectation.fulfill()
+                case (.pushTimeout, .pushTimeout): expectation.fulfill()
+                case (.joinTimeout, .joinTimeout): expectation.fulfill()
+                default: break
                 }
+            } else {
+                expectation.fulfill()
             }
         }
     }
     
-    func expectError(response expected: [String: String]? = nil) -> Channel.Callback {
-        let expectation = self.expectation(description: "Should have received error response")
+    private func _expectReply(isSuccess: Bool, response: [String: String]? = nil) -> Channel.Callback {
+        let replyDescription = isSuccess ? "successful" : "error"
+        let expectation = self.expectation(description: "Should have received \(replyDescription) response")
         return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
             if case .success(let reply) = result {
-                guard reply.isNotOk else { return }
-                if let expected = expected {
-                    guard let response = reply.response as? [String: String] else { return }
-                    XCTAssertEqual(expected, response)
+                guard reply.isOk == isSuccess else { return }
+                if let expected = response {
+                    guard let actual = reply.response as? [String: String] else { return }
+                    XCTAssertEqual(expected, actual)
                     expectation.fulfill()
                 } else {
                     expectation.fulfill()
@@ -108,7 +114,7 @@ extension XCTestCase {
 
 extension XCTestCase {
     func waitForTimeout(_ secondsFromNow: TimeInterval) {
-        RunLoop.current.run(until: Date(timeIntervalSinceNow: secondsFromNow))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: secondsFromNow))
     }
 }
 

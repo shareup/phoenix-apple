@@ -1,4 +1,5 @@
 import Foundation
+import Synchronized
 
 func oneTenthOfOneThousand(of amount: Int) -> Int {
     return Int((Double(amount * 1000) * 0.1).rounded())
@@ -7,8 +8,12 @@ func oneTenthOfOneThousand(of amount: Int) -> Int {
 class Timer {
     private let source: DispatchSourceTimer
     private let block: () -> ()
+    private let lock = RecursiveLock()
     
-    public let isRepeating: Bool
+    let isRepeating: Bool
+
+    var nextDeadline: DispatchTime { lock.locked { return _nextDeadline } }
+    private var _nextDeadline: DispatchTime
     
     init(_ interval: DispatchTimeInterval, repeat shouldRepeat: Bool = false, block: @escaping () -> ()) {
         self.source = DispatchSource.makeTimerSource()
@@ -16,10 +21,17 @@ class Timer {
         self.isRepeating = shouldRepeat
         
         let deadline = DispatchTime.now().advanced(by: interval)
+        _nextDeadline = deadline
         let repeating: DispatchTimeInterval = shouldRepeat ? interval : .never
         source.schedule(deadline: deadline, repeating: repeating, leeway: Self.defaultTolerance(interval))
         
-        source.setEventHandler { [weak self] in self?.fire() }
+        source.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            self.fire()
+            
+            guard shouldRepeat else { return }
+            self.lock.locked { self._nextDeadline = DispatchTime.now().advanced(by: interval) }
+        }
         source.activate()
     }
     
@@ -27,6 +39,7 @@ class Timer {
         self.source = DispatchSource.makeTimerSource()
         self.block = block
         self.isRepeating = false
+        _nextDeadline = deadline
         
         let interval = DispatchTime.now().distance(to: deadline)
         
@@ -61,5 +74,12 @@ class Timer {
     
     deinit {
         source.cancel()
+    }
+}
+
+extension DispatchTime {
+    static func < (lhs: DispatchTime, rhs: Optional<DispatchTime>) -> Bool {
+        guard let rhs = rhs else { return true }
+        return lhs < rhs
     }
 }

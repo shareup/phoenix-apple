@@ -18,8 +18,12 @@ public final class Channel: Publisher {
     private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
     
     private var subject = PassthroughSubject<Output, Failure>()
-    private var pending: [Push] = []
-    private var inFlight: [Ref: PushedMessage] = [:]
+    
+    var pending: [Push] { sync { return _pending } }
+    private var _pending: [Push] = []
+    
+    var inFlight: [Ref: PushedMessage] { sync { return _inFlight }}
+    private var _inFlight: [Ref: PushedMessage] = [:]
     
     private var shouldRejoin = true
     private var state: State = .closed
@@ -44,7 +48,7 @@ public final class Channel: Publisher {
     
     private let notifySubjectQueue = DispatchQueue(label: "Channel.notifySubjectQueue")
     
-    private var pushedMessagesTimer: Timer?
+    private var inFlightMessagesTimer: Timer?
     
     private(set) var joinTimer: JoinTimer = .off
 
@@ -254,19 +258,24 @@ extension Channel {
         push(eventString, payload: payload, callback: nil)
     }
 
-    public func push(_ eventString: String, payload: Payload, callback: Channel.Callback?) {
+    public func push(
+        _ eventString: String,
+        payload: Payload,
+        timeout: DispatchTimeInterval? = nil,
+        callback: Channel.Callback?)
+    {
         sync {
             let push = Channel.Push(
                 channel: self,
                 event: PhxEvent(eventString),
                 payload: payload,
+                timeout: timeout ?? self.timeout,
                 callback: callback
             )
             
-            pending.append(push)
+            _pending.append(push)
         }
         
-        self.timeoutPushedMessagesAsync()
         self.flushAsync()
     }
 }
@@ -301,27 +310,28 @@ extension Channel {
 
 extension Channel {
     private func flush() {
-        guard let socket = self.socket else { return assertionFailure("No socket") }
-
         sync {
             guard case .joined(let joinRef) = state else { return }
+            guard let socket = self.socket else { return assertionFailure("No socket") }
             
-            guard let push = pending.first else { return }
-            self.pending = Array(self.pending.dropFirst())
+            guard let push = _pending.first else { return }
+            self._pending = Array(self._pending.dropFirst())
             
             let ref = socket.advanceRef()
             let message = OutgoingMessage(push, ref: ref, joinRef: joinRef)
             
             let pushed = PushedMessage(push: push, message: message)
-            inFlight[ref] = pushed
+            _inFlight[ref] = pushed
+            
+            createInFlightMessagesTimer()
             
             send(message) { error in
                 if let error = error {
                     Swift.print("Couldn't write to socket from Channel \(self) – \(error) - \(message)")
                     self.sync {
                         // put it back to try again later
-                        self.inFlight[ref] = nil
-                        self.pending.append(push)
+                        self._inFlight[ref] = nil
+                        self._pending.append(push)
                     }
                 } else {
                     self.flushAsync()
@@ -374,45 +384,43 @@ extension Channel {
         }
     }
     
-    private func timeoutPushedMessages() {
+    private func timeoutInFlightMessages() {
         sync {
             // invalidate a previous timer if it's there
-            self.pushedMessagesTimer = nil
+            self.inFlightMessagesTimer = nil
             
-            guard !inFlight.isEmpty else { return }
+            guard !_inFlight.isEmpty else { return }
             
             let now = DispatchTime.now()
         
-            let messages = inFlight.values.sortedByTimeoutDate().filter {
+            let messages = _inFlight.values.sortedByTimeoutDate().filter {
                 $0.timeoutDate < now
             }
             
             for message in messages {
-                inFlight[message.ref] = nil
+                _inFlight[message.ref] = nil
                 message.callback(error: Error.pushTimeout)
             }
             
-            createPushedMessagesTimer()
+            createInFlightMessagesTimer()
         }
     }
     
-    private func timeoutPushedMessagesAsync() {
-        backgroundQueue.async { self.timeoutPushedMessages() }
+    private func timeoutInFlightMessagesAsync() {
+        backgroundQueue.async { self.timeoutInFlightMessages() }
     }
     
-    private func createPushedMessagesTimer() {
+    private func createInFlightMessagesTimer() {
         sync {
-            guard !inFlight.isEmpty,
-                pushedMessagesTimer == nil else {
-                    return
-            }
+            guard _inFlight.isNotEmpty else { return }
 
-            let possibleNext = inFlight.values.sortedByTimeoutDate().first
+            let possibleNext = _inFlight.values.sortedByTimeoutDate().first
             
             guard let next = possibleNext else { return }
+            guard next.timeoutDate < inFlightMessagesTimer?.nextDeadline else { return }
             
-            self.pushedMessagesTimer =  Timer(fireAt: next.timeoutDate) { [weak self] in
-                self?.timeoutPushedMessagesAsync()
+            self.inFlightMessagesTimer =  Timer(fireAt: next.timeoutDate) { [weak self] in
+                self?.timeoutInFlightMessagesAsync()
             }
         }
     }
@@ -567,13 +575,11 @@ extension Channel {
                 flushAsync()
                 
             case .joined(let joinRef):
-                guard let pushed = inFlight[reply.ref],
+                guard let pushed = _inFlight.removeValue(forKey: reply.ref),
                       reply.joinRef == joinRef else {
                     return
                 }
                 
-                createPushedMessagesTimer()
-
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.message(reply.message)) }
                 backgroundQueue.async { pushed.callback(reply: reply) }
