@@ -1043,6 +1043,80 @@ class ChannelTests: XCTestCase {
         wait(for: [timeoutEx], timeout: 0.15)
     }
 
+    // MARK: leave
+
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1009
+    func testLeaveUnsubscribesFromServerEvents() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+
+        let joinEx = self.expectation(description: "Should have joined")
+        let leaveEx = self.expectation(description: "Should have received leave")
+        let afterLeaveEx = self.expectation(description: "Should not have received messages after leaving")
+        afterLeaveEx.isInverted = true
+        let channelSub = channel.sink { (event: Channel.Event) in
+            switch event {
+            case .join:
+                joinEx.fulfill()
+                channel.leave()
+                channel.push("echo", callback: { _ in afterLeaveEx.fulfill() })
+            case .leave:
+                leaveEx.fulfill()
+            default:
+                afterLeaveEx.fulfill()
+            }
+        }
+        defer { channelSub.cancel() }
+
+        socket.connect()
+
+        wait(for: [joinEx, leaveEx], timeout: 2, enforceOrder: true)
+        wait(for: [afterLeaveEx], timeout: 0.1)
+    }
+
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1024
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1034
+    func testClosesChannelAfterReceivingOkResponseFromServer() throws {
+        let channel1 = makeChannel(topic: "room:lobby")
+        let channel2 = makeChannel(topic: "room:lobby2")
+
+        let socketSub = socket.sink(receiveValue: expectAndThen([.open: { channel1.join(); channel2.join() }]))
+        defer { socketSub.cancel() }
+
+        let channel1Sub = channel1.sink(receiveValue:
+            expectAndThen([
+                .join: { },
+                .leave: { XCTAssertTrue(channel1.isClosed) }
+            ])
+        )
+        defer { channel1Sub.cancel() }
+
+        let channel2Sub = channel2.sink(receiveValue:
+            expectAndThen([
+                .join: { XCTAssertEqual(2, self.socket.joinedChannels.count); channel1.leave() }
+            ])
+        )
+        defer { channel2Sub.cancel() }
+
+        socket.connect()
+
+        // The channel gets the leave response before the socket receives a close message from
+        // the socket. However, the socket only removes the channel after receiving the close message.
+        // So, we need to wait a while longer here to make sure the socket has received the close
+        // message before testing to see if the channel has been removed from `joinedChannels`.
+        expectationWithTest(
+            description: "Channel should have been removed",
+            test: self.socket.joinedChannels.count == 1
+        )
+
+        waitForExpectations(timeout: 2)
+
+        XCTAssertEqual(1, socket.joinedChannels.count)
+        XCTAssertEqual("room:lobby2", socket.joinedChannels[0].topic)
+    }
+
     // MARK: Error
 
     func testReceivingReplyErrorDoesNotSetChannelStateToErrored() throws {

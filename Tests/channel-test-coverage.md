@@ -201,13 +201,13 @@
 - [x] removes channel from socket
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L725
 	- `testChannelIsRemovedFromSocketsListOfChannelsAfterClose()`
-	
+
 ## onMessage
 
 - [x] returns payload by default
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L742
 	- `testIncomingMessageIncludesPayload()`
-	
+
 ## canPush
 
 - [x] returns true when socket connected and channel joined
@@ -235,7 +235,7 @@
 - [x] calls all callbacks for event if they modified during event processing
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L826
 	- _not applicable because we don't allow modifying events_
-	
+
 ## off
 
 - [x] removes all callbacks for event
@@ -245,7 +245,7 @@
 - [x] removes callback by its ref
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L867
 	- _not applicable because callbacks can't be removed after being added_
-	
+
 ## push
 
 - [x] sends push event when successfully joined
@@ -277,28 +277,30 @@
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L985
 	- _not applicable because we buffer events until the channel is joined_
 
-- [ ]
-	-
+## leave
+
+- [x] unsubscribes from server events
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1009
+	- `testLeaveUnsubscribesFromServerEvents()`
+
+- [x] closes channel on 'ok' from server
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1024
+	- `testClosesChannelAfterReceivingOkResponseFromServer()`
+
+- [x] sets state to closed on 'ok' event
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1034
+	- `testClosesChannelAfterReceivingOkResponseFromServer()`
+
+- [ ] sets state to leaving initially
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1046
 	- ``
 
-- [ ]
-	-
+- [ ] closes channel on 'timeout'
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1054
 	- ``
 
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
+- [ ] accepts timeout arg
+	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1062
 	- ``
 
 - [ ]

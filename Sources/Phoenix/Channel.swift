@@ -152,6 +152,12 @@ public final class Channel: Publisher {
             return "leaving"
         }
     }
+
+    deinit {
+        inFlightMessagesTimer = nil
+        joinTimer = .off
+        socketSubscriber?.cancel()
+    }
 }
 
 // MARK: join
@@ -585,11 +591,8 @@ extension Channel {
                 backgroundQueue.async { pushed.callback(reply: reply) }
                 
             case .leaving(let joinRef, let leavingRef):
-                guard reply.ref == leavingRef,
-                      reply.joinRef == joinRef else {
-                    break
-                }
-                
+                guard reply.ref == leavingRef, reply.joinRef == joinRef else { break }
+
                 self.state = .closed
                 self.sendLeaveAndCompletionToSubjectAsync()
 

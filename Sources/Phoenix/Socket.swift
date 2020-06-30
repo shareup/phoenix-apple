@@ -120,6 +120,7 @@ public final class Socket {
         sync {
             shouldReconnect = false
             cancelHeartbeatTimer()
+            webSocketSubscriber?.cancel()
             state.webSocket?.close()
             state = .closed
         }
@@ -235,21 +236,19 @@ extension Socket {
         }
     }
 
-    public func leave(_ channel: Channel) {
-        leave(channel.topic)
+    public func leave(_ topic: Topic) {
+        leave(channel(topic))
     }
 
-    public func leave(_ topic: Topic) {
-        removeChannel(for: topic)?.leave()
+    public func leave(_ channel: Channel) {
+        channel.leave()
     }
 
     @discardableResult
     private func removeChannel(for topic: Topic) -> Channel? {
-        return sync {
-            guard let weakChannel = self.channels[topic], let channel = weakChannel.channel else { return nil }
-            self.channels.removeValue(forKey: topic)
-            return channel
-        }
+        let weakChannel = sync { channels.removeValue(forKey: topic) }
+        guard let channel = weakChannel?.channel else { return nil }
+        return channel
     }
 }
 
@@ -507,8 +506,8 @@ extension Socket {
                         case .heartbeat where pendingHeartbeatRef != nil && message.ref == pendingHeartbeatRef:
                             self.pendingHeartbeatRef = nil
                         case .close:
-                            notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
                             removeChannel(for: message.topic)
+                            notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
                         default:
                             notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
                         }

@@ -45,8 +45,8 @@ extension XCTestCase {
         return { v in
             let rawCase = v.toRawCase()
             if let block = valueToAction[rawCase], let expectation = valueToExpectation[rawCase] {
-                expectation.fulfill()
                 block()
+                expectation.fulfill()
             }
         }
     }

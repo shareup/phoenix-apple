@@ -297,7 +297,6 @@ class SocketTests: XCTestCase {
         XCTAssertEqual(channel2.connectionState, "joining")
     }
 
-    // TODO: Fix deadlock in `testChannelsAreRemoved()`
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L385
     func testChannelsAreRemoved() throws {
         let socket = makeSocket()
@@ -310,9 +309,7 @@ class SocketTests: XCTestCase {
         defer { [sub1, sub2].forEach { $0.cancel() } }
 
         let socketSub = socket.autoconnect().sink(receiveValue:
-            expectAndThen([
-                .open: { socket.join(channel1); socket.join(channel2) }
-            ])
+            expectAndThen([.open: { socket.join(channel1); socket.join(channel2) }])
         )
         defer { socketSub.cancel() }
         
@@ -324,6 +321,15 @@ class SocketTests: XCTestCase {
 
         let sub3 = channel1.sink(receiveValue: expect(.leave))
         defer { sub3.cancel() }
+
+        // The channel gets the leave response before the socket receives a close message from
+        // the socket. However, the socket only removes the channel after receiving the close message.
+        // So, we need to wait a while longer here to make sure the socket has received the close
+        // message before testing to see if the channel has been removed from `joinedChannels`.
+        expectationWithTest(
+            description: "Channel should have been removed",
+            test: socket.joinedChannels.count == 1
+        )
 
         waitForExpectations(timeout: 2)
 
