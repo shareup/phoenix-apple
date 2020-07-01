@@ -161,7 +161,6 @@ class SocketTests: XCTestCase {
     func testSocketIsClosing() throws {
         let socket = makeSocket()
 
-        self.expectationWithTest(description: "Socket enters closing state", test: socket.isClosing)
         let sub = socket.autoconnect().sink(receiveValue:
             expectAndThen([
                 .open: { socket.disconnect() },
