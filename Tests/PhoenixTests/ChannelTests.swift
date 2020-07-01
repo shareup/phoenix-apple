@@ -498,7 +498,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:error", payload: ["error": "boom"])
 
         var pushed = 0
-        let callback: Channel.Callback = { _ in pushed += 1; Swift.print("Callback triggered") }
+        let callback: Channel.Callback = { _ in pushed += 1; }
         channel.push("echo", payload:["echo": "one"], callback: callback)
         channel.push("echo", payload:["echo": "two"], callback: callback)
         channel.push("echo", payload:["echo": "three"], callback: callback)

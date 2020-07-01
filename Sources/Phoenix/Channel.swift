@@ -176,8 +176,6 @@ extension Channel {
         sync {
             guard shouldRejoin else { return }
             
-            Swift.print("$$ rejoin!")
-            
             switch state {
             case .joining, .joined:
                 return
@@ -240,7 +238,6 @@ extension Channel {
                     }
                 }
             case .leaving, .errored, .closed:
-                Swift.print("Can only leave if we are joining or joined, currently \(state)")
                 return
             }
         }
@@ -380,8 +377,6 @@ extension Channel {
 
             let timer = Timer(timeout) { [weak self] in self?.timeoutJoinPush() }
 
-            Swift.print("$$ creating join timer", timeout, attempt)
-
             self.joinTimer = .join(timer: timer, attempt: attempt)
         }
     }
@@ -397,8 +392,6 @@ extension Channel {
             let interval = rejoinTimeout(attempt)
             
             let timer = Timer(interval) { [weak self] in self?.rejoin() }
-            
-            Swift.print("$$ creating rejoin timer", interval, attempt)
             
             self.joinTimer = .rejoin(timer: timer, attempt: attempt)
         }
@@ -485,8 +478,6 @@ extension Channel {
 
         let completion: (Subscribers.Completion<SocketFailure>) -> Void = { _ in fatalError("`Never` means never") }
         let receiveValue = { [weak self] (input: SocketOutput) -> Void in
-            Swift.print("channel input", input)
-
             switch input {
             case .channelMessage(let message):
                 self?.handle(message)
@@ -568,8 +559,7 @@ extension Channel {
             }
 
         default:
-            Swift.print("Need to handle \(input.event) types of events soon")
-            Swift.print("> \(input)")
+            break
         }
     }
 
@@ -614,8 +604,6 @@ extension Channel {
                 break
 
             default:
-                // sorry, not processing replies in other states
-                Swift.print("Received reply that we are not expecting in this state (\(state)): \(reply)")
                 break
             }
         }

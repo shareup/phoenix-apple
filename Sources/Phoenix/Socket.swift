@@ -317,8 +317,6 @@ extension Socket {
     }
     
     func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
-        Swift.print("socket sending", message)
-        
         do {
             let data = try message.encoded()
             send(data, completionHandler: completionHandler)
@@ -332,8 +330,6 @@ extension Socket {
     }
     
     func send(_ string: String, completionHandler: @escaping Callback) {
-        Swift.print("socket sending string", string)
-        
         sync {
             switch state {
             case .open(let ws):
@@ -358,8 +354,6 @@ extension Socket {
     }
     
     func send(_ data: Data, completionHandler: @escaping Callback) {
-        Swift.print("socket sending data", String(describing: data))
-        
         sync {
             switch state {
             case .open(let ws):
@@ -404,11 +398,9 @@ extension Socket {
 
         guard let message = msg else { return }
             
-        Swift.print("writing heartbeat")
-
         send(message) { error in
             if let error = error {
-                Swift.print("error writing heartbeat push", error)
+                Swift.print("Error writing heartbeat push", error)
                 self.heartbeatTimeout()
             } else if let onSuccess = onSuccess {
                 onSuccess()
@@ -417,8 +409,6 @@ extension Socket {
     }
     
     func heartbeatTimeout() {
-        Swift.print("heartbeat timeout")
-
         sync {
             self.pendingHeartbeatRef = nil
             
@@ -462,11 +452,8 @@ extension Socket {
     }
 
     private func receive(value: WebSocketOutput) {
-        Swift.print("socket input", value)
-        
         switch value {
         case .failure(let error):
-            Swift.print("WebSocket error, but we are not closed: \(error)")
             let subject = self.subject
             notifySubjectQueue.async { subject.send(.websocketError(error)) }
         case .success(let message):
