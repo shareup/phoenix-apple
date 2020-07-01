@@ -146,19 +146,18 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(2, counter)
     }
     
-    // TODO: Fix testJoinRetriesWithBackoffIfTimeout
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L206
-    func _testJoinRetriesWithBackoffIfTimeout() throws {
+    func testJoinRetriesWithBackoffIfTimeout() throws {
         var counter = 0
 
         let channel = Channel(
             topic: "room:timeout",
             joinPayloadBlock: {
                 counter += 1
-                if (counter >= 4) {
+                if (counter >= 2) {
                     return ["join": true]
                 } else {
-                    return ["timeout": 120, "join": true]
+                    return ["timeout": 80, "join": true]
                 }
             },
             socket: socket
@@ -166,30 +165,29 @@ class ChannelTests: XCTestCase {
         channel.rejoinTimeout = { attempt in
             switch attempt {
             case 0: XCTFail("Rejoin timeouts start at 1"); return .seconds(1)
-            case 1, 2, 3, 4: return .milliseconds(10 * attempt)
+            case 1, 2: return .milliseconds(10 * attempt)
             default: return .seconds(2)
             }
         }
 
         let socketSub = socket.sink(receiveValue:
-            expectAndThen([.open: { channel.join(timeout: .milliseconds(100)) }])
+            expectAndThen([.open: { channel.join(timeout: .milliseconds(50)) }])
         )
         defer { socketSub.cancel() }
 
         let channelSub = channel.sink(receiveValue:
             expectAndThen([
-                .join: { XCTAssertEqual(4, counter)  }
+                .join: { XCTAssertEqual(3, counter)  }
                 // 1st is the first backoff amount of 10 milliseconds
                 // 2nd is the second backoff amount of 20 milliseconds
-                // 3rd is the third backoff amount of 30 milliseconds
-                // 4th is the successful join, where we don't ask the server to sleep
+                // 3rd is the successful join, where we don't ask the server to sleep
             ])
         )
         defer { channelSub.cancel() }
 
         socket.connect()
 
-        waitForExpectations(timeout: 4)
+        waitForExpectations(timeout: 2)
     }
     
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L233
@@ -1232,9 +1230,9 @@ class ChannelTests: XCTestCase {
     }
     
     func testRejoinsAfterDisconnect() throws {
-        socket.reconnectTimeInterval = { _ in .milliseconds(10) }
+        socket.reconnectTimeInterval = { _ in .milliseconds(5) }
         let channel = makeChannel(topic: "room:lobby")
-        channel.rejoinTimeout = { _ in .milliseconds(20) }
+        channel.rejoinTimeout = { _ in .milliseconds(30) }
         channel.join()
         
         let openEx = self.expectation(description: "Should have opened twice (once after disconnect)")
