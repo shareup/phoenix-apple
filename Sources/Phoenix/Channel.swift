@@ -197,7 +197,6 @@ extension Channel {
 
                 send(message) { error in
                     if let error = error {
-                        Swift.print("There was a problem writing to the socket: \(error)")
                         self.createRejoinTimer()
                     }
                 }
