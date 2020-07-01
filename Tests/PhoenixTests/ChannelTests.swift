@@ -1193,231 +1193,42 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(channel.connectionState, "joined")
     }
     
-    // MARK: old tests before https://github.com/shareup/phoenix-apple/pull/4
-    
-    func testJoinAndLeaveEvents() throws {
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        
-        let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let sub = socket.sink {
-            if case .open = $0 { openMesssageEx.fulfill() }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-        
-        sub.cancel()
-        
-        let channelJoinedEx = expectation(description: "Channel joined")
-        let channelLeftEx = expectation(description: "Channel left")
-        
-        let channel = socket.join("room:lobby")
-        
-        let sub2 = channel.sink { result in
-            switch result {
-            case .join:
-                channelJoinedEx.fulfill()
-            case .leave:
-                channelLeftEx.fulfill()
-            default: break
-            }
-        }
-        defer { sub2.cancel() }
-        
-        wait(for: [channelJoinedEx], timeout: 0.25)
-        
-        channel.leave()
-        
-        waitForExpectations(timeout: 1)
-    }
-    
-    func testPushCallback() throws {
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        
-        let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let sub = socket.sink {
-            if case .open = $0 { openMesssageEx.fulfill() }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-        
-        let channelJoinedEx = expectation(description: "Channel joined")
-        
-        let channel = socket.join("room:lobby")
-        
-        let sub2 = channel.sink { result in
-            if case .join = result { channelJoinedEx.fulfill() }
-        }
-        defer { sub2.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [channelJoinedEx], timeout: 0.25)
-        
-        let repliedOKEx = expectation(description: "Received OK reply")
-        let repliedErrorEx = expectation(description: "Received error reply")
-        
-        channel.push("echo", payload: ["echo": "hello"]) { result in
-            guard case .success(let reply) = result else {
-                XCTFail()
-                return
-            }
-
-            XCTAssert(reply.isOk, "Reply should have been OK")
-            
-            let echo = reply.response["echo"] as? String
-            
-            XCTAssertEqual(echo, "hello")
-            
-            repliedOKEx.fulfill()
-        }
-        
-        channel.push("echo_error", payload: ["error": "whatever"]) { result in
-            guard case .success(let reply) = result else {
-                XCTFail()
-                return
-            }
-
-            XCTAssert(reply.isNotOk, "Reply should have been not OK")
-            
-            let error = reply.response["error"] as? String
-            
-            XCTAssertEqual(error, "whatever")
-            
-            repliedErrorEx.fulfill()
-        }
-        
-        wait(for: [repliedOKEx, repliedErrorEx], timeout: 0.25)
-    }
-    
-    func testReceiveMessages() throws {
-        let openMesssageEx = expectation(description: "Should have received an open message")
-        
-        let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let sub = socket.sink {
-            if case .open = $0 { openMesssageEx.fulfill() }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        wait(for: [openMesssageEx], timeout: 0.5)
-        
-        let channelJoinedEx = expectation(description: "Channel joined")
-        let messageRepeatedEx = expectation(description: "Message repeated correctly")
-        let echoText = "This should be repeated"
-        
-        let channel = socket.join("room:lobby")
-        var messageCounter = 0
-        
-        let sub2 = channel.sink { result in
-            if case .join = result {
-                return channelJoinedEx.fulfill()
-            }
-            
-            if case .message(let message) = result {
-                messageCounter += 1
-                
-                XCTAssertEqual(message.event, "repeated")
-                
-                let echo = message.payload["echo"] as? String
-                XCTAssertEqual(echo, echoText)
-                
-                if messageCounter >= 5 {
-                    messageRepeatedEx.fulfill()
-                }
-                
-                return
-            }
-        }
-        defer { sub2.cancel() }
-        
-        wait(for: [channelJoinedEx], timeout: 0.25)
-        
-        let payload: [String: Any] = ["echo": echoText, "amount": 5]
-        
-        channel.push("repeat", payload: payload)
-        
-        wait(for: [messageRepeatedEx], timeout: 0.25)
-    }
-    
     func testMultipleSocketsCollaborating() throws {
-        let openMesssageEx1 = expectation(description: "Should have received an open message for socket 1")
-        let openMesssageEx2 = expectation(description: "Should have received an open message for socket 2")
-        
         let socket1 = Socket(url: testHelper.defaultURL)
         let socket2 = Socket(url: testHelper.defaultURL)
-        defer {
-            socket1.disconnect()
-            socket2.disconnect()
-        }
+        defer { socket1.disconnect(); socket2.disconnect() }
         
-        let sub1 = socket1.sink { if case .open = $0 { openMesssageEx1.fulfill() } }
-        let sub2 = socket2.sink { if case .open = $0 { openMesssageEx2.fulfill() } }
-        defer {
-            sub1.cancel()
-            sub2.cancel()
-        }
-        
-        socket1.connect()
-        socket2.connect()
-        
-        wait(for: [openMesssageEx1, openMesssageEx2], timeout: 0.5)
-        
+        let socketSub1 = socket1.autoconnect().sink(receiveValue: expect(.open))
+        let socketSub2 = socket2.autoconnect().sink(receiveValue: expect(.open))
+        defer { socketSub1.cancel(); socketSub2.cancel() }
+
+        waitForExpectations(timeout: 2)
+
         let channel1 = socket1.join("room:lobby")
         let channel2 = socket2.join("room:lobby")
         
-        let messageText = "This should get broadcasted 😎"
-        
-        let channel1JoinedEx = expectation(description: "Channel 1 joined")
-        let channel2JoinedEx = expectation(description: "Channel 2 joined")
-        let channel1ReceivedMessageEx = expectation(description: "Channel 1 received the message")
-        let channel2ReceivedMessageEx = expectation(description: "Channel 2 received the message which was not right")
-        channel2ReceivedMessageEx.isInverted = true
-        
-        let sub3 = channel1.sink { result in
-            switch result {
-            case .join:
-                channel1JoinedEx.fulfill()
-            case .message(let message):
-                let text = message.payload["text"] as? String
-                
-                if message.event == "message" && text == messageText {
-                    return channel1ReceivedMessageEx.fulfill()
-                }
+        let joinEx = self.expectation(description: "Should have joined")
+        joinEx.expectedFulfillmentCount = 2
+        let messageEx = self.expectation(description: "Channel 1 should have received a message")
+        let noMessageEx = self.expectation(description: "Channel 2 should not have received a message")
+        noMessageEx.isInverted = true
+
+        let channelSub1 = channel1.sink(receiveValue:
+            onResults([.join: { joinEx.fulfill() }, .message: { messageEx.fulfill() }])
+        )
+        let channelSub2 = channel2.sink { (output: Channel.Output) in
+            switch output {
+            case .join: joinEx.fulfill()
+            case .message: noMessageEx.fulfill()
             default: break
             }
         }
-        defer { sub3.cancel() }
-        
-        let sub4 = channel2.sink { result in
-            switch result {
-            case .join:
-                channel2JoinedEx.fulfill()
-            case .message:
-                channel2ReceivedMessageEx.fulfill()
-            default: break
-            }
-        }
-        defer { sub4.cancel() }
-        
-        wait(for: [channel1JoinedEx, channel2JoinedEx], timeout: 0.25)
-        
-        channel2.push("insert_message", payload: ["text": messageText])
-        
-        //wait(for: [channel1ReceivedMessageEx], timeout: 0.25)
-        waitForExpectations(timeout: 1)
+        defer { channelSub1.cancel(); channelSub2.cancel() }
+
+        channel2.push("insert_message", payload: ["text": "This should get broadcasted 😎"])
+
+        wait(for: [joinEx, messageEx], timeout: 2)
+        wait(for: [noMessageEx], timeout: 0.1)
     }
     
     func testRejoinsAfterDisconnect() throws {
@@ -1447,53 +1258,6 @@ class ChannelTests: XCTestCase {
         socket.connect()
         
         waitForExpectations(timeout: 2)
-    }
-    
-    // MARK: skipped
-    func skip_testDoesntRejoinAfterDisconnectIfLeftOnPurpose() throws {
-        let socket = Socket(url: testHelper.defaultURL)
-        defer { socket.disconnect() }
-        
-        let openMesssageEx = expectation(description: "Should have received an open message twice (once after disconnect)")
-        openMesssageEx.expectedFulfillmentCount = 2
-        
-        let sub = socket.sink {
-            if case .open = $0 { openMesssageEx.fulfill(); return }
-        }
-        defer { sub.cancel() }
-        
-        socket.connect()
-        
-        let channelJoinedEx = expectation(description: "Channel should have joined once")
-        
-        let channel = socket.join("room:lobby")
-        
-        let sub2 = channel.sink {
-            if case .join = $0 { channelJoinedEx.fulfill(); return }
-        }
-        
-        wait(for: [channelJoinedEx], timeout: 0.25)
-        
-        sub2.cancel()
-        
-        let channelLeftEx = expectation(description: "Channel should have left once")
-        let channelRejoinEx = expectation(description: "Channel should not have rejoined")
-        channelRejoinEx.isInverted = true
-        
-        let sub3 = channel.sink { result in
-            switch result {
-            case .join: channelRejoinEx.fulfill()
-            case .leave: channelLeftEx.fulfill()
-            default: break
-            }
-        }
-        defer { sub3.cancel() }
-        
-        channel.leave()
-        
-        socket.send("disconnect")
-        
-        waitForExpectations(timeout: 1)
     }
 }
 
