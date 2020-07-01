@@ -161,8 +161,10 @@ class ChannelTests: XCTestCase {
                     let time = startTime.timeIntervalSinceNow * -1000 // Convert to positive milliseconds
                     XCTAssertGreaterThan(time, 190 as Double)
                     DispatchQueue.main.async { channel?.leave() }
+                    return ["timeout": 500, "join": true]
+                } else {
+                    return ["timeout": 100, "join": true]
                 }
-                return ["timeout": 100, "join": true]
             },
             socket: socket
         )
