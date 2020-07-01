@@ -7,17 +7,18 @@ extension Channel {
         let channel: Channel
         let event: PhxEvent
         let payload: Payload
-        let timeout: Double = 5.0 // in seconds
+        let timeout: DispatchTimeInterval
         let callback: Callback?
         
-        init(channel: Channel, event: PhxEvent, callback: Callback? = nil) {
-            self.init(channel: channel, event: event, payload: [String: String](), callback: callback)
+        init(channel: Channel, event: PhxEvent, timeout: DispatchTimeInterval, callback: Callback? = nil) {
+            self.init(channel: channel, event: event, payload: [String: String](), timeout: timeout, callback: callback)
         }
         
-        init(channel: Channel, event: PhxEvent, payload: Payload, callback: Callback? = nil) {
+        init(channel: Channel, event: PhxEvent, payload: Payload, timeout: DispatchTimeInterval, callback: Callback? = nil) {
             self.channel = channel
             self.event = event
             self.payload = payload
+            self.timeout = timeout
             self.callback = callback
         }
 

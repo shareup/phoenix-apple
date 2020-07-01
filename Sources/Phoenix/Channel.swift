@@ -1,89 +1,109 @@
-import Foundation
 import Combine
+import Foundation
 import Synchronized
-import SimplePublisher
-import Atomic
 
-public final class Channel: Synchronized {
-    public enum Error: Swift.Error {
-        case invalidJoinReply(Channel.Reply)
-        case isClosed
-        case lostSocket
-        case noLongerJoining
-    }
-    
-    enum State {
-        case closed
-        case joining(Ref)
-        case joined(Ref)
-        case leaving(Ref)
-        case errored(Swift.Error)
-    }
-    
-    struct PushedMessage {
-        let push: Push
-        let message: OutgoingMessage
-        
-        var joinRef: Ref? { message.joinRef }
-        
-        func callback(reply: Channel.Reply) {
-            push.asyncCallback(result: .success(reply))
-        }
-        
-        func callback(error: Swift.Error) {
-            push.asyncCallback(result: .failure(error))
-        }
-    }
-    
-    public typealias Output = Result<Channel.Event, Swift.Error>
-    public typealias Failure = Swift.Error
+private let backgroundQueue = DispatchQueue(label: "Channel.backgroundQueue")
 
-    private lazy var internalSubscriber: DelegatingSubscriber<Channel> = {
-        DelegatingSubscriber(delegate: self)
-    }()
-    private var subject = SimpleSubject<Output, Failure>()
-    private var refGenerator = Ref.Generator.global
-    private var pending: [Push] = []
-    private var inFlight: [Ref: PushedMessage] = [:]
+public final class Channel: Publisher {
+    public typealias Output = Channel.Event
+    public typealias Failure = Never
+
+    typealias SocketOutput = ChannelSpecificSocketMessage
+    typealias SocketFailure = Never
+
+    typealias JoinPayloadBlock = () -> Payload
+    typealias RejoinTimeout = (Int) -> DispatchTimeInterval
+
+    private let lock: RecursiveLock = RecursiveLock()
+    private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
     
-    private var waitToFlush: Int = 0
+    private var subject = PassthroughSubject<Output, Failure>()
+    
+    var pending: [Push] { sync { return _pending } }
+    private var _pending: [Push] = []
+    
+    var inFlight: [Ref: PushedMessage] { sync { return _inFlight }}
+    private var _inFlight: [Ref: PushedMessage] = [:]
     
     private var shouldRejoin = true
     private var state: State = .closed
     
-    weak var socket: Socket?
+    private weak var socket: Socket?
+
+    private var socketSubscriber: AnyCancellable?
     
-    public let topic: String
+    private var customTimeout: DispatchTimeInterval? = nil
     
-    init(topic: String, socket: Socket) {
+    public var timeout: DispatchTimeInterval {
+        if let customTimeout = customTimeout {
+            return customTimeout
+        } else if let socket = socket {
+            return socket.timeout
+        } else {
+            return Socket.defaultTimeout
+        }
+    }
+    
+    var canPush: Bool { return self.isJoined }
+    
+    private let notifySubjectQueue = DispatchQueue(label: "Channel.notifySubjectQueue")
+    
+    private var inFlightMessagesTimer: Timer?
+    
+    private(set) var joinTimer: JoinTimer = .off
+    private var leaveTimer: Timer? = nil
+
+    var rejoinTimeout: RejoinTimeout = { attempt in
+        // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
+        switch attempt {
+        case 0: assertionFailure("Rejoins are 1-indexed"); return .seconds(1)
+        case 1: return .seconds(1)
+        case 2: return .seconds(2)
+        case 3: return .seconds(5)
+        default: return .seconds(10)
+        }
+    }
+    
+    public let topic: Topic
+    
+    let joinPayloadBlock: JoinPayloadBlock
+    var joinPayload: Payload { joinPayloadBlock() }
+    
+    // NOTE: init shouldn't be public because we want Socket to always have a record of the channels that have been created in it's dictionary
+    convenience init(topic: Topic, socket: Socket) {
+        self.init(topic: topic, joinPayloadBlock: { [:] }, socket: socket)
+    }
+    
+    convenience init(topic: Topic, joinPayload: Payload, socket: Socket) {
+        self.init(topic: topic, joinPayloadBlock: { joinPayload }, socket: socket)
+    }
+    
+    init(topic: Topic, joinPayloadBlock: @escaping JoinPayloadBlock, socket: Socket) {
         self.topic = topic
         self.socket = socket
+        self.joinPayloadBlock = joinPayloadBlock
+        self.socketSubscriber = makeSocketSubscriber(with: socket, topic: topic)
     }
-    
-    convenience init(topic: String, socket: Socket, refGenerator: Ref.Generator) {
-        self.init(topic: topic, socket: socket)
-        self.refGenerator = refGenerator
-    }
-    
+
     var joinRef: Ref? { sync {
         switch state {
         case .joining(let ref):
             return ref
         case .joined(let ref):
             return ref
-        case .leaving(let ref):
-            return ref
+        case .leaving(let joinRef, _):
+            return joinRef
         default:
             return nil
         }
     } }
     
-    var joinPush: Socket.Push {
-        Socket.Push(topic: topic, event: .join, payload: [:]) { _ in }
+    var joinPush: Push {
+        Push(channel: self, event: .join, payload: joinPayload, timeout: timeout)
     }
     
-    var leavePush: Socket.Push {
-        Socket.Push(topic: topic, event: .leave, payload: [:]) { _ in }
+    var leavePush: Push {
+        Push(channel: self, event: .leave, timeout: timeout)
     }
     
     public var isClosed: Bool { sync {
@@ -110,42 +130,61 @@ public final class Channel: Synchronized {
         guard case .errored = state else { return false }
         return true
     } }
+    
+    func errored(_ error: Swift.Error) {
+        sync {
+            self.state = .errored(error)
+            let subject = self.subject
+            notifySubjectQueue.async { subject.send(.error(error)) }
+        }
+    }
+    
+    public var connectionState: String {
+        switch state {
+        case .closed:
+            return "closed"
+        case .errored:
+            return "errored"
+        case .joined:
+            return "joined"
+        case .joining:
+            return "joining"
+        case .leaving:
+            return "leaving"
+        }
+    }
+
+    deinit {
+        inFlightMessagesTimer = nil
+        joinTimer = .off
+        leaveTimer = nil
+        socketSubscriber?.cancel()
+    }
 }
 
-// MARK: Writing
-
-
+// MARK: join
 
 extension Channel {
-    func join() {
+    public func join(timeout customTimeout: DispatchTimeInterval? = nil) {
+        sync { self.customTimeout = customTimeout }
+        rejoin()
+    }
+    
+    private func rejoin() {
+        guard let socket = self.socket else { return assertionFailure("No socket") }
+
         sync {
-            guard isClosed || isErrored || isLeaving else {
-                assertionFailure("Can't join unless we are closed, errored, or leaving")
-                return
-            }
+            guard shouldRejoin else { return }
             
-            let ref = refGenerator.advance()
-            self.state = .joining(ref)
+            switch state {
+            case .joining, .joined:
+                return
+            case .closed, .errored, .leaving:
+                let ref = socket.advanceRef()
+                self.state = .joining(ref)
+                self.writeJoinPushAsync()
+            }
         }
-        
-        DispatchQueue.global().async {
-            self.writeJoinPush()
-        }
-    }
-    
-    private func send(_ message: OutgoingMessage) {
-        send(message) { _ in }
-    }
-    
-    private func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
-        guard let socket = socket else {
-            assertionFailure("Can't write if we don't have a socket")
-            self.state = .errored(Channel.Error.lostSocket)
-            publish(.failure(Channel.Error.lostSocket))
-            return
-        }
-        
-        socket.send(message, completionHandler: completionHandler)
     }
     
     private func writeJoinPush() {
@@ -153,194 +192,352 @@ extension Channel {
             switch self.state {
             case .joining(let joinRef):
                 let message = OutgoingMessage(joinPush, ref: joinRef, joinRef: joinRef)
-                
+
+                createJoinTimer()
+
                 send(message) { error in
                     if let error = error {
-                        Swift.print("There was a problem writing to the socket, so going to try to join again after a delay: \(error)")
-                        self.writeJoinPushAfterDelay()
+                        self.createRejoinTimer()
                     }
                 }
             default:
-                self.state = .errored(Channel.Error.noLongerJoining)
+                self.errored(Channel.Error.noLongerJoining)
             }
         }
     }
     
-    private func writeJoinPushAfterDelay() {
-        writeJoinPushAfterDelay(milliseconds: 200)
-    }
-    
-    private func writeJoinPushAfterDelay(milliseconds: Int) {
-        let deadline = DispatchTime.now().advanced(by: .milliseconds(milliseconds))
-
-        DispatchQueue.global().asyncAfter(deadline: deadline) {
+    private func writeJoinPushAsync() {
+        backgroundQueue.async {
             self.writeJoinPush()
         }
     }
-    
-    func rejoin() {
-        sync {
-            if !shouldRejoin || isJoining || isJoined { return }
+}
 
-            let ref = refGenerator.advance()
-            self.state = .joining(ref)
-            
-            DispatchQueue.global().async {
-                self.writeJoinPush()
-            }
-        }
-    }
-    
-    public func leave() {
+// MARK: leave
+
+extension Channel {
+    func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
+        guard let socket = self.socket else { return assertionFailure("No socket") }
+
         sync {
             self.shouldRejoin = false
-            
-            guard isJoining || isJoined else {
-                Swift.print("Can only leave if we are joining or joined, currently \(state)")
+
+            switch state {
+            case .joining(let joinRef), .joined(let joinRef):
+                let ref = socket.advanceRef()
+                let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
+                self.state = .leaving(joinRef: joinRef, leavingRef: ref)
+
+                let timeout = DispatchTime.now().advanced(by: customTimeout ?? self.timeout)
+                
+                backgroundQueue.async {
+                    self.send(message)
+                    self.sync {
+                        self.leaveTimer = Timer(fireAt: timeout) { [weak self] in self?.timeoutLeavePush() }
+                    }
+                }
+            case .leaving, .errored, .closed:
                 return
             }
-            
-            let ref = refGenerator.advance()
-            let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
-            self.state = .leaving(ref)
-            
-            DispatchQueue.global().async {
-                self.send(message)
-            }
-        }
-    }
-    
-    func left() {
-        sync {
-            if isClosed || isErrored { return }
-        
-            self.state = .closed
-            subject.send(.success(.leave))
         }
     }
 
+    private func sendLeaveAndCompletionToSubjectAsync() {
+        let subject = self.subject
+        notifySubjectQueue.async {
+            subject.send(.leave)
+            subject.send(completion: .finished)
+        }
+    }
+}
+
+// MARK: Push
+
+extension Channel {
     public func push(_ eventString: String) {
-        push(eventString, payload: [String: Any]())
+        push(eventString, payload: [String: Any](), callback: nil)
+    }
+    
+    public func push(_ eventString: String, callback: Channel.Callback?) {
+        push(eventString, payload: [String: Any](), callback: callback)
     }
 
     public func push(_ eventString: String, payload: Payload) {
         push(eventString, payload: payload, callback: nil)
     }
 
-    public func push(_ eventString: String, payload: Payload, callback: Channel.Callback?) {
+    public func push(
+        _ eventString: String,
+        payload: Payload,
+        timeout: DispatchTimeInterval? = nil,
+        callback: Channel.Callback?)
+    {
         sync {
             let push = Channel.Push(
                 channel: self,
                 event: PhxEvent(eventString),
                 payload: payload,
+                timeout: timeout ?? self.timeout,
                 callback: callback
             )
             
-            pending.append(push)
+            _pending.append(push)
         }
         
-        DispatchQueue.global().async {
-            self.flushNow()
-        }
+        self.flushAsync()
+    }
+}
+
+// MARK: Push
+
+extension Channel {
+    private func send(_ message: OutgoingMessage) {
+        send(message) { _ in }
     }
     
-    private func flush() {
-        assert(waitToFlush == 0)
+    private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
+        guard let socket = socket else {
+            // TODO: maybe we should just hard ref the socket?
+            self.errored(Channel.Error.lostSocket)
+            completionHandler(Channel.Error.lostSocket)
+            return
+        }
         
+        socket.send(message) { error in
+            if let error = error {
+                Swift.print("There was an error writing to the socket: \(error)")
+                // NOTE: we don't change state to error here, instead we let the socket close do that for us
+            }
+            
+            completionHandler(error)
+        }
+    }
+}
+
+// MARK: Flush messages
+
+extension Channel {
+    private func flush() {
         sync {
             guard case .joined(let joinRef) = state else { return }
+            guard let socket = self.socket else { return assertionFailure("No socket") }
             
-            guard let push = pending.first else { return }
-            self.pending = Array(self.pending.dropFirst())
+            guard let push = _pending.first else { return }
+            self._pending = Array(self._pending.dropFirst())
             
-            let ref = refGenerator.advance()
+            let ref = socket.advanceRef()
             let message = OutgoingMessage(push, ref: ref, joinRef: joinRef)
             
             let pushed = PushedMessage(push: push, message: message)
-            inFlight[ref] = pushed
+            _inFlight[ref] = pushed
+            
+            createInFlightMessagesTimer()
             
             send(message) { error in
                 if let error = error {
                     Swift.print("Couldn't write to socket from Channel \(self) – \(error) - \(message)")
                     self.sync {
-                        // no longer in flight
-                        self.inFlight[ref] = nil
-                        // put it back to retry later
-                        self.pending.append(push)
-                        // flush again in a bit
-                        self.flushAfterDelay()
+                        // put it back to try again later
+                        self._inFlight[ref] = nil
+                        self._pending.append(push)
                     }
+                } else {
+                    self.flushAsync()
                 }
             }
-            
-            flushNow()
         }
     }
     
-    private func flushNow() {
-        sync {
-            guard waitToFlush == 0 else { return }
-        }
-        DispatchQueue.global().async { self.flush() }
+    private func flushAsync() {
+        backgroundQueue.async { self.flush() }
     }
-    
-    private func flushAfterDelay() {
-        flushAfterDelay(milliseconds: 200)
-    }
-    
-    private func flushAfterDelay(milliseconds: Int) {
-        sync {
-            guard waitToFlush == 0 else { return }
-            self.waitToFlush = milliseconds
-        }
-        
-        let deadline = DispatchTime.now().advanced(by: .milliseconds(waitToFlush))
+}
 
-        DispatchQueue.global().asyncAfter(deadline: deadline) {
-            self.sync {
-                self.waitToFlush = 0
-                self.flushNow()
+// MARK: Timeouts
+
+extension Channel {
+    func timeoutJoinPush() {
+        errored(Error.joinTimeout)
+        createRejoinTimer()
+    }
+
+    func timeoutLeavePush() {
+        sync {
+            leaveTimer = nil
+            state = .closed
+            sendLeaveAndCompletionToSubjectAsync()
+        }
+    }
+    
+    private func createJoinTimer() {
+        sync {
+            let attempt = (joinTimer.attempt ?? 0) + 1
+            self.joinTimer = .off
+
+            let timer = Timer(timeout) { [weak self] in self?.timeoutJoinPush() }
+
+            self.joinTimer = .join(timer: timer, attempt: attempt)
+        }
+    }
+    
+    private func createRejoinTimer() {
+        sync {
+            guard joinTimer.isNotRejoinTimer else { return }
+            
+            let attempt = joinTimer.attempt ?? 0
+            assert(attempt > 0, "we should always join before rejoining")
+            self.joinTimer = .off
+
+            let interval = rejoinTimeout(attempt)
+            
+            let timer = Timer(interval) { [weak self] in self?.rejoin() }
+            
+            self.joinTimer = .rejoin(timer: timer, attempt: attempt)
+        }
+    }
+    
+    private func timeoutInFlightMessages() {
+        sync {
+            // invalidate a previous timer if it's there
+            self.inFlightMessagesTimer = nil
+            
+            guard !_inFlight.isEmpty else { return }
+            
+            let now = DispatchTime.now()
+        
+            let messages = _inFlight.values.sortedByTimeoutDate().filter {
+                $0.timeoutDate < now
+            }
+            
+            for message in messages {
+                _inFlight[message.ref] = nil
+                message.callback(error: Error.pushTimeout)
+            }
+            
+            createInFlightMessagesTimer()
+        }
+    }
+    
+    private func timeoutInFlightMessagesAsync() {
+        backgroundQueue.async { self.timeoutInFlightMessages() }
+    }
+    
+    private func createInFlightMessagesTimer() {
+        sync {
+            guard _inFlight.isNotEmpty else { return }
+
+            let possibleNext = _inFlight.values.sortedByTimeoutDate().first
+            
+            guard let next = possibleNext else { return }
+            guard next.timeoutDate < inFlightMessagesTimer?.nextDeadline else { return }
+            
+            self.inFlightMessagesTimer =  Timer(fireAt: next.timeoutDate) { [weak self] in
+                self?.timeoutInFlightMessagesAsync()
             }
         }
     }
 }
 
-// MARK: :Publisher
+// MARK: Publisher
 
-extension Channel: Publisher {
+extension Channel {
     public func receive<S>(subscriber: S)
         where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
         subject.receive(subscriber: subscriber)
     }
-    
-    func publish(_ output: Output) {
-        subject.send(output)
+}
+
+// MARK: Socket Subscriber
+
+extension Channel {
+    enum ChannelSpecificSocketMessage {
+        case socketOpen
+        case socketClose
+        case channelMessage(IncomingMessage)
     }
-    
-    func complete() {
-        complete(.finished)
-    }
-    
-    func complete(_ failure: Failure) {
-        complete(.failure(failure))
-    }
-    
-    func complete(_ completion: Subscribers.Completion<Failure>) {
-        subject.send(completion: completion)
+
+    func makeSocketSubscriber(
+        with socket: Socket,
+        topic: Topic
+    ) -> AnyCancellable
+    {
+        let channelSpecificMessage = { (message: Socket.Message) -> SocketOutput? in
+            switch message {
+            case .closing, .connecting, .unreadableMessage, .websocketError:
+                return nil // not interesting
+            case .close:
+                return .socketClose
+            case .open:
+                return .socketOpen
+            case .incomingMessage(let message):
+                guard message.topic == topic else { return nil }
+                return .channelMessage(message)
+            }
+        }
+
+        let completion: (Subscribers.Completion<SocketFailure>) -> Void = { _ in fatalError("`Never` means never") }
+        let receiveValue = { [weak self] (input: SocketOutput) -> Void in
+            switch input {
+            case .channelMessage(let message):
+                self?.handle(message)
+            case .socketOpen:
+                self?.handleSocketOpen()
+            case .socketClose:
+                self?.handleSocketClose()
+            }
+        }
+
+        return socket
+            .compactMap(channelSpecificMessage)
+            .sink(receiveCompletion: completion, receiveValue: receiveValue)
     }
 }
 
-// MARK: :Subscriber
+// MARK: Input handlers
 
-extension Channel: DelegatingSubscriberDelegate {
-    typealias Input = IncomingMessage
-    
-    func internallySubscribe<P>(_ publisher: P)
-        where P: Publisher, Input == P.Output, Failure == P.Failure {
-        publisher.subscribe(internalSubscriber)
+extension Channel {
+    private func handleSocketOpen() {
+        guard let socket = self.socket else { return assertionFailure("No socket") }
+
+        sync {
+            switch state {
+            case .joining:
+                writeJoinPushAsync()
+            case .errored where shouldRejoin:
+                let ref = socket.advanceRef()
+                self.state = .joining(ref)
+                writeJoinPushAsync()
+            case .errored:
+                break
+            case .closed:
+                break // NOOP
+            case .joined, .leaving:
+                preconditionFailure("Really shouldn't get an open if we are \(state) and didn't get a close")
+            }
+        }
     }
     
-    func receive(_ input: Input) {
+    private func handleSocketClose() {
+        sync {
+            switch state {
+            case .joined, .joining, .leaving:
+                errored(Error.socketIsClosed)
+            case .errored(let error):
+                if let error = error as? Channel.Error,
+                    case .socketIsClosed = error {
+                    // No need to error again if this is the reason we are already errored – although this shouldn't happen
+                    return
+                }
+                errored(Error.socketIsClosed)
+            case .closed:
+                break // NOOP
+            }
+        }
+    }
+    
+    private func handle(_ input: IncomingMessage) {
+        guard isClosed == false else { return }
+
         switch input.event {
         case .custom:
             let message = Channel.Message(incomingMessage: input)
@@ -354,61 +551,58 @@ extension Channel: DelegatingSubscriberDelegate {
             }
             
         case .close:
-//            sync {
-//                if isLeaving {
-//                    left()
-//                    subject.send(.success(.leave))
-//                }
-//            }
-            // TODO: What should we do when we get a close?
-            Swift.print("Not sure what to do with a close event yet")
-            
+            sync {
+                self.shouldRejoin = false
+                state = .closed
+                self.sendLeaveAndCompletionToSubjectAsync()
+            }
+
         default:
-            Swift.print("Need to handle \(input.event) types of events soon")
-            Swift.print("> \(input)")
+            break
         }
     }
-    
-    func receive(completion: Subscribers.Completion<Swift.Error>) {
-        internalSubscriber.cancel()
-    }
-}
 
-// MARK: input handlers
-
-extension Channel {
     private func handle(_ reply: Channel.Reply) {
         sync {
             switch state {
             case .joining(let joinRef):
-                guard reply.ref == joinRef && reply.joinRef == joinRef else {
-                    self.state = .errored(Channel.Error.invalidJoinReply(reply))
+                guard reply.ref == joinRef,
+                    reply.joinRef == joinRef,
+                    reply.isOk else {
+                        self.errored(Channel.Error.invalidJoinReply(reply))
+                        self.createRejoinTimer()
                     break
                 }
                 
                 self.state = .joined(joinRef)
-                subject.send(.success(.join))
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.join) }
+
+                self.joinTimer = .off
+                
+                flushAsync()
                 
             case .joined(let joinRef):
-                guard let pushed = inFlight[reply.ref],
+                guard let pushed = _inFlight.removeValue(forKey: reply.ref),
                       reply.joinRef == joinRef else {
                     return
                 }
                 
-                pushed.callback(reply: reply)
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.message(reply.message)) }
+                backgroundQueue.async { pushed.callback(reply: reply) }
                 
-            case .leaving(let ref):
-                guard reply.ref == ref,
-                      reply.joinRef == joinRef else {
-                    break
-                }
-                
+            case .leaving(let joinRef, let leavingRef):
+                guard reply.ref == leavingRef, reply.joinRef == joinRef else { break }
+
                 self.state = .closed
-                subject.send(.success(.leave))
-                
+                self.sendLeaveAndCompletionToSubjectAsync()
+
+            case .closed:
+                break
+
             default:
-                // sorry, not processing replies in other states
-                Swift.print("Received reply that we are not expecting in this state (\(state)): \(reply)")
                 break
             }
         }
@@ -421,7 +615,8 @@ extension Channel {
                 return
             }
 
-            subject.send(.success(.message(message)))
+            let subject = self.subject
+            notifySubjectQueue.async { subject.send(.message(message)) }
         }
     }
 }

@@ -1,233 +1,534 @@
-import Foundation
 import Combine
+import Foundation
 import Synchronized
-import Forever
-import SimplePublisher
-import Atomic
 
-typealias SocketSendCallback = (Swift.Error?) -> Void
+private let backgroundQueue = DispatchQueue(label: "Socket.backgroundQueue")
 
-public final class Socket: Synchronized {
-    enum Error: Swift.Error {
-        case closed
-    }
-
-    enum State {
-        case open
-        case closed
-    }
-    
+public final class Socket {
     public typealias Output = Socket.Message
-    public typealias Failure = Swift.Error
+    public typealias Failure = Never
+
+    public typealias ReconnectTimeInterval = (Int) -> DispatchTimeInterval
+
+    private let lock: RecursiveLock = RecursiveLock()
+    private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
     
-    private var subject = SimpleSubject<Output, Failure>()
-    private var ws: WebSocket?
-    private lazy var internalSubscriber: DelegatingSubscriber<Socket> = {
-       return DelegatingSubscriber(delegate: self)
-    }()
-    
+    private let subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed
     private var shouldReconnect = true
+    private var webSocketSubscriber: AnyCancellable?
+    private var channels = [Topic: WeakChannel]()
     
-    private var channels = [String: WeakChannel]()
-    
-    public let url: URL
-    
-    public var isOpen: Bool { sync {
-        guard case .open = state else { return false }
-        return true
-    } }
+    public var joinedChannels: [Channel] {
+        let channels = sync { self.channels }
+        return channels.compactMap { $0.value.channel }
+    }
 
-    public var isClosed: Bool { sync {
+    private var pending: [Push] = []
+    var pendingPushes: [Push] { sync { return pending } } // For testing
+
+    public let url: URL
+    public let timeout: DispatchTimeInterval
+
+    private let notifySubjectQueue = DispatchQueue(label: "Socket.notifySubjectQueue")
+
+    private let refGenerator: Ref.Generator
+
+    var currentRef: Ref { refGenerator.current }
+    func advanceRef() -> Ref { refGenerator.advance() }
+
+    private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
+    private var pendingHeartbeatRef: Ref? = nil
+    private var heartbeatTimer: Timer? = nil
+
+    public static let defaultTimeout: DispatchTimeInterval = .seconds(10)
+    public static let defaultHeartbeatInterval: DispatchTimeInterval = .seconds(30)
+    public let heartbeatInterval: DispatchTimeInterval
+
+    // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/js/phoenix.js#L790
+    public var reconnectTimeInterval: ReconnectTimeInterval = { (attempt: Int) -> DispatchTimeInterval in
+        let milliseconds = [10, 50, 100, 150, 200, 250, 500, 1000, 2000, 5000]
+        switch attempt {
+        case 0:
+            assertionFailure("`attempt` should start at 1")
+            return .milliseconds(milliseconds[5])
+        case (1..<milliseconds.count):
+            return .milliseconds(milliseconds[attempt - 1])
+        default:
+            return .milliseconds(milliseconds[milliseconds.count - 1])
+        }
+    }
+    private var _reconnectAttempts: Int = 0
+    var reconnectAttempts: Int {
+        get { sync { _reconnectAttempts } }
+        set { sync { _reconnectAttempts = newValue } }
+    }
+    
+    var isClosed: Bool { sync {
         guard case .closed = state else { return false }
         return true
     } }
     
-    public init(url: URL) throws {
-        self.url = try Self.webSocketURLV2(url: url)
-        connect()
-    }
+    var isConnecting: Bool { sync {
+        guard case .connecting = state else { return false }
+        return true
+    } }
     
-    public func close() {
-        sync {
-            self.shouldReconnect = false
-            ws?.close()
+    var isOpen: Bool { sync {
+        guard case .open = state else { return false }
+        return true
+    } }
+    
+    var isClosing: Bool { sync {
+        guard case .closing = state else { return false }
+        return true
+    } }
+    
+    var connectionState: String { sync {
+        switch state {
+        case .closed:
+            return "closed"
+        case .connecting:
+            return "connecting"
+        case .open:
+            return "open"
+        case .closing:
+            return "closing"
         }
+    } }
+    
+    public init(url: URL,
+                timeout: DispatchTimeInterval = Socket.defaultTimeout,
+                heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval) {
+        self.timeout = timeout
+        self.heartbeatInterval = heartbeatInterval
+        self.refGenerator = Ref.Generator()
+        self.url = Socket.webSocketURLV2(url: url)
     }
     
-    private func connect() {
-        self.ws = WebSocket(url: url)
-        internallySubscribe(ws!)
+    init(url: URL,
+         timeout: DispatchTimeInterval = Socket.defaultTimeout,
+         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
+         refGenerator: Ref.Generator) {
+        self.timeout = timeout
+        self.heartbeatInterval = heartbeatInterval
+        self.refGenerator = refGenerator
+        self.url = Socket.webSocketURLV2(url: url)
+    }
+
+    deinit {
+        sync {
+            shouldReconnect = false
+            cancelHeartbeatTimer()
+            webSocketSubscriber?.cancel()
+            state.webSocket?.close()
+            state = .closed
+        }
     }
 }
 
 // MARK: Phoenix socket URL
 
 extension Socket {
-    static func webSocketURLV2(url original: URL) throws -> URL {
+    static func webSocketURLV2(url original: URL) -> URL {
         return original
             .appendingPathComponent("websocket")
             .appendingQueryItems(["vsn": "2.0.0"])
     }
 }
 
-// MARK: :Publisher
+// MARK: Publisher
 
 extension Socket: Publisher {
     public func receive<S>(subscriber: S)
         where S: Combine.Subscriber, Failure == S.Failure, Output == S.Input {
-        subject.receive(subscriber: subscriber)
-    }
-    
-    func publish(_ output: Output) {
-        subject.send(output)
-    }
-    
-    func complete() {
-        complete(.finished)
-    }
-    
-    func complete(_ failure: Failure) {
-        complete(.failure(failure))
-    }
-    
-    func complete(_ completion: Subscribers.Completion<Failure>) {
-        subject.send(completion: completion)
+            subject.receive(subscriber: subscriber)
     }
 }
 
-// MARK: :Subscriber
+// MARK: ConnectablePublisher
 
-extension Socket: DelegatingSubscriberDelegate {
-    // Creating an indirect internal Subscriber sub-type so the methods can remain internal
-    typealias Input = Result<WebSocket.Message, Swift.Error>
-    
-    func internallySubscribe<P>(_ publisher: P)
-        where P: Publisher, Input == P.Output, Failure == P.Failure {
-        publisher.subscribe(internalSubscriber)
-    }
-    
-    func receive(_ input: Input) {
-        switch input {
-        case .success(let message):
-            switch message {
-            case .open:
-                // TODO: check if we are already open
-                self.state = .open
-                subject.send(.opened)
-                
-                sync {
-                    for (_, weakChannel) in channels {
-                        if let channel = weakChannel.channel {
-                            channel.rejoin()
-                        }
-                    }
-                }
-            case .data:
-                // TODO: Are we going to use data frames from the server for anything?
-                assertionFailure("We are not currently expecting any data frames from the server")
-            case .string(let string):
-                do {
-                    let message = try IncomingMessage(data: Data(string.utf8))
-                    subject.send(.incomingMessage(message))
-                } catch {
-                    Swift.print("Could not decode the WebSocket message data: \(error)")
-                    Swift.print("Message data: \(string)")
-                    subject.send(.unreadableMessage(string))
-                }
-            }
-        case .failure(let error):
-            Swift.print("WebSocket error, but we are not closed: \(error)")
-            subject.send(.websocketError(error))
-        }
-    }
-    
-    func receive(completion: Subscribers.Completion<Failure>) {
-        // TODO: check if we are already closed
+extension Socket: ConnectablePublisher {
+    private struct Canceller: Cancellable {
+        weak var socket: Socket?
         
+        func cancel() {
+            socket?.disconnect()
+        }
+    }
+
+    @discardableResult public func connect() -> Cancellable {
         sync {
-            self.ws = nil
-            self.state = .closed
+            self.shouldReconnect = true
             
-            subject.send(.closed)
-            
-            for (_, weakChannel) in channels {
-                if let channel = weakChannel.channel {
-                    channel.left()
-                }
+            switch state {
+            case .closed:
+                let ws = WebSocket(url: url)
+                self.state = .connecting(ws)
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.connecting) }
+                
+                self.webSocketSubscriber = makeWebSocketSubscriber(with: ws)
+                cancelHeartbeatTimer()
+                createHeartbeatTimer()
+                
+                return Canceller(socket: self)
+            case .connecting, .open:
+                // NOOP
+                return Canceller(socket: self)
+            case .closing:
+                // let the reconnect logic handle this case
+                return Canceller(socket: self)
             }
+        }
+    }
+    
+    public func disconnect() {
+        sync {
+            self.shouldReconnect = false
             
-            if shouldReconnect {
-                DispatchQueue.global().asyncAfter(deadline: DispatchTime.now().advanced(by: .milliseconds(200))) {
-                    self.connect()
-                }
-            } else {
-                subject.send(completion: .finished)
+            self.cancelHeartbeatTimer()
+            
+            switch state {
+            case .closed, .closing:
+                // NOOP
+                return
+            case .open(let ws), .connecting(let ws):
+                self.state = .closing(ws)
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.closing) }
+
+                ws.close()
             }
         }
     }
 }
 
-// MARK: Join and send
+// MARK: Channel
 
 extension Socket {
-    public func join(_ topic: String) -> Channel {
+    public func join(_ channel: Channel) {
+        return channel.join()
+    }
+
+    public func join(_ topic: Topic, payload: Payload = [:]) -> Channel {
+        sync {
+            let _channel = channel(topic, payload: payload)
+            _channel.join()
+            return _channel
+        }
+    }
+    
+    public func channel(_ topic: Topic, payload: Payload = [:]) -> Channel {
         sync {
             if let weakChannel = channels[topic],
-                let channel = weakChannel.channel {
-                return channel
+                let _channel = weakChannel.channel {
+                return _channel
             }
             
-            let channel = Channel(topic: topic, socket: self)
+            let _channel = Channel(topic: topic, joinPayload: payload, socket: self)
             
-            channels[topic] = WeakChannel(channel)
-            subscribe(channel: channel)
-            channel.join()
+            channels[topic] = WeakChannel(_channel)
             
-            return channel
+            return _channel
         }
     }
 
+    public func leave(_ topic: Topic) {
+        leave(channel(topic))
+    }
+
+    public func leave(_ channel: Channel) {
+        channel.leave()
+    }
+
+    @discardableResult
+    private func removeChannel(for topic: Topic) -> Channel? {
+        let weakChannel = sync { channels.removeValue(forKey: topic) }
+        guard let channel = weakChannel?.channel else { return nil }
+        return channel
+    }
+}
+
+// MARK: Push event
+
+extension Socket {
+    public func push(topic: Topic, event: PhxEvent) {
+        push(topic: topic, event: event, payload: [:])
+    }
+    
+    public func push(topic: Topic, event: PhxEvent, payload: Payload) {
+        push(topic: topic, event: event, payload: payload) { _ in }
+    }
+    
+    public func push(topic: Topic,
+                     event: PhxEvent,
+                     payload: Payload = [:],
+                     callback: @escaping Callback) {
+        let thePush = Socket.Push(
+            topic: topic,
+            event: event,
+            payload: payload,
+            callback: callback
+        )
+        
+        sync {
+            pending.append(thePush)
+        }
+
+        self.flushAsync()
+    }
+}
+
+// MARK: Flush
+
+extension Socket {
+    private func flush() {
+        sync {
+            guard case .open = state else { return }
+
+            guard let push = pending.first else { return }
+            self.pending = Array(self.pending.dropFirst())
+            
+            let ref = advanceRef()
+            let message = OutgoingMessage(push, ref: ref)
+            
+            send(message) { error in
+                if error == nil {
+                    self.flushAsync()
+                }
+                push.asyncCallback(error)
+            }
+        }
+    }
+    
+    private func flushAsync() {
+        backgroundQueue.async { self.flush() }
+    }
+}
+
+// MARK: Send
+
+extension Socket {
     func send(_ message: OutgoingMessage) {
         send(message, completionHandler: { _ in })
     }
     
-    func send(_ message: OutgoingMessage, completionHandler: @escaping SocketSendCallback) {
-        guard let ws = ws, isOpen else {
-            completionHandler(Socket.Error.closed)
-            return
-        }
-        
-        let data: Data
-        
+    func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
         do {
-            data = try message.encoded()
+            let data = try message.encoded()
+            send(data, completionHandler: completionHandler)
         } catch {
-            // TODO: make this throw instead
-            fatalError("Could not serialize OutgoingMessage \(error)")
+            completionHandler(Error.couldNotSerializeOutgoingMessage(message))
         }
-
-        // TODO: capture obj-c exceptions
-        ws.send(data) { error in
-            completionHandler(error)
-            
-            if let error = error {
-                Swift.print("Error writing to WebSocket: \(error)")
-                ws.close(.abnormalClosure)
+    }
+    
+    func send(_ string: String) {
+        send(string) { _ in }
+    }
+    
+    func send(_ string: String, completionHandler: @escaping Callback) {
+        sync {
+            switch state {
+            case .open(let ws):
+                // TODO: capture obj-c exceptions over in the WebSocket class
+                ws.send(string) { error in
+                    if let error = error {
+                        Swift.print("Error writing to WebSocket: \(error)")
+                        self.state = .closing(ws) // TODO: write a test to prove this works
+                        ws.close(.abnormalClosure)
+                    }
+                    
+                    completionHandler(error)
+                }
+            default:
+                completionHandler(Socket.Error.notOpen)
             }
         }
     }
-
-    private func subscribe(channel: Channel) {
-        channel.internallySubscribe(
-            self.compactMap {
-                guard case .incomingMessage(let message) = $0 else {
-                    return nil
+    
+    func send(_ data: Data) {
+        send(data, completionHandler: { _ in })
+    }
+    
+    func send(_ data: Data, completionHandler: @escaping Callback) {
+        sync {
+            switch state {
+            case .open(let ws):
+                // TODO: capture obj-c exceptions over in the WebSocket class
+                ws.send(data) { error in
+                    if let error = error {
+                        Swift.print("Error writing to WebSocket: \(error)")
+                        self.state = .closing(ws) // TODO: write a test to prove this works
+                        ws.close(.abnormalClosure)
+                    }
+                    
+                    completionHandler(error)
                 }
-                return message
-            }.filter {
-                $0.topic == channel.topic
+            default:
+                completionHandler(Socket.Error.notOpen)
+                
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.close) }
             }
-        )
+        }
+    }
+}
+    
+// MARK: Heartbeat
+
+extension Socket {
+    typealias HeartbeatSuccessHandler = () -> Void
+
+    func sendHeartbeat(_ onSuccess: HeartbeatSuccessHandler? = nil) {
+        let msg: OutgoingMessage? = sync {
+            guard pendingHeartbeatRef == nil else {
+                heartbeatTimeout()
+                return nil
+            }
+            
+            guard case .open = state else { return nil }
+
+            let pendingHeartbeatRef = advanceRef()
+            self.pendingHeartbeatRef = pendingHeartbeatRef
+            return OutgoingMessage(heartbeatPush, ref: pendingHeartbeatRef)
+        }
+
+        guard let message = msg else { return }
+            
+        send(message) { error in
+            if let error = error {
+                Swift.print("Error writing heartbeat push", error)
+                self.heartbeatTimeout()
+            } else if let onSuccess = onSuccess {
+                onSuccess()
+            }
+        }
+    }
+    
+    func heartbeatTimeout() {
+        sync {
+            self.pendingHeartbeatRef = nil
+            
+            switch state {
+            case .closed, .closing:
+                // NOOP
+                return
+            case .open(let ws), .connecting(let ws):
+                ws.close()
+                // TODO: shouldn't this be an errored state?
+                self.state = .closed
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.close) }
+            }
+        }
+    }
+    
+    func cancelHeartbeatTimer() {
+        self.heartbeatTimer = nil
+    }
+    
+    func createHeartbeatTimer() {
+        self.heartbeatTimer = Timer(self.heartbeatInterval, repeat: true) { [weak self] in
+            self?.sendHeartbeat()
+        }
+    }
+}
+
+// MARK: WebSocket subscriber
+
+extension Socket {
+    typealias WebSocketOutput = Result<WebSocketMessage, Swift.Error>
+    typealias WebSocketFailure = Swift.Error
+
+    func makeWebSocketSubscriber(with webSocket: WebSocket) -> AnyCancellable {
+        let value: (WebSocketOutput) -> Void = { [weak self] in self?.receive(value: $0) }
+        let completion: (Subscribers.Completion<Swift.Error>) -> Void = { [weak self] in self?.receive(completion: $0) }
+
+        return webSocket.sink(receiveCompletion: completion, receiveValue: value)
+    }
+
+    private func receive(value: WebSocketOutput) {
+        switch value {
+        case .failure(let error):
+            let subject = self.subject
+            notifySubjectQueue.async { subject.send(.websocketError(error)) }
+        case .success(let message):
+            switch message {
+            case .open:
+                sync {
+                    _reconnectAttempts = 0
+                    
+                    switch state {
+                    case .closed:
+                        assertionFailure("We shouldn't receive an open message if we are in a closed state")
+                        return
+                    case .closing:
+                        assertionFailure("We shouldn't recieve an open message if we are in a closing state")
+                        return
+                    case .open:
+                        // NOOP
+                        return
+                    case .connecting(let ws):
+                        self.state = .open(ws)
+
+                        let subject = self.subject
+                        notifySubjectQueue.async { subject.send(.open) }
+
+                        flushAsync()
+                    }
+                }
+            case .data:
+                assertionFailure("We are not currently expecting any data frames from the server")
+            case .string(let string):
+                do {
+                    let message = try IncomingMessage(string: string)
+                    let subject = self.subject
+
+                    sync {
+                        switch message.event {
+                        case .heartbeat where pendingHeartbeatRef != nil && message.ref == pendingHeartbeatRef:
+                            self.pendingHeartbeatRef = nil
+                        case .close:
+                            removeChannel(for: message.topic)
+                            notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
+                        default:
+                            notifySubjectQueue.async { subject.send(.incomingMessage(message)) }
+                        }
+                    }
+                } catch {
+                    Swift.print("Could not decode the WebSocket message data: \(error)")
+                    Swift.print("Message data: \(string)")
+                    let subject = self.subject
+                    notifySubjectQueue.async { subject.send(.unreadableMessage(string)) }
+                }
+            }
+        }
+    }
+    
+    private func receive(completion: Subscribers.Completion<WebSocketFailure>) {
+        sync {
+            switch state {
+            case .closed:
+                return
+            case .open, .connecting, .closing:
+                self.state = .closed
+                self.webSocketSubscriber = nil
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.close) }
+
+                if shouldReconnect {
+                    _reconnectAttempts += 1
+                    let deadline = DispatchTime.now().advanced(by: reconnectTimeInterval(_reconnectAttempts))
+                    backgroundQueue.asyncAfter(deadline: deadline) {
+                        self.connect()
+                    }
+                }
+            }
+        }
     }
 }

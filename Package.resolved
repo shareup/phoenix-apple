@@ -2,39 +2,12 @@
   "object": {
     "pins": [
       {
-        "package": "Atomic",
-        "repositoryURL": "https://github.com/shareup/atomic.git",
-        "state": {
-          "branch": null,
-          "revision": "781438953ec4a7eec7d5467024a6d85423bc97b4",
-          "version": "1.0.1"
-        }
-      },
-      {
-        "package": "Forever",
-        "repositoryURL": "https://github.com/shareup/forever.git",
-        "state": {
-          "branch": null,
-          "revision": "2046d987986a43ae31c25f0e02ff9a2448cc45fb",
-          "version": "0.0.2"
-        }
-      },
-      {
-        "package": "SimplePublisher",
-        "repositoryURL": "https://github.com/shareup/simple-publisher.git",
-        "state": {
-          "branch": null,
-          "revision": "dd7809d44afb7e2becdc872e4f1c3ff3f537e1a6",
-          "version": "1.2.0"
-        }
-      },
-      {
         "package": "Synchronized",
         "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {
           "branch": null,
-          "revision": "3084d4ac37ef2726058e990f62d1e1110862975d",
-          "version": "1.2.0"
+          "revision": "5f3312cf35cde0ddd1196ca9c44190b1859426e0",
+          "version": "2.0.0"
         }
       }
     ]

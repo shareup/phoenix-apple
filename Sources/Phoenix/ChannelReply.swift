@@ -1,5 +1,3 @@
-import Foundation
-
 extension Channel {
     public struct Reply {
         public struct Error: Swift.Error {
@@ -39,5 +37,7 @@ extension Channel {
             
             return Error(message: err)
         }
+
+        public var message: Channel.Message { .init(incomingMessage: self.incomingMessage) }
     }
 }

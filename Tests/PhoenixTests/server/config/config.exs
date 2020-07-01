@@ -1,11 +1,11 @@
 use Mix.Config
 
-config :example, ExampleWeb.Endpoint,
+config :server, ServerWeb.Endpoint,
   http: [port: 4000],
   url: [host: "localhost"],
   secret_key_base: "x951AKdZkB9fM7C7DCuUc/DuoaLXULjSeFrI3Wrin6znJqB3J7nv9XelIKvgNAhC",
-  render_errors: [view: ExampleWeb.ErrorView, accepts: ~w(json)],
-  pubsub: [name: Example.PubSub, adapter: Phoenix.PubSub.PG2],
+  render_errors: [view: ServerWeb.ErrorView, accepts: ~w(json)],
+  pubsub_server: Server.PubSub,
   debug_errors: true,
   code_reloader: true,
   check_origin: false,

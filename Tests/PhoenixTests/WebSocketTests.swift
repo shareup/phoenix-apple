@@ -1,15 +1,14 @@
 import XCTest
 @testable import Phoenix
-import Forever
 
 class WebSocketTests: XCTestCase {
-    func testReceiveOpenEvent() throws {
+    func testReceiveOpenEventAndCompletesWhenClose() {
         let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket is open")
         
-        let sub = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.sink(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -27,13 +26,41 @@ class WebSocketTests: XCTestCase {
         wait(for: [completeEx], timeout: 0.25)
     }
     
+    func testCompleteWhenRemoteCloses() throws {
+        let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
+        
+        let completeEx = expectation(description: "WebSocket pipeline is complete")
+        let openEx = expectation(description: "WebSocket is open")
+        
+        let sub = webSocket.sink(receiveCompletion: { completion in
+            if case .finished = completion {
+                completeEx.fulfill()
+            }
+        }) { result in
+            if case .success(.open) = result {
+                openEx.fulfill()
+            }
+        }
+        defer { sub.cancel() }
+        
+        wait(for: [openEx], timeout: 0.25)
+        
+        webSocket.send("disconnect") { error in
+            if let error = error {
+                XCTFail("Sending data down the socket failed \(error)")
+            }
+        }
+        
+        wait(for: [completeEx], timeout: 0.25)
+    }
+    
     func testJoinLobby() throws {
         let completeEx = expectation(description: "WebSocket pipeline is complete")
         let openEx = expectation(description: "WebSocket should be open")
-        
+
         let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
-        
-        let sub = webSocket.forever(receiveCompletion: { completion in
+
+        let sub = webSocket.sink(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -41,16 +68,16 @@ class WebSocketTests: XCTestCase {
             if case .success(.open) = $0 { return openEx.fulfill() }
         }
         defer { sub.cancel() }
-        
+
         wait(for: [openEx], timeout: 0.5)
         XCTAssert(webSocket.isOpen)
-        
+
         let joinRef = testHelper.gen.advance().rawValue
         let ref = testHelper.gen.current.rawValue
         let topic = "room:lobby"
         let event = "phx_join"
         let payload = [String: String]()
-        
+
         let message = testHelper.serialize([
             joinRef,
             ref,
@@ -64,18 +91,22 @@ class WebSocketTests: XCTestCase {
                 XCTFail("Sending data down the socket failed \(error)")
             }
         }
-        
+
         var hasReplied = false
         let hasRepliedEx = expectation(description: "Should have replied")
         var reply: [Any?] = []
-        
-        let sub2 = webSocket.forever { result in
+
+        let sub2 = webSocket.sink(receiveCompletion: { completion in
+            if case .failure = completion {
+                XCTFail("Should not have failed")
+            }
+        }) { result in
             guard !hasReplied else { return }
 
-            let message: WebSocket.Message
-            
+            let message: WebSocketMessage
+
             hasReplied = true
-            
+
             switch result {
             case .success(let _message):
                 message = _message
@@ -83,7 +114,7 @@ class WebSocketTests: XCTestCase {
                 XCTFail("Received an error \(error)")
                 return
             }
-            
+
             switch message {
             case .data(_):
                 XCTFail("Received a data response, which is wrong")
@@ -92,30 +123,30 @@ class WebSocketTests: XCTestCase {
             case .open:
                 XCTFail("Received an open event")
             }
-            
+
             hasRepliedEx.fulfill()
         }
         defer { sub2.cancel() }
-        
+
         wait(for: [hasRepliedEx], timeout: 0.5)
         XCTAssert(hasReplied)
-        
+
         if reply.count == 5 {
             XCTAssertEqual(reply[0] as! UInt64, joinRef)
             XCTAssertEqual(reply[1] as! UInt64, ref)
             XCTAssertEqual(reply[2] as! String, "room:lobby")
             XCTAssertEqual(reply[3] as! String, "phx_reply")
-            
+
             let rp = reply[4] as! [String: Any?]
-            
+
             XCTAssertEqual(rp["status"] as! String, "ok")
             XCTAssertEqual(rp["response"] as! [String: String], [:])
         } else {
             XCTFail("Reply wasn't the right shape")
         }
-        
+
         webSocket.close()
-        
+
         wait(for: [completeEx], timeout: 0.5)
         XCTAssert(webSocket.isClosed)
     }
@@ -126,7 +157,7 @@ class WebSocketTests: XCTestCase {
         
         let webSocket = WebSocket(url: testHelper.defaultWebSocketURL)
         
-        let sub = webSocket.forever(receiveCompletion: { completion in
+        let sub = webSocket.sink(receiveCompletion: { completion in
             if case .finished = completion {
                 completeEx.fulfill()
             }
@@ -172,10 +203,10 @@ class WebSocketTests: XCTestCase {
          It's possible the response from asking for the repeat to happen could be before, during, or after the repeat messages themselves.
          */
         
-        let sub2 = webSocket.forever(receiveCompletion: {
+        let sub2 = webSocket.sink(receiveCompletion: {
             completion in print("$$$ Websocket publishing complete")
         }) { result in
-            let message: WebSocket.Message
+            let message: WebSocketMessage
 
             switch result {
             case .success(let _message):

@@ -1,5 +1,3 @@
-import Foundation
-
 extension Socket {
     final class WeakChannel {
         weak var channel: Channel?

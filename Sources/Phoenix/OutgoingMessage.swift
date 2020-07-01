@@ -3,18 +3,26 @@ import Foundation
 struct OutgoingMessage {
     let joinRef: Ref?
     let ref: Ref
-    let topic: String
+    let topic: Topic
     let event: PhxEvent
     let payload: Payload
-    let sentAt: Date = Date()
+    let sentAt: DispatchTime = DispatchTime.now()
     
     enum Error: Swift.Error {
         case missingChannelJoinRef
     }
     
+    init(ref: Ref, topic: Topic, event: PhxEvent, payload: Payload) {
+        self.joinRef = nil
+        self.ref = ref
+        self.topic = topic
+        self.event = event
+        self.payload = payload
+    }
+    
     init(_ push: Channel.Push, ref: Ref, joinRef: Ref) {
         if push.channel.joinRef != joinRef {
-            assertionFailure("joinRef should match the channel's joinRef")
+            preconditionFailure("joinRef should match the channel's joinRef")
         }
         
         self.joinRef = joinRef

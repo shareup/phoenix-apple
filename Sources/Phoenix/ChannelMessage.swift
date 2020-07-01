@@ -1,5 +1,3 @@
-import Foundation
-
 extension Channel {
     public struct Message {
         let event: String
