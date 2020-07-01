@@ -51,6 +51,7 @@ public final class Channel: Publisher {
     private var inFlightMessagesTimer: Timer?
     
     private(set) var joinTimer: JoinTimer = .off
+    private var leaveTimer: Timer? = nil
 
     var rejoinTimeout: RejoinTimeout = { attempt in
         // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
@@ -156,6 +157,7 @@ public final class Channel: Publisher {
     deinit {
         inFlightMessagesTimer = nil
         joinTimer = .off
+        leaveTimer = nil
         socketSubscriber?.cancel()
     }
 }
@@ -222,16 +224,20 @@ extension Channel {
 
         sync {
             self.shouldRejoin = false
-            self.customTimeout = customTimeout
-            
+
             switch state {
             case .joining(let joinRef), .joined(let joinRef):
                 let ref = socket.advanceRef()
                 let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
                 self.state = .leaving(joinRef: joinRef, leavingRef: ref)
+
+                let timeout = DispatchTime.now().advanced(by: customTimeout ?? self.timeout)
                 
                 backgroundQueue.async {
                     self.send(message)
+                    self.sync {
+                        self.leaveTimer = Timer(fireAt: timeout) { [weak self] in self?.timeoutLeavePush() }
+                    }
                 }
             case .leaving, .errored, .closed:
                 Swift.print("Can only leave if we are joining or joined, currently \(state)")
@@ -357,6 +363,14 @@ extension Channel {
     func timeoutJoinPush() {
         errored(Error.joinTimeout)
         createRejoinTimer()
+    }
+
+    func timeoutLeavePush() {
+        sync {
+            leaveTimer = nil
+            state = .closed
+            sendLeaveAndCompletionToSubjectAsync()
+        }
     }
     
     private func createJoinTimer() {

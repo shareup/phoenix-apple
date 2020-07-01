@@ -1117,7 +1117,60 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual("room:lobby2", socket.joinedChannels[0].topic)
     }
 
-    // MARK: Error
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1046
+    func testChannelSetsStateToLeaving() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        let channelSub = channel.sink(receiveValue:
+            expectAndThen([
+                .join: {
+                    channel.leave()
+                    XCTAssertTrue(channel.isLeaving)
+                },
+                .leave: { }
+            ])
+        )
+        defer { channelSub.cancel() }
+
+        let socketSub = socket.sink(receiveValue: expectAndThen(.open, channel.join()))
+        defer { socketSub.cancel() }
+
+        socket.connect()
+
+        waitForExpectations(timeout: 2)
+    }
+
+    // TODO: `leave()` doesn't pay attention to timeouts
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1054
+    // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1062
+    func testClosesChannelOnTimeoutOfLeavePush() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        let closeEx = self.expectation(description: "Should have closed")
+        let channelSub = channel.sink(
+            receiveCompletion: { _ in closeEx.fulfill() },
+            receiveValue:
+                expectAndThen([
+                    .join: {
+                        channel.leave(timeout: .microseconds(1))
+                        XCTAssertTrue(channel.isLeaving)
+                    }
+                ]
+            )
+        )
+        defer { channelSub.cancel() }
+
+        let socketSub = socket.sink(receiveValue: expectAndThen(.open, channel.join()))
+        defer { socketSub.cancel() }
+
+        socket.connect()
+
+        waitForExpectations(timeout: 2)
+
+        XCTAssertTrue(channel.isClosed)
+    }
+
+    // MARK: Extra tests
 
     func testReceivingReplyErrorDoesNotSetChannelStateToErrored() throws {
         let channel = makeChannel(topic: "room:lobby")

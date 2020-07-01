@@ -291,30 +291,14 @@
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1034
 	- `testClosesChannelAfterReceivingOkResponseFromServer()`
 
-- [ ] sets state to leaving initially
+- [x] sets state to leaving initially
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1046
-	- ``
+	- `testChannelSetsStateToLeaving()`
 
-- [ ] closes channel on 'timeout'
+- [x] closes channel on 'timeout'
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1054
-	- ``
+	- `testClosesChannelOnTimeoutOfLeavePush()`
 
-- [ ] accepts timeout arg
+- [x] accepts timeout arg
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1062
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
-
-- [ ]
-	-
-	- ``
+	- `testClosesChannelOnTimeoutOfLeavePush()`
