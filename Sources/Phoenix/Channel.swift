@@ -196,7 +196,7 @@ extension Channel {
                 createJoinTimer()
 
                 send(message) { error in
-                    if let error = error {
+                    if error.exists {
                         self.createRejoinTimer()
                     }
                 }
@@ -221,6 +221,7 @@ extension Channel {
 
         sync {
             self.shouldRejoin = false
+            self.joinTimer = .off
 
             switch state {
             case .joining(let joinRef), .joined(let joinRef):

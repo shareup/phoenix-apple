@@ -5,10 +5,10 @@ extension Collection {
 }
 
 extension Optional {
-    var isNil: Bool {
+    var exists: Bool {
         switch self {
-        case .none: return true
-        case .some: return false
+        case .none: return false
+        case .some: return true
         }
     }
 }
