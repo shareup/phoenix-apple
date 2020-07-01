@@ -157,7 +157,7 @@ class ChannelTests: XCTestCase {
                 if (counter >= 2) {
                     return ["join": true]
                 } else {
-                    return ["timeout": 80, "join": true]
+                    return ["timeout": 50, "join": true]
                 }
             },
             socket: socket
@@ -171,7 +171,7 @@ class ChannelTests: XCTestCase {
         }
 
         let socketSub = socket.sink(receiveValue:
-            expectAndThen([.open: { channel.join(timeout: .milliseconds(50)) }])
+            expectAndThen([.open: { channel.join(timeout: .milliseconds(20)) }])
         )
         defer { socketSub.cancel() }
 
