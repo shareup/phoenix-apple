@@ -1,16 +1,32 @@
-# phoenix-apple
+# Phoenix channels client for Apple OS's
 
-## Installation
+## _(macOS, iOS, iPadOS, tvOS, and watchOS)_
 
-### Adding to an existing workspace
+A package for connecting to and interacting with phoenix channels from Apple OS's written in Swift taking advantage of the built in `Websocket` support and `Combine` for publishing events to downstream consumers.
 
-1. [Download the most recent tagged version of phoenix-apple](https://github.com/shareup-app/phoenix-apple/releases/tag/v1.0.0)
-2. Add `Phoenix.xcodeproj` to your workspace (.xcworkspace file) by clicking on "Add Files to [your workspace]". Select `Phoenix.xcodeproj` and click "Add."
-3. If you have not already done so, add a "Copy Frameworks" build phase to your app's target. Select your app's project file in Xcode's sidebar and then click on the "Build Phases" tab. Click the + button above "Target Dependencies" for your app's target. Choose "New Copy Files Phase". Rename the newly-created phase to "Copy Frameworks". Change the destination from "Resources" to "Frameworks".
-4. To add the new library to your app, if you're not already there, select your app's project file in Xcode's sidebar. Click on the "Build Phases" tab and open the "Copy Frameworks" section. Drag the "Phoenix.framework" file from inside the Phoenix framework's "Products" group to the "Copy Frameworks" section. Then, drag the "Starscream.framework" file from inside the Starscream sub-project within the Phoenix project to the "Copy Frameworks" section. After doing this, you should see  "Phoenix.framework" and "Starscream.framework" show up in the sidebar under your app's frameworks group. Click on the framework, show the Utilities (the third pane on the right side in Xcode), and verify that the framework's location is "Relative to Build Products".
+**Compatible with phoenix channels vsn=2.0.0 only.**
 
-### Adding as a sub-project to an existing project
-1. [Download the most recent tagged version of phoenix-apple](https://github.com/shareup-app/phoenix-apple/releases/tag/v1.0.0)
-2. Drag the `Phoenix.xcodeproj` file from Finder to your existing project in Xcode's sidebar.
-3. Select the existing project file in Xcode's sidebar and then click on the "Build Phases" tab. Click on the "+" inside of the "Link Binary With Libraries" section. Select "Phoenix.framework" in the screen that appears.
-4. To add the new library to your app, if you're not already there, select your app's project file in Xcode's sidebar. Click on the "Build Phases" tab and open the "Copy Frameworks" section. Drag the "Phoenix.framework" file from inside the Phoenix framework's "Products" group to the "Copy Frameworks" section. Then, drag the "Starscream.framework" file from inside the Starscream sub-project within the Phoenix project to the "Copy Frameworks" section. After doing this, you should see  "Phoenix.framework" and "Starscream.framework" show up in the sidebar under your app's frameworks group. Click on the framework, show the Utilities (the third pane on the right side in Xcode), and verify that the framework's location is "Relative to Build Products".
+## Tests
+
+### Using Xcode
+
+1. In your Terminal, navigate to the `phoenix-apple` directory
+2. Start the Phoenix server using `./start-server`
+3. Open the `phoenix-apple` directory using Xcode
+4. Make sure the build target is macOS
+5. Product -> Test
+
+### Using `swift test`
+
+1. In your Terminal, navigate to the `phoenix-apple` directory
+2. Start the Phoenix server using `./start-server`
+3. Open the `phoenix-apple` directory in another Terminal window
+4. Run the tests using `swift test`
+
+## Running sample phoenix-js client
+
+1. In your Terminal, navigate to the `phoenix-apple` directory
+2. Start the Phoenix server using `./start-server`
+3. In a new Terminal tab, navigate to the `phoenix-apple` directory
+4. Start the `phoenix-js` cleint using `./start-phoenix-js`
+5. Open the developer console in the just-opened Web browser window and send commands to the client using standard JavaScript 

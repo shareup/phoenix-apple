@@ -1,0 +1,2 @@
+defmodule ServerWeb do
+end

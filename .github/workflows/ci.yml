@@ -1,0 +1,31 @@
+name: ci
+on: push
+jobs:
+  test:
+    runs-on: macOS-latest
+    steps:
+      - uses: actions/checkout@v1
+      # Available environments: https://github.com/actions/virtual-environments/blob/master/images/macos/macos-10.15-Readme.md#xcode
+      - name: Switch Xcode to 11.5
+        run: xcversion select 11.5
+      - name: Resolve package dependencies
+        run: swift package resolve
+      - name: Install elixir
+        run: brew install elixir
+      - name: Install hex
+        run: mix local.hex --force
+      - name: Install rebar3
+        run: mix local.rebar --force
+      - name: Get dependencies for Phoenix app
+        run: mix deps.get
+        working-directory: ./Tests/PhoenixTests/server
+      - name: Build the server app
+        run: mix compile
+        working-directory: ./Tests/PhoenixTests/server
+      - name: Test
+        run: |
+          cd Tests/PhoenixTests/server
+          ( mix phx.server & )
+          cd -
+          sleep 7
+          swift test --skip-update

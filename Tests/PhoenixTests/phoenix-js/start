@@ -1,0 +1,8 @@
+#! /usr/bin/env bash
+
+python3 -m http.server & PYPID=$!
+open http://127.0.0.1:8000/
+
+trap "kill $PYPID" SIGINT SIGTERM
+
+wait $PYPID
