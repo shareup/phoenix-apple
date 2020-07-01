@@ -150,12 +150,16 @@ class ChannelTests: XCTestCase {
     func testJoinRetriesWithBackoffIfTimeout() throws {
         var counter = 0
 
+        let startTime = Date()
+
         var channel: Channel? = nil
         channel = Channel(
             topic: "room:timeout",
             joinPayloadBlock: {
                 counter += 1
                 if counter >= 3 {
+                    let time = startTime.timeIntervalSinceNow * -1000 // Convert to positive milliseconds
+                    XCTAssertGreaterThan(time, 190 as Double)
                     DispatchQueue.main.async { channel?.leave() }
                 }
                 return ["timeout": 100, "join": true]
@@ -165,7 +169,7 @@ class ChannelTests: XCTestCase {
         channel!.rejoinTimeout = { attempt in
             switch attempt {
             case 0: XCTFail("Rejoin timeouts start at 1"); return .seconds(1)
-            case 1, 2, 3: return .milliseconds(10 * attempt)
+            case 1, 2: return .milliseconds(50 * attempt)
             default: return .seconds(2)
             }
         }
@@ -176,9 +180,7 @@ class ChannelTests: XCTestCase {
         defer { socketSub.cancel() }
 
         let channelSub = channel!.sink(receiveValue:
-            expectAndThen([
-                .leave: { XCTAssertEqual(3, counter) }
-            ])
+            expectAndThen([ .leave: { XCTAssertEqual(3, counter) } ])
         )
         defer { channelSub.cancel() }
 
