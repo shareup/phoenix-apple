@@ -1259,20 +1259,22 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 2)
     }
 
-    func testSendingMessageWithoutReply() throws {
+    func testSendingNoReplyMessageWithCallback() throws {
         let channel = makeChannel(topic: "room:lobby")
 
         let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
 
-        let joinEx = self.expectation(description: "Should have joined")
-        let pushEx = self.expectation(description: "Should not have received push reply")
-        pushEx.isInverted = true
+        let expectFailure = self.expectFailure(Channel.Error.pushTimeout)
         let channelSub = channel.sink(receiveValue:
-            onResults([
+            expectAndThen([
                 .join: {
-                    channel.push("insert_message", payload: ["text": "word"]) { _ in pushEx.fulfill() }
-                    joinEx.fulfill()
+                    channel.push(
+                        "insert_message",
+                        payload: ["text": "word"],
+                        timeout: .milliseconds(50),
+                        callback: expectFailure
+                    )
                 },
             ])
         )
@@ -1280,8 +1282,11 @@ class ChannelTests: XCTestCase {
 
         socket.connect()
 
-        wait(for: [joinEx], timeout: 2)
-        wait(for: [pushEx], timeout: 0.1)
+        waitForExpectations(timeout: 2)
+
+        XCTAssertTrue(channel.pending.isEmpty)
+        XCTAssertTrue(channel.inFlight.isEmpty)
+        XCTAssertTrue(channel.isJoined)
     }
 }
 
