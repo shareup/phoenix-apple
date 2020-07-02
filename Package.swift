@@ -1,4 +1,4 @@
-// swift-tools-version:5.1
+// swift-tools-version:5.2
 import PackageDescription
 let package = Package(
     name: "Phoenix",
@@ -11,7 +11,7 @@ let package = Package(
             targets: ["Phoenix"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/shareup/synchronized.git", .upToNextMajor(from: "2.0.0")),
+        .package(name: "Synchronized", url: "https://github.com/shareup/synchronized.git", from: "2.0.0"),
     ],
     targets: [
         .target(
