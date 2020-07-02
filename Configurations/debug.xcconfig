@@ -58,7 +58,7 @@ CLANG_WARN_OBJC_REPEATED_USE_OF_WEAK = YES
 CLANG_ANALYZER_NONNULL = YES
 SWIFT_VERSION = 5.0
 
-COPYRIGHT_STATEMENT = Copyright © 2018 Shareup Software Corporation. All rights reserved.
+COPYRIGHT_STATEMENT = Copyright © 2020 Shareup Software Corporation. All rights reserved.
 
 // -*- DEBUG -*-
 
