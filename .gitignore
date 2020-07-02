@@ -63,4 +63,3 @@ Carthage/Build
 fastlane/report.xml
 fastlane/screenshots
 
-slack-credentials.json
