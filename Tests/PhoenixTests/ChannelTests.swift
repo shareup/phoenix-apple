@@ -1258,6 +1258,31 @@ class ChannelTests: XCTestCase {
         
         waitForExpectations(timeout: 2)
     }
+
+    func testSendingMessageWithoutReply() throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+        defer { socketSub.cancel() }
+
+        let joinEx = self.expectation(description: "Should have joined")
+        let pushEx = self.expectation(description: "Should not have received push reply")
+        pushEx.isInverted = true
+        let channelSub = channel.sink(receiveValue:
+            onResults([
+                .join: {
+                    channel.push("insert_message", payload: ["text": "word"]) { _ in pushEx.fulfill() }
+                    joinEx.fulfill()
+                },
+            ])
+        )
+        defer { channelSub.cancel() }
+
+        socket.connect()
+
+        wait(for: [joinEx], timeout: 2)
+        wait(for: [pushEx], timeout: 0.1)
+    }
 }
 
 extension ChannelTests {
