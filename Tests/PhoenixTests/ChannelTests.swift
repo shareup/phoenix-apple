@@ -1003,7 +1003,7 @@ class ChannelTests: XCTestCase {
         let channelSub = channel.sink(receiveValue:
             expectAndThen([
                 .join: {
-                    channel.push("echo_timeout", payload: payload(2_000), timeout: .seconds(2), callback: nil)
+                    channel.push("echo_timeout", payload: payload(2_000), timeout: .seconds(2), callback: { _ in })
                     pushShortTimeoutAfterFirstPushIsInFlight()
                 }
             ])

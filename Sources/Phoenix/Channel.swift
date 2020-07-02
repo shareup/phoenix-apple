@@ -328,9 +328,11 @@ extension Channel {
             
             let ref = socket.advanceRef()
             let message = OutgoingMessage(push, ref: ref, joinRef: joinRef)
-            
-            let pushed = PushedMessage(push: push, message: message)
-            _inFlight[ref] = pushed
+
+            if push.callback.exists {
+                let pushed = PushedMessage(push: push, message: message)
+                _inFlight[ref] = pushed
+            }
             
             createInFlightMessagesTimer()
             
