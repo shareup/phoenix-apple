@@ -306,8 +306,14 @@ extension Channel {
         
         socket.send(message) { error in
             if let error = error {
-                Swift.print("There was an error writing to the socket: \(error)")
-                // NOTE: we don't change state to error here, instead we let the socket close do that for us
+                switch error {
+                case WebSocketError.notOpen, Socket.Error.notOpen:
+                    // Expected error
+                    break
+                default:
+                    Swift.print("There was an error writing to the socket: \(error)")
+                    // NOTE: we don't change state to error here, instead we let the socket close do that for us
+                }
             }
             
             completionHandler(error)
