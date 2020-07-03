@@ -49,8 +49,10 @@ public final class Channel: Publisher {
     private let notifySubjectQueue = DispatchQueue(label: "Channel.notifySubjectQueue")
     
     private var inFlightMessagesTimer: Timer?
-    
-    private(set) var joinTimer: JoinTimer = .off
+
+    var joinTimer: JoinTimer { sync { _joinTimer } }
+    private var _joinTimer: JoinTimer = .off
+
     private var leaveTimer: Timer? = nil
 
     var rejoinTimeout: RejoinTimeout = { attempt in
@@ -156,7 +158,7 @@ public final class Channel: Publisher {
 
     deinit {
         inFlightMessagesTimer = nil
-        joinTimer = .off
+        _joinTimer = .off
         leaveTimer = nil
         socketSubscriber?.cancel()
     }
@@ -221,7 +223,7 @@ extension Channel {
 
         sync {
             self.shouldRejoin = false
-            self.joinTimer = .off
+            self._joinTimer = .off
 
             switch state {
             case .joining(let joinRef), .joined(let joinRef):
@@ -380,28 +382,28 @@ extension Channel {
     
     private func createJoinTimer() {
         sync {
-            let attempt = (joinTimer.attempt ?? 0) + 1
-            self.joinTimer = .off
+            let attempt = (_joinTimer.attempt ?? 0) + 1
+            self._joinTimer = .off
 
             let timer = Timer(timeout) { [weak self] in self?.timeoutJoinPush() }
 
-            self.joinTimer = .join(timer: timer, attempt: attempt)
+            self._joinTimer = .join(timer: timer, attempt: attempt)
         }
     }
     
     private func createRejoinTimer() {
         sync {
-            guard joinTimer.isNotRejoinTimer else { return }
+            guard _joinTimer.isNotRejoinTimer else { return }
             
-            let attempt = joinTimer.attempt ?? 0
+            let attempt = _joinTimer.attempt ?? 0
             assert(attempt > 0, "we should always join before rejoining")
-            self.joinTimer = .off
+            self._joinTimer = .off
 
             let interval = rejoinTimeout(attempt)
             
             let timer = Timer(interval) { [weak self] in self?.rejoin() }
             
-            self.joinTimer = .rejoin(timer: timer, attempt: attempt)
+            self._joinTimer = .rejoin(timer: timer, attempt: attempt)
         }
     }
     
@@ -588,7 +590,7 @@ extension Channel {
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.join) }
 
-                self.joinTimer = .off
+                self._joinTimer = .off
                 
                 flushAsync()
                 
