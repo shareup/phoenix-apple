@@ -142,6 +142,7 @@ public final class Channel: Publisher {
     }
     
     public var connectionState: String {
+        let state = sync { return self.state }
         switch state {
         case .closed:
             return "closed"
