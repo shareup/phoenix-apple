@@ -121,6 +121,7 @@ public final class Socket {
             shouldReconnect = false
             cancelHeartbeatTimer()
             webSocketSubscriber?.cancel()
+            webSocketSubscriber = nil
             state.webSocket?.close()
             state = .closed
         }
