@@ -13,7 +13,7 @@ class ChannelTests: XCTestCase {
         socket.disconnect()
         socket = nil
     }
-    
+
     // MARK: constructor
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L36

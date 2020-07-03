@@ -1,11 +1,14 @@
 import XCTest
 @testable import Phoenix
 
+private let defaultLocalIP = "0.0.0.0"
+private let defaultLocalDomain = "localhost.charlesproxy.com" // Allows viewing requests/responses in Charles
+
 final class TestHelper {
     let gen = Ref.Generator()
     let userIDGen = Ref.Generator()
     
-    var defaultURL: URL { URL(string: "ws://0.0.0.0:4000/socket?user_id=\(userIDGen.advance().rawValue)")! }
+    var defaultURL: URL { URL(string: "ws://\(defaultLocalIP):4000/socket?user_id=\(userIDGen.advance().rawValue)")! }
     var defaultWebSocketURL: URL { Socket.webSocketURLV2(url: defaultURL) }
     
     func deserialize(_ data: Data) -> [Any?]? {
