@@ -9,7 +9,7 @@ defmodule ServerWeb.RoomChannel do
     do_join(params, socket)
   end
 
-  def join("room:timeout", %{"timeout" => amount} = params, socket) do
+  def join("room:timeout" <> _room_id, %{"timeout" => amount} = params, socket) do
     Process.sleep(amount)
 
     if %{"join" => true} = params do

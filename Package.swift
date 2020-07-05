@@ -12,11 +12,12 @@ let package = Package(
     ],
     dependencies: [
         .package(name: "Synchronized", url: "https://github.com/shareup/synchronized.git", from: "2.0.0"),
+        .package(name: "WebSocket", url: "https://github.com/shareup/websocket-apple.git", from: "2.0.0"),
     ],
     targets: [
         .target(
             name: "Phoenix",
-            dependencies: ["Synchronized"]),
+            dependencies: ["Synchronized", "WebSocket"]),
         .testTarget(
             name: "PhoenixTests",
             dependencies: ["Phoenix"]),

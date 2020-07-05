@@ -1,6 +1,8 @@
 import Combine
 import Foundation
 import Synchronized
+import WebSocket
+import WebSocketProtocol
 
 private let backgroundQueue = DispatchQueue(label: "Socket.backgroundQueue")
 
@@ -166,6 +168,7 @@ extension Socket: ConnectablePublisher {
             case .closed:
                 let ws = WebSocket(url: url)
                 self.state = .connecting(ws)
+                ws.connect()
 
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.connecting) }
@@ -339,7 +342,7 @@ extension Socket {
                     if let error = error {
                         Swift.print("Error writing to WebSocket: \(error)")
                         self.state = .closing(ws) // TODO: write a test to prove this works
-                        ws.close(.abnormalClosure)
+                        ws.close(WebSocketCloseCode.abnormalClosure)
                     }
                     
                     completionHandler(error)
@@ -363,7 +366,7 @@ extension Socket {
                     if let error = error {
                         Swift.print("Error writing to WebSocket: \(error)")
                         self.state = .closing(ws) // TODO: write a test to prove this works
-                        ws.close(.abnormalClosure)
+                        ws.close(WebSocketCloseCode.abnormalClosure)
                     }
                     
                     completionHandler(error)
@@ -484,7 +487,7 @@ extension Socket {
                 }
             case .data:
                 assertionFailure("We are not currently expecting any data frames from the server")
-            case .string(let string):
+            case .text(let string):
                 do {
                     let message = try IncomingMessage(string: string)
                     let subject = self.subject

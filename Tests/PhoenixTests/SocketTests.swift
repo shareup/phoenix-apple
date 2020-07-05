@@ -284,16 +284,18 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L368
     func testChannelsAreTracked() throws {
         let socket = makeSocket()
-        let channel1 = socket.join("room:lobby")
+        let channel1 = socket.join("room:timeout1", payload: ["timeout": 2_000, "join": true])
         
         XCTAssertEqual(socket.joinedChannels.count, 1)
         
-        let channel2 = socket.join("room:lobby2")
+        let channel2 = socket.join("room:timeout2", payload: ["timeout": 2_000, "join": true])
         
         XCTAssertEqual(socket.joinedChannels.count, 2)
-        
-        XCTAssertEqual(channel1.connectionState, "joining")
-        XCTAssertEqual(channel2.connectionState, "joining")
+
+        expectationWithTest(description: "Should be joining channel 1", test: channel1.connectionState == "joining")
+        expectationWithTest(description: "Should be joining channel 2", test: channel2.connectionState == "joining")
+
+        waitForExpectations(timeout: 2)
     }
 
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L385

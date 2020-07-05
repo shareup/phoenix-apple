@@ -1,3 +1,5 @@
+import WebSocket
+
 extension Socket {
     enum State {
         case closed
