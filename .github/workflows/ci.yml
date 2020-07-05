@@ -5,8 +5,6 @@ jobs:
     runs-on: macOS-latest
     steps:
       - uses: actions/checkout@v2
-        with:
-          token: ${{ secrets.SHAREUP_PERSONALACCESSTOKEN }} # Grants access to private repos
       # Available environments: https://github.com/actions/virtual-environments/blob/master/images/macos/macos-10.15-Readme.md#xcode
       - name: Switch Xcode to 11.5
         run: xcversion select 11.5
