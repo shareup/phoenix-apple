@@ -3,7 +3,7 @@
     "pins": [
       {
         "package": "Synchronized",
-        "repositoryURL": "git@github.com:shareup/synchronized.git",
+        "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {
           "branch": null,
           "revision": "5f3312cf35cde0ddd1196ca9c44190b1859426e0",
@@ -12,7 +12,7 @@
       },
       {
         "package": "WebSocket",
-        "repositoryURL": "git@github.com:shareup/websocket-apple.git",
+        "repositoryURL": "https://github.com/shareup/websocket-apple.git",
         "state": {
           "branch": null,
           "revision": "64670643dd6faaec284dfae359672b18749b54c2",
