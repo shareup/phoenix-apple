@@ -292,8 +292,10 @@ class SocketTests: XCTestCase {
         
         XCTAssertEqual(socket.joinedChannels.count, 2)
 
-        expectationWithTest(description: "Should be joining channel 1", test: channel1.connectionState == "joining")
-        expectationWithTest(description: "Should be joining channel 2", test: channel2.connectionState == "joining")
+        expectationWithTest(
+            description: "Should be joining channels",
+            test: channel1.connectionState == "joining" && channel2.connectionState == "joining"
+        )
 
         waitForExpectations(timeout: 2)
     }
