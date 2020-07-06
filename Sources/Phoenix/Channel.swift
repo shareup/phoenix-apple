@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import Synchronized
+import WebSocket
 
 private let backgroundQueue = DispatchQueue(label: "Channel.backgroundQueue")
 

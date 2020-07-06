@@ -2,9 +2,9 @@
 
 ## _(macOS, iOS, iPadOS, tvOS, and watchOS)_
 
-A package for connecting to and interacting with phoenix channels from Apple OS's written in Swift taking advantage of the built in `Websocket` support and `Combine` for publishing events to downstream consumers.
+A package for connecting to and interacting with Phoenix channels from Apple OS's written in Swift taking advantage of the built in `Websocket` support and `Combine` for publishing events to downstream consumers.
 
-**Compatible with phoenix channels vsn=2.0.0 only.**
+**Compatible with Phoenix channels vsn=2.0.0 only.**
 
 ## Tests
 
