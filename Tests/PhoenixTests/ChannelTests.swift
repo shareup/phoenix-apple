@@ -811,7 +811,7 @@ class ChannelTests: XCTestCase {
         callbackEx.expectedFulfillmentCount = 2
         let callback = { (result: Result<Channel.Reply, Error>) in
             guard case let .success(reply) = result else { return }
-            refs.insert(reply.ref)
+            DispatchQueue.main.sync { _ = refs.insert(reply.ref) }
             callbackEx.fulfill()
         }
         
