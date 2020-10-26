@@ -8,7 +8,7 @@ final class TestHelper {
     let gen = Ref.Generator()
     let userIDGen = Ref.Generator()
     
-    var defaultURL: URL { URL(string: "ws://\(defaultLocalIP):4000/socket?user_id=\(userIDGen.advance().rawValue)")! }
+    var defaultURL: URL { URL(string: "ws://\(defaultLocalIP):4000/socket/websocket?user_id=\(userIDGen.advance().rawValue)")! }
     var defaultWebSocketURL: URL { Socket.webSocketURLV2(url: defaultURL) }
     
     func deserialize(_ data: Data) -> [Any?]? {

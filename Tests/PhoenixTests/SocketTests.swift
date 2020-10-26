@@ -14,7 +14,7 @@ class SocketTests: XCTestCase {
         // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L35
         XCTAssertEqual(Socket.defaultHeartbeatInterval, .seconds(30))
         
-        let url: URL = URL(string: "ws://0.0.0.0:4000/socket")!
+        let url: URL = URL(string: "ws://0.0.0.0:4000/socket/websocket")!
         let socket = Socket(url: url)
         
         XCTAssertEqual(socket.timeout, Socket.defaultTimeout)
