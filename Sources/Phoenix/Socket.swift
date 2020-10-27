@@ -135,6 +135,7 @@ public final class Socket {
 extension Socket {
     static func webSocketURLV2(url original: URL) -> URL {
         return original
+            .appendingPathComponent("websocket")
             .appendingQueryItems(["vsn": "2.0.0"])
     }
 }
