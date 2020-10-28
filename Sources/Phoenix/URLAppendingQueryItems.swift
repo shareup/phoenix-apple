@@ -47,7 +47,7 @@ extension String {
         var allowedCharacterSet = CharacterSet.alphanumerics
         allowedCharacterSet.insert(charactersIn: allowedCharacters)
 
-        let encoded = addingPercentEncoding(withAllowedCharacters: allowedCharacterSet)
-        return encoded?.replacingOccurrences(of: " ", with: "+")
+        return addingPercentEncoding(withAllowedCharacters: allowedCharacterSet)?
+            .replacingOccurrences(of: " ", with: "+")
     }
 }
