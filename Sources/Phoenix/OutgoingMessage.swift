@@ -1,12 +1,12 @@
 import Foundation
 
-struct OutgoingMessage {
-    let joinRef: Ref?
-    let ref: Ref
-    let topic: Topic
-    let event: PhxEvent
-    let payload: Payload
-    let sentAt: DispatchTime = DispatchTime.now()
+public struct OutgoingMessage {
+    public var joinRef: Ref?
+    public var ref: Ref
+    public var topic: Topic
+    public var event: PhxEvent
+    public var payload: Payload
+    var sentAt: DispatchTime = DispatchTime.now()
     
     enum Error: Swift.Error {
         case missingChannelJoinRef

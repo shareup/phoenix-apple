@@ -14,6 +14,9 @@ public final class Socket {
 
     private let lock: RecursiveLock = RecursiveLock()
     private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
+
+    private let customEncoder: OutgoingMessageEncoder?
+    private let customDecoder: IncomingMessageDecoder?
     
     private let subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed
@@ -99,23 +102,35 @@ public final class Socket {
         }
     } }
     
-    public init(url: URL,
-                timeout: DispatchTimeInterval = Socket.defaultTimeout,
-                heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval) {
+    public init(
+        url: URL,
+        timeout: DispatchTimeInterval = Socket.defaultTimeout,
+        heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
+        customEncoder: OutgoingMessageEncoder? = nil,
+        customDecoder: IncomingMessageDecoder? = nil
+    ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = Ref.Generator()
         self.url = Socket.webSocketURLV2(url: url)
+        self.customEncoder = customEncoder
+        self.customDecoder = customDecoder
     }
     
-    init(url: URL,
-         timeout: DispatchTimeInterval = Socket.defaultTimeout,
-         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
-         refGenerator: Ref.Generator) {
+    init(
+        url: URL,
+        timeout: DispatchTimeInterval = Socket.defaultTimeout,
+        heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
+        refGenerator: Ref.Generator,
+        customEncoder: OutgoingMessageEncoder? = nil,
+        customDecoder: IncomingMessageDecoder? = nil
+    ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = refGenerator
         self.url = Socket.webSocketURLV2(url: url)
+        self.customEncoder = customEncoder
+        self.customDecoder = customDecoder
     }
 
     deinit {
@@ -322,7 +337,12 @@ extension Socket {
     
     func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
         do {
-            let data = try message.encoded()
+            let data: Data
+            if let encoder = customEncoder {
+                data = try encoder(message)
+            } else {
+                data = try message.encoded()
+            }
             send(data, completionHandler: completionHandler)
         } catch {
             completionHandler(Error.couldNotSerializeOutgoingMessage(message))
@@ -489,7 +509,13 @@ extension Socket {
                 assertionFailure("We are not currently expecting any data frames from the server")
             case .text(let string):
                 do {
-                    let message = try IncomingMessage(string: string)
+                    let message: IncomingMessage
+                    if let decoder = self.customDecoder {
+                        message = try decoder(try string.data(using: .utf8))
+                    } else {
+                        message = try IncomingMessage(string: string)
+                    }
+
                     let subject = self.subject
 
                     sync {

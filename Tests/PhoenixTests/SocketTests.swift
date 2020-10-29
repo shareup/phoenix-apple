@@ -94,11 +94,12 @@ class SocketTests: XCTestCase {
     
     func testSocketAutoconnectHasUpstream() throws {
         let conn = makeSocket().autoconnect()
-        defer { conn.upstream.disconnect() }
-
-        let sub = conn.sink(receiveValue: expect(.open))
+        let sub = conn.sink(receiveValue:
+            expectAndThen([
+                .open: { conn.upstream.disconnect() }
+            ])
+        )
         defer { sub.cancel() }
-
         waitForExpectations(timeout: 2)
     }
     
@@ -771,11 +772,58 @@ class SocketTests: XCTestCase {
         
         waitForExpectations(timeout: 2)
     }
+
+    func testSocketUsesCustomEncoderAndDecoder() throws {
+        let ex = expectation(description: "Received reply from join")
+
+        let encoder: OutgoingMessageEncoder = { (message: OutgoingMessage) throws -> Data in
+            let array: [Any?] = [
+                message.joinRef?.rawValue,
+                message.ref.rawValue,
+                "room:lobbylobbylobby",
+                message.event.stringValue,
+                message.payload
+            ]
+            return try JSONSerialization.data(withJSONObject: array, options: [])
+        }
+
+        let decoder: IncomingMessageDecoder = { (data: Data) throws -> IncomingMessage in
+            var decoded = try IncomingMessage(data: data)
+            XCTAssertEqual("room:lobbylobbylobby", decoded.topic)
+            decoded.topic = "notwhatyouexpected"
+            return decoded
+        }
+
+        let socket = makeSocket(encoder: encoder, decoder: decoder)
+        let sub = socket.sink { (message: Socket.Message) in
+            switch message {
+            case let .incomingMessage(incomingMessage):
+                XCTAssertEqual("notwhatyouexpected", incomingMessage.topic)
+                ex.fulfill()
+            default:
+                break
+            }
+        }
+        defer { sub.cancel() }
+
+        let channel = socket.join("room:lobby")
+        defer { channel.leave() }
+        socket.connect()
+
+        waitForExpectations(timeout: 2)
+    }
 }
 
 private extension SocketTests {
-    func makeSocket() -> Socket {
-        let socket = Socket(url: testHelper.defaultURL)
+    func makeSocket(
+        encoder: OutgoingMessageEncoder? = nil,
+        decoder: IncomingMessageDecoder? = nil
+    ) -> Socket {
+        let socket = Socket(
+            url: testHelper.defaultURL,
+            customEncoder: encoder,
+            customDecoder: decoder
+        )
         // We don't want the socket to reconnect unless the test requires it to.
         socket.reconnectTimeInterval = { _ in .seconds(30) }
         return socket

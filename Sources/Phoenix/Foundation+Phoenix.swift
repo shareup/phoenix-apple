@@ -12,3 +12,25 @@ extension Optional {
         }
     }
 }
+
+extension String {
+    func data(
+        using encoding: String.Encoding,
+        allowLossyConversion: Bool = false
+    ) throws -> Data {
+        let optionalData: Data? = self.data(
+            using: encoding,
+            allowLossyConversion: allowLossyConversion
+        )
+
+        guard let data = optionalData else {
+            throw NSError(
+                domain: "app.shareup.phoenix",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Could not encode '\(self)' into UTF8 bytes"]
+            )
+        }
+
+        return data
+    }
+}

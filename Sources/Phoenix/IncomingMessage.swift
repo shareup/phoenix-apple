@@ -7,11 +7,11 @@ public struct IncomingMessage {
         case invalidTypeForValue(String, Any?)
     }
 
-    let joinRef: Ref?
-    let ref: Ref?
-    let topic: Topic
-    let event: PhxEvent
-    let payload: Payload
+    public var joinRef: Ref?
+    public var ref: Ref?
+    public var topic: Topic
+    public var event: PhxEvent
+    public var payload: Payload
     
     init(string: String) throws {
         try self.init(data: Data(string.utf8))
@@ -50,7 +50,13 @@ public struct IncomingMessage {
         )
     }
 
-    init(joinRef: Ref? = nil, ref: Ref?, topic: Topic, event: PhxEvent, payload: Payload = [:]) {
+    public init(
+        joinRef: Ref? = nil,
+        ref: Ref?,
+        topic: Topic,
+        event: PhxEvent,
+        payload: Payload = [:]
+    ) {
         self.joinRef = joinRef
         self.ref = ref
         self.topic = topic
