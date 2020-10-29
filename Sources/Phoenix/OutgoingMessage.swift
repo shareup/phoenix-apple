@@ -40,7 +40,7 @@ public struct OutgoingMessage {
         self.payload = push.payload
     }
     
-    func encoded() throws -> Data {
+    public func encoded() throws -> Data {
         let array: [Any?] = [
             joinRef?.rawValue,
             ref.rawValue,

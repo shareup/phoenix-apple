@@ -17,7 +17,7 @@ public struct IncomingMessage {
         try self.init(data: Data(string.utf8))
     }
 
-    init(data: Data) throws {
+    public init(data: Data) throws {
         let jsonArray = try JSONSerialization.jsonObject(with: data, options: [])
 
         guard let arr = jsonArray as? [Any?] else {
