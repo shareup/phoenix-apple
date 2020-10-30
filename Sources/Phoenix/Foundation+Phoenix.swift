@@ -14,6 +14,19 @@ extension Optional {
 }
 
 extension String {
+    init(data: Data, encoding: String.Encoding) throws {
+        guard let string = String(data: data, encoding: encoding) else {
+            throw NSError(
+                domain: "app.shareup.phoenix",
+                code: 10000,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Could not decode '\(data)' into a UTF8 string"
+                ]
+            )
+        }
+        self = string
+    }
+
     func data(
         using encoding: String.Encoding,
         allowLossyConversion: Bool = false
@@ -26,8 +39,10 @@ extension String {
         guard let data = optionalData else {
             throw NSError(
                 domain: "app.shareup.phoenix",
-                code: 0,
-                userInfo: [NSLocalizedDescriptionKey: "Could not encode '\(self)' into UTF8 bytes"]
+                code: 10001,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Could not encode '\(self)' into UTF8 bytes"
+                ]
             )
         }
 
