@@ -203,7 +203,10 @@ class ChannelTests: XCTestCase {
                 .error: {
                     // This isn't exactly the same as the JavaScript test. In the JavaScript test,
                     // there is a delay after sending 'connect' before receiving the response.
-                    didReceiveError = true; usleep(50_000); self.socket.connect() },
+                    didReceiveError = true
+                    usleep(50_000)
+                    self.socket.connect()
+                },
                 .join: { didJoinEx.fulfill() },
             ])
         )
@@ -228,7 +231,11 @@ class ChannelTests: XCTestCase {
             onResults([
                 // This isn't exactly the same as the JavaScript test. In the JavaScript test,
                 // there is a delay after sending 'connect' before receiving the response.
-                .error: { didReceiveError = true; usleep(50_000); self.socket.connect() },
+                .error: {
+                    didReceiveError = true
+                    usleep(50_000)
+                    self.socket.connect()
+                },
                 .join: { didJoinEx.fulfill() },
             ])
         )

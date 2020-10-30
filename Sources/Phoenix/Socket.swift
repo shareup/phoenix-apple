@@ -15,8 +15,8 @@ public final class Socket {
     private let lock: RecursiveLock = RecursiveLock()
     private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
 
-    private let customEncoder: OutgoingMessageEncoder?
-    private let customDecoder: IncomingMessageDecoder?
+    private let encoder: OutgoingMessageEncoder
+    private let decoder: IncomingMessageDecoder
     
     private let subject = PassthroughSubject<Output, Failure>()
     private var state: State = .closed
@@ -113,8 +113,8 @@ public final class Socket {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = Ref.Generator()
         self.url = Socket.webSocketURLV2(url: url)
-        self.customEncoder = customEncoder
-        self.customDecoder = customDecoder
+        self.encoder = customEncoder ?? { try $0.encoded() }
+        self.decoder = customDecoder ?? IncomingMessage.init
     }
     
     init(
@@ -129,8 +129,8 @@ public final class Socket {
         self.heartbeatInterval = heartbeatInterval
         self.refGenerator = refGenerator
         self.url = Socket.webSocketURLV2(url: url)
-        self.customEncoder = customEncoder
-        self.customDecoder = customDecoder
+        self.encoder = customEncoder ?? { try $0.encoded() }
+        self.decoder = customDecoder ?? IncomingMessage.init
     }
 
     deinit {
@@ -337,13 +337,8 @@ extension Socket {
     
     func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
         do {
-            let data: Data
-            if let encoder = customEncoder {
-                data = try encoder(message)
-            } else {
-                data = try message.encoded()
-            }
-            send(data, completionHandler: completionHandler)
+            let text: String = try String(data: try encoder(message), encoding: .utf8)
+            send(text, completionHandler: completionHandler)
         } catch {
             completionHandler(Error.couldNotSerializeOutgoingMessage(message))
         }
@@ -369,6 +364,9 @@ extension Socket {
                 }
             default:
                 completionHandler(Socket.Error.notOpen)
+
+                let subject = self.subject
+                notifySubjectQueue.async { subject.send(.close) }
             }
         }
     }
@@ -381,7 +379,6 @@ extension Socket {
         sync {
             switch state {
             case .open(let ws):
-                // TODO: capture obj-c exceptions over in the WebSocket class
                 ws.send(data) { error in
                     if let error = error {
                         Swift.print("Error writing to WebSocket: \(error)")
@@ -509,13 +506,7 @@ extension Socket {
                 assertionFailure("We are not currently expecting any data frames from the server")
             case .text(let string):
                 do {
-                    let message: IncomingMessage
-                    if let decoder = self.customDecoder {
-                        message = try decoder(try string.data(using: .utf8))
-                    } else {
-                        message = try IncomingMessage(string: string)
-                    }
-
+                    let message = try decoder(try string.data(using: .utf8))
                     let subject = self.subject
 
                     sync {
