@@ -11,8 +11,8 @@ let package = Package(
             targets: ["Phoenix"]),
     ],
     dependencies: [
-        .package(name: "Synchronized", url: "https://github.com/shareup/synchronized.git", from: "2.0.0"),
-        .package(name: "WebSocket", url: "https://github.com/shareup/websocket-apple.git", from: "2.0.0"),
+        .package(name: "Synchronized", url: "https://github.com/shareup/synchronized.git", from: "2.1.0"),
+        .package(name: "WebSocket", url: "https://github.com/shareup/websocket-apple.git", from: "2.1.0"),
     ],
     targets: [
         .target(
