@@ -50,6 +50,12 @@ public final class Socket {
     public static let defaultHeartbeatInterval: DispatchTimeInterval = .seconds(30)
     public let heartbeatInterval: DispatchTimeInterval
 
+    public var maximumMessageSize: Int = 1024 * 1024 {
+        didSet { sync {
+            state.webSocket?.maximumMessageSize = maximumMessageSize
+        } }
+    }
+
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/js/phoenix.js#L790
     public var reconnectTimeInterval: ReconnectTimeInterval = { (attempt: Int) -> DispatchTimeInterval in
         let milliseconds = [10, 50, 100, 150, 200, 250, 500, 1000, 2000, 5000]
@@ -182,6 +188,7 @@ extension Socket: ConnectablePublisher {
             switch state {
             case .closed:
                 let ws = WebSocket(url: url)
+                ws.maximumMessageSize = maximumMessageSize
                 self.state = .connecting(ws)
                 ws.connect()
 
@@ -502,7 +509,7 @@ extension Socket {
                         flushAsync()
                     }
                 }
-            case .data:
+            case .binary:
                 assertionFailure("We are not currently expecting any data frames from the server")
             case .text(let string):
                 do {
