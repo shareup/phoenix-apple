@@ -1,4 +1,5 @@
 import Foundation
+import WebSocketProtocol
 
 public struct OutgoingMessage {
     public var joinRef: Ref?
@@ -40,7 +41,7 @@ public struct OutgoingMessage {
         self.payload = push.payload
     }
     
-    public func encoded() throws -> Data {
+    public func encoded() throws -> WebSocketMessage {
         let array: [Any?] = [
             joinRef?.rawValue,
             ref.rawValue,
@@ -49,6 +50,7 @@ public struct OutgoingMessage {
             payload
         ]
         
-        return try JSONSerialization.data(withJSONObject: array, options: [])
+        let data = try JSONSerialization.data(withJSONObject: array, options: [])
+        return .text(try String(data: data, encoding: .utf8))
     }
 }

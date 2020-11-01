@@ -1,6 +1,7 @@
 import XCTest
 @testable import Phoenix
 import Combine
+import WebSocketProtocol
 
 class SocketTests: XCTestCase {
 
@@ -776,16 +777,17 @@ class SocketTests: XCTestCase {
     func testSocketUsesCustomEncoderAndDecoder() throws {
         let ex = expectation(description: "Received reply from join")
 
-        let encoder: OutgoingMessageEncoder = { (message: OutgoingMessage) throws -> Data in
-            let array: [Any?] = [
-                message.joinRef?.rawValue,
-                message.ref.rawValue,
-                "room:lobbylobbylobby",
-                message.event.stringValue,
-                message.payload
-            ]
-            return try JSONSerialization.data(withJSONObject: array, options: [])
-        }
+        let encoder: OutgoingMessageEncoder =
+            { (message: OutgoingMessage) throws -> WebSocketMessage in
+                let array: [Any?] = [
+                    message.joinRef?.rawValue,
+                    message.ref.rawValue,
+                    "room:lobbylobbylobby",
+                    message.event.stringValue,
+                    message.payload
+                ]
+                return .binary(try JSONSerialization.data(withJSONObject: array, options: []))
+            }
 
         let decoder: IncomingMessageDecoder = { (data: Data) throws -> IncomingMessage in
             var decoded = try IncomingMessage(data: data)
