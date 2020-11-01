@@ -1,4 +1,17 @@
 import Foundation
+import WebSocketProtocol
+
+public enum RawIncomingMessage: CustomStringConvertible, Hashable {
+    case binary(Data)
+    case text(String)
+
+    public var description: String {
+        switch self {
+        case let .binary(data): return String(data: data, encoding: .utf8) ?? ""
+        case let .text(text): return text
+        }
+    }
+}
 
 public struct IncomingMessage {
     enum DecodingError: Error {
@@ -17,7 +30,16 @@ public struct IncomingMessage {
         try self.init(data: Data(string.utf8))
     }
 
-    public init(data: Data) throws {
+    public init(_ rawMessage: RawIncomingMessage) throws {
+        switch rawMessage {
+        case let .binary(data):
+            try self.init(data: data)
+        case let .text(text):
+            try self.init(data: try text.data(using: .utf8))
+        }
+    }
+
+    init(data: Data) throws {
         let jsonArray = try JSONSerialization.jsonObject(with: data, options: [])
 
         guard let arr = jsonArray as? [Any?] else {

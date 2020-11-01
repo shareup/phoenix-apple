@@ -345,9 +345,6 @@ extension Socket {
     func send(_ message: OutgoingMessage, completionHandler: @escaping Callback) {
         do {
             switch try encoder(message) {
-            case .open:
-                assertionFailure("User cannot send WebSocketMessage.open")
-                completionHandler(Error.canNotSendOpenMessage)
             case let .binary(data):
                 send(data, completionHandler: completionHandler)
             case let .text(text):
@@ -489,34 +486,32 @@ extension Socket {
     private func receive(value: WebSocketOutput) {
         let subject = self.subject
 
+        func handleBinaryOrTextMessage(_ rawMessage: RawIncomingMessage) {
+            let subject = self.subject
+            do {
+                let msg = try decoder(rawMessage)
+                sync {
+                    switch msg.event {
+                    case .heartbeat where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
+                        self.pendingHeartbeatRef = nil
+                    case .close:
+                        removeChannel(for: msg.topic)
+                        notifySubjectQueue.async { subject.send(.incomingMessage(msg)) }
+                    default:
+                        notifySubjectQueue.async { subject.send(.incomingMessage(msg)) }
+                    }
+                }
+            } catch {
+                Swift.print("Could not decode the WebSocket message data: \(error)")
+                Swift.print("Message data: \(rawMessage.description)")
+                notifySubjectQueue.async { subject.send(.unreadableMessage(rawMessage.description)) }
+            }
+        }
+
         switch value {
         case .failure(let error):
             notifySubjectQueue.async { subject.send(.websocketError(error)) }
         case .success(let message):
-            func handleTextOrBinaryMessage(
-                _ incomingMessage: @autoclosure () throws -> IncomingMessage
-            ) {
-                let subject = self.subject
-                do {
-                    let msg = try incomingMessage()
-                    sync {
-                        switch msg.event {
-                        case .heartbeat where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
-                            self.pendingHeartbeatRef = nil
-                        case .close:
-                            removeChannel(for: msg.topic)
-                            notifySubjectQueue.async { subject.send(.incomingMessage(msg)) }
-                        default:
-                            notifySubjectQueue.async { subject.send(.incomingMessage(msg)) }
-                        }
-                    }
-                } catch {
-                    Swift.print("Could not decode the WebSocket message data: \(error)")
-                    Swift.print("Message data: \(message.description)")
-                    notifySubjectQueue.async { subject.send(.unreadableMessage(message.description)) }
-                }
-            }
-
             switch message {
             case .open:
                 sync {
@@ -535,10 +530,10 @@ extension Socket {
                         flushAsync()
                     }
                 }
-            case .binary(let data):
-                handleTextOrBinaryMessage(try decoder(data))
-            case .text(let string):
-                handleTextOrBinaryMessage(try decoder(try string.data(using: .utf8)))
+            case let .binary(data):
+                handleBinaryOrTextMessage(.binary(data))
+            case let .text(text):
+                handleBinaryOrTextMessage(.text(text))
             }
         }
     }

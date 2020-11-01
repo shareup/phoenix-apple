@@ -1,6 +1,18 @@
 import Foundation
 import WebSocketProtocol
 
+public enum RawOutgoingMessage: CustomStringConvertible, Hashable {
+    case binary(Data)
+    case text(String)
+
+    public var description: String {
+        switch self {
+        case let .binary(data): return String(data: data, encoding: .utf8) ?? ""
+        case let .text(text): return text
+        }
+    }
+}
+
 public struct OutgoingMessage {
     public var joinRef: Ref?
     public var ref: Ref
@@ -41,7 +53,7 @@ public struct OutgoingMessage {
         self.payload = push.payload
     }
     
-    public func encoded() throws -> WebSocketMessage {
+    public func encoded() throws -> RawOutgoingMessage {
         let array: [Any?] = [
             joinRef?.rawValue,
             ref.rawValue,

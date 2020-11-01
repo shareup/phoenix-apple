@@ -778,7 +778,7 @@ class SocketTests: XCTestCase {
         let ex = expectation(description: "Received reply from join")
 
         let encoder: OutgoingMessageEncoder =
-            { (message: OutgoingMessage) throws -> WebSocketMessage in
+            { (message: OutgoingMessage) throws -> RawOutgoingMessage in
                 let array: [Any?] = [
                     message.joinRef?.rawValue,
                     message.ref.rawValue,
@@ -789,8 +789,8 @@ class SocketTests: XCTestCase {
                 return .binary(try JSONSerialization.data(withJSONObject: array, options: []))
             }
 
-        let decoder: IncomingMessageDecoder = { (data: Data) throws -> IncomingMessage in
-            var decoded = try IncomingMessage(data: data)
+        let decoder: IncomingMessageDecoder = { (raw: RawIncomingMessage) throws -> IncomingMessage in
+            var decoded = try IncomingMessage(raw)
             XCTAssertEqual("room:lobbylobbylobby", decoded.topic)
             decoded.topic = "notwhatyouexpected"
             return decoded
