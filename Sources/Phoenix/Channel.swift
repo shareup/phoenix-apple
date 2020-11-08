@@ -220,8 +220,8 @@ extension Channel {
 // MARK: leave
 
 extension Channel {
-    func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
-        guard let socket = self.socket else { return assertionFailure("No socket") }
+    public func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
+        guard let socket = self.socket else { return }
 
         sync {
             self.shouldRejoin = false
