@@ -96,6 +96,32 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 2)
     }
 
+    func testJoinReplyIsSentToChannel() throws {
+        let ex = expectation(description: "Did receive join reply")
+
+        let channel = Channel(topic: "room:lobby", socket: socket)
+        let channelSub = channel.sink { (msg) in
+            switch msg {
+            case .join(let reply):
+                guard let response = reply.payload["response"] as? [String: String] else {
+                    return XCTFail()
+                }
+                XCTAssertEqual("You're absolutely wonderful!", response["message"])
+                ex.fulfill()
+            default:
+                break
+            }
+        }
+        defer { channelSub.cancel() }
+
+        let socketSub = socket
+            .autoconnect()
+            .sink(receiveValue: expectAndThen([.open: { channel.join() }]))
+        defer { socketSub.cancel() }
+
+        waitForExpectations(timeout: 2)
+    }
+
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L141
     func testJoinCanHaveTimeout() throws {
         let channel = Channel(topic: "topic", socket: socket)

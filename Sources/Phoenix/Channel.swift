@@ -590,7 +590,7 @@ extension Channel {
                 self.state = .joined(joinRef)
 
                 let subject = self.subject
-                notifySubjectQueue.async { subject.send(.join) }
+                notifySubjectQueue.async { subject.send(.join(reply.message)) }
 
                 self._joinTimer = .off
                 

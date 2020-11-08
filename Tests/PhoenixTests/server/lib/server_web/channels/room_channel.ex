@@ -35,7 +35,7 @@ defmodule ServerWeb.RoomChannel do
       socket
       |> assign(:join_params, params)
 
-    {:ok, socket}
+    {:ok, %{message: "You're absolutely wonderful!"}, socket}
   end
 
   def handle_in("insert_message", %{"text" => text}, socket) do
