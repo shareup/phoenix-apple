@@ -411,6 +411,22 @@ class SocketTests: XCTestCase {
 
         waitForExpectations(timeout: 2)
     }
+
+    func testHeartbeatKeepsSocketConnected() throws {
+        let socket = makeSocket(heartbeatInterval: .milliseconds(100))
+
+        let closeEx = expectation(description: "Should not have closed")
+        closeEx.isInverted = true
+
+        let sub = socket.autoconnect().sink(receiveValue:
+            onResults([
+                .close: { closeEx.fulfill() }
+            ])
+        )
+        defer { sub.cancel() }
+
+        waitForExpectations(timeout: 0.5)
+    }
     
     func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
         let socket = Socket(url: testHelper.defaultURL, heartbeatInterval: .milliseconds(1))
@@ -818,11 +834,15 @@ class SocketTests: XCTestCase {
 
 private extension SocketTests {
     func makeSocket(
+        timeout: DispatchTimeInterval = Socket.defaultTimeout,
+        heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
         encoder: OutgoingMessageEncoder? = nil,
         decoder: IncomingMessageDecoder? = nil
     ) -> Socket {
         let socket = Socket(
             url: testHelper.defaultURL,
+            timeout: timeout,
+            heartbeatInterval: heartbeatInterval,
             customEncoder: encoder,
             customDecoder: decoder
         )

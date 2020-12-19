@@ -492,7 +492,7 @@ extension Socket {
                 let msg = try decoder(rawMessage)
                 sync {
                     switch msg.event {
-                    case .heartbeat where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
+                    case .reply where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
                         self.pendingHeartbeatRef = nil
                     case .close:
                         removeChannel(for: msg.topic)
@@ -504,7 +504,9 @@ extension Socket {
             } catch {
                 Swift.print("Could not decode the WebSocket message data: \(error)")
                 Swift.print("Message data: \(rawMessage.description)")
-                notifySubjectQueue.async { subject.send(.unreadableMessage(rawMessage.description)) }
+                notifySubjectQueue.async {
+                    subject.send(.unreadableMessage(rawMessage.description))
+                }
             }
         }
 
