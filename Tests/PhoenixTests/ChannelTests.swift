@@ -196,9 +196,6 @@ class ChannelTests: XCTestCase {
                 defer { counter += 1 }
                 let time = startTime.timeIntervalSinceNow * -1000 // Convert to positive milliseconds
 
-                Swift.print("<<<>>> COUNTER:", counter)
-                Swift.print("<<<>>> TIME:", time)
-
                 switch counter {
                 case 0:
                     return ["timeout": 2_000, "join": true]
@@ -215,7 +212,6 @@ class ChannelTests: XCTestCase {
             socket: socket
         )
         channel!.rejoinTimeout = { attempt in
-            Swift.print("<<<>>> REJOIN \(attempt)")
             switch attempt {
             case 0: XCTFail("Rejoin timeouts start at 1"); return .seconds(1)
             case 1: return .milliseconds(100)
@@ -232,7 +228,6 @@ class ChannelTests: XCTestCase {
         let joinEx = expectation(description: "Did join after backoff")
         joinEx.assertForOverFulfill = false
         let channelSub = channel!.sink { message in
-            Swift.print("<<<>>> CHANNEL:", message)
             guard case .join = message else { return }
             joinEx.fulfill()
         }
