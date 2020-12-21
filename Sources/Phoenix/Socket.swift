@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import os.log
 import Synchronized
 import WebSocket
 import WebSocketProtocol
@@ -35,7 +36,7 @@ public final class Socket {
     public let url: URL
     public let timeout: DispatchTimeInterval
 
-    private let notifySubjectQueue = DispatchQueue(label: "Socket.notifySubjectQueue")
+    private let notifySubjectQueue: DispatchQueue
 
     private let refGenerator: Ref.Generator
 
@@ -95,25 +96,15 @@ public final class Socket {
         return true
     } }
     
-    var connectionState: String { sync {
-        switch state {
-        case .closed:
-            return "closed"
-        case .connecting:
-            return "connecting"
-        case .open:
-            return "open"
-        case .closing:
-            return "closing"
-        }
-    } }
+    var connectionState: String { sync { state.debugDescription } }
     
     public init(
         url: URL,
         timeout: DispatchTimeInterval = Socket.defaultTimeout,
         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
         customEncoder: OutgoingMessageEncoder? = nil,
-        customDecoder: IncomingMessageDecoder? = nil
+        customDecoder: IncomingMessageDecoder? = nil,
+        publisherQueue: DispatchQueue? = nil
     ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
@@ -121,6 +112,12 @@ public final class Socket {
         self.url = Socket.webSocketURLV2(url: url)
         self.encoder = customEncoder ?? { try $0.encoded() }
         self.decoder = customDecoder ?? IncomingMessage.init
+        self.notifySubjectQueue = DispatchQueue(
+            label: "app.shareup.websocket.subjectqueue",
+            attributes: [],
+            autoreleaseFrequency: .workItem,
+            target: publisherQueue
+        )
     }
     
     init(
@@ -129,7 +126,8 @@ public final class Socket {
         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
         refGenerator: Ref.Generator,
         customEncoder: OutgoingMessageEncoder? = nil,
-        customDecoder: IncomingMessageDecoder? = nil
+        customDecoder: IncomingMessageDecoder? = nil,
+        publisherQueue: DispatchQueue? = nil
     ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
@@ -137,16 +135,20 @@ public final class Socket {
         self.url = Socket.webSocketURLV2(url: url)
         self.encoder = customEncoder ?? { try $0.encoded() }
         self.decoder = customDecoder ?? IncomingMessage.init
+        self.notifySubjectQueue = DispatchQueue(
+            label: "app.shareup.websocket.subjectqueue",
+            attributes: [],
+            autoreleaseFrequency: .workItem,
+            target: publisherQueue
+        )
     }
 
     deinit {
+        disconnect()
         sync {
-            shouldReconnect = false
-            cancelHeartbeatTimer()
             webSocketSubscriber?.cancel()
             webSocketSubscriber = nil
             state.webSocket?.close()
-            state = .closed
         }
     }
 }
@@ -211,24 +213,65 @@ extension Socket: ConnectablePublisher {
     }
     
     public func disconnect() {
-        sync {
-            self.shouldReconnect = false
-            
-            self.cancelHeartbeatTimer()
+        // Calling `Channel.leave()` inside `sync` can cause a deadlock.
+        let channels: [Channel] = sync {
+            os_log(
+                "socket.disconnect: oldstate=%{public}@",
+                log: .phoenix,
+                type: .debug,
+                state.debugDescription
+            )
+
+            shouldReconnect = false
+            cancelHeartbeatTimer()
             
             switch state {
             case .closed, .closing:
-                // NOOP
-                return
+                break
             case .open(let ws), .connecting(let ws):
-                self.state = .closing(ws)
+                state = .closing(ws)
 
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.closing) }
 
                 ws.close()
             }
+
+            return self.channels.compactMap { $0.value.channel }
         }
+        channels.forEach { $0.leave() }
+    }
+
+    @discardableResult
+    public func disconnectAndWait(
+        timeout: DispatchTimeInterval = .seconds(1)
+    ) -> DispatchTimeoutResult {
+        guard isClosed == false else {
+            // `disconnect()` does additional cleanup regardless
+            // of the current state. We could be in a
+            // "closed-but-reconnecting" state, which
+            // `disconnect()` handles.
+            disconnect()
+            return .success
+        }
+
+        let semaphore = DispatchSemaphore(value: 0)
+        let subscription = sink { (value) in
+            guard case .close = value else { return }
+            semaphore.signal()
+        }
+        defer { subscription.cancel() }
+        disconnect()
+        let result = semaphore.wait(timeout: .now() + timeout)
+
+        os_log(
+            "socket.disconnectAndWait: result=%{public}@",
+            log: .phoenix,
+            type: .debug,
+            result.debugDescription
+        )
+
+        return result
     }
 }
 
@@ -236,7 +279,7 @@ extension Socket: ConnectablePublisher {
 
 extension Socket {
     public func join(_ channel: Channel) {
-        return channel.join()
+        channel.join()
     }
 
     public func join(_ topic: Topic, payload: Payload = [:]) -> Channel {
@@ -299,6 +342,13 @@ extension Socket {
             payload: payload,
             callback: callback
         )
+
+        os_log(
+            "socket.push: message=%s",
+            log: .phoenix,
+            type: .debug,
+            thePush.debugDescription
+        )
         
         sync {
             pending.append(thePush)
@@ -320,7 +370,7 @@ extension Socket {
             
             let ref = advanceRef()
             let message = OutgoingMessage(push, ref: ref)
-            
+
             send(message) { error in
                 if error == nil {
                     self.flushAsync()
@@ -361,12 +411,26 @@ extension Socket {
     
     func send(_ string: String, completionHandler: @escaping Callback) {
         sync {
+            os_log(
+                "socket.send: message=%s state=%{public}@",
+                log: .phoenix,
+                type: .debug,
+                string,
+                state.debugDescription
+            )
+
             switch state {
             case .open(let ws):
-                // TODO: capture obj-c exceptions over in the WebSocket class
                 ws.send(string) { error in
                     if let error = error {
-                        Swift.print("Error writing to WebSocket: \(error)")
+                        os_log(
+                            "socket.send.error: message=%s error=%s",
+                            log: .phoenix,
+                            type: .debug,
+                            string,
+                            error.localizedDescription
+                        )
+
                         self.state = .closing(ws) // TODO: write a test to prove this works
                         ws.close(WebSocketCloseCode.abnormalClosure)
                     }
@@ -388,11 +452,26 @@ extension Socket {
     
     func send(_ data: Data, completionHandler: @escaping Callback) {
         sync {
+            os_log(
+                "socket.send: %lld bytes state=%{public}@",
+                log: .phoenix,
+                type: .debug,
+                data.count,
+                state.debugDescription
+            )
+
             switch state {
             case .open(let ws):
                 ws.send(data) { error in
                     if let error = error {
-                        Swift.print("Error writing to WebSocket: \(error)")
+                        os_log(
+                            "socket.send.error: %lld bytes error=%s",
+                            log: .phoenix,
+                            type: .debug,
+                            data.count,
+                            error.localizedDescription
+                        )
+
                         self.state = .closing(ws) // TODO: write a test to prove this works
                         ws.close(WebSocketCloseCode.abnormalClosure)
                     }
@@ -431,8 +510,7 @@ extension Socket {
         guard let message = msg else { return }
             
         send(message) { error in
-            if let error = error {
-                Swift.print("Error writing heartbeat push", error)
+            if error != nil {
                 self.heartbeatTimeout()
             } else if let onSuccess = onSuccess {
                 onSuccess()
@@ -442,6 +520,13 @@ extension Socket {
     
     func heartbeatTimeout() {
         sync {
+            os_log(
+                "socket.heartbeatTimeout: oldstate=%{public}@",
+                log: .phoenix,
+                type: .debug,
+                state.debugDescription
+            )
+
             self.pendingHeartbeatRef = nil
             
             switch state {
@@ -492,7 +577,7 @@ extension Socket {
                 let msg = try decoder(rawMessage)
                 sync {
                     switch msg.event {
-                    case .heartbeat where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
+                    case .reply where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
                         self.pendingHeartbeatRef = nil
                     case .close:
                         removeChannel(for: msg.topic)
@@ -502,16 +587,38 @@ extension Socket {
                     }
                 }
             } catch {
-                Swift.print("Could not decode the WebSocket message data: \(error)")
-                Swift.print("Message data: \(rawMessage.description)")
-                notifySubjectQueue.async { subject.send(.unreadableMessage(rawMessage.description)) }
+                os_log(
+                    "socket.receive could not decode message: message=%s error=%s",
+                    log: .phoenix,
+                    type: .error,
+                    rawMessage.debugDescription,
+                    error.localizedDescription
+                )
+
+                notifySubjectQueue.async {
+                    subject.send(.unreadableMessage(rawMessage.debugDescription))
+                }
             }
         }
 
         switch value {
         case .failure(let error):
+            os_log(
+                "socket.receive.failure: error=%s",
+                log: .phoenix,
+                type: .debug,
+                error.localizedDescription
+            )
+
             notifySubjectQueue.async { subject.send(.websocketError(error)) }
         case .success(let message):
+            os_log(
+                "socket.receive.success: message=%s",
+                log: .phoenix,
+                type: .debug,
+                message.debugDescription
+            )
+
             switch message {
             case .open:
                 sync {
@@ -519,7 +626,13 @@ extension Socket {
                     
                     switch state {
                     case .closed, .closing:
-                        assertionFailure("We shouldn't receive an open message in '\(state)'")
+                        os_log(
+                            "socket.receive open in wrong state: state=%{public}@",
+                            log: .phoenix,
+                            type: .error,
+                            state.debugDescription
+                        )
+
                         return
                     case .open:
                         // NOOP
@@ -540,6 +653,14 @@ extension Socket {
 
     private func receive(completion: Subscribers.Completion<WebSocketFailure>) {
         sync {
+            os_log(
+                "socket.receiveCompletion: oldstate=%{public}@ completion=%s",
+                log: .phoenix,
+                type: .debug,
+                state.debugDescription,
+                completion._debugDescription
+            )
+
             switch state {
             case .closed:
                 return
@@ -558,6 +679,18 @@ extension Socket {
                     }
                 }
             }
+        }
+    }
+}
+
+private extension Subscribers.Completion where Failure == Socket.WebSocketFailure {
+    var _debugDescription: String {
+        switch self {
+        case .finished:
+            return "finished"
+        case let .failure(error):
+            return error.localizedDescription.isNotEmpty ?
+                error.localizedDescription : "failure"
         }
     }
 }

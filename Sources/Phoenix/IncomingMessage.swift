@@ -1,19 +1,19 @@
 import Foundation
 import WebSocketProtocol
 
-public enum RawIncomingMessage: CustomStringConvertible, Hashable {
+public enum RawIncomingMessage: CustomDebugStringConvertible, Hashable {
     case binary(Data)
     case text(String)
 
-    public var description: String {
+    public var debugDescription: String {
         switch self {
-        case let .binary(data): return String(data: data, encoding: .utf8) ?? ""
+        case let .binary(data): return "\(data.count) bytes"
         case let .text(text): return text
         }
     }
 }
 
-public struct IncomingMessage {
+public struct IncomingMessage: CustomDebugStringConvertible {
     enum DecodingError: Error {
         case invalidType(Any?)
         case missingValue(String)
@@ -84,6 +84,13 @@ public struct IncomingMessage {
         self.topic = topic
         self.event = event
         self.payload = payload
+    }
+
+    public var debugDescription: String {
+        let jr = joinRef?.debugDescription ?? "<nil>"
+        let r = ref?.debugDescription ?? "<nil>"
+        let e = event.stringValue
+        return "[\(jr),\(r),\"\(topic)\",\"\(e)\",\(payload._debugDescription)]"
     }
 }
 

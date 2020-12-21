@@ -1,7 +1,7 @@
 import WebSocket
 
 extension Socket {
-    enum State {
+    enum State: CustomDebugStringConvertible {
         case closed
         case connecting(WebSocket)
         case open(WebSocket)
@@ -13,6 +13,15 @@ extension Socket {
                 return nil
             case let .connecting(ws), let .open(ws), let .closing(ws):
                 return ws
+            }
+        }
+
+        var debugDescription: String {
+            switch self {
+            case .closed: return "closed"
+            case .connecting: return "connecting"
+            case .open: return "open"
+            case .closing: return "closing"
             }
         }
     }

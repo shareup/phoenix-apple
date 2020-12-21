@@ -15,8 +15,8 @@
         "repositoryURL": "https://github.com/shareup/websocket-apple.git",
         "state": {
           "branch": null,
-          "revision": "b15957b59becc92f80bdab1abc5454fd8d608fd8",
-          "version": "2.1.0"
+          "revision": "17747e72d46848ee4dfa1f6384778c8dbebc2a8a",
+          "version": "2.2.2"
         }
       },
       {
@@ -24,8 +24,8 @@
         "repositoryURL": "https://github.com/shareup/websocket-protocol.git",
         "state": {
           "branch": null,
-          "revision": "1aaafaf0219a64bf177d684115452e84d49d7345",
-          "version": "2.3.0"
+          "revision": "bd6257e3c4b23484dfc73c550b025f96c8e151f6",
+          "version": "2.3.1"
         }
       }
     ]

@@ -49,3 +49,12 @@ extension String {
         return data
     }
 }
+
+extension DispatchTimeoutResult: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        switch self {
+        case .success: return "success"
+        case .timedOut: return "timedOut"
+        }
+    }
+}
