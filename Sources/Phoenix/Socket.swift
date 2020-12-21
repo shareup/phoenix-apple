@@ -144,14 +144,11 @@ public final class Socket {
     }
 
     deinit {
+        disconnect()
         sync {
-            channels.forEach { $0.value.channel?.leave() }
-            shouldReconnect = false
-            cancelHeartbeatTimer()
             webSocketSubscriber?.cancel()
             webSocketSubscriber = nil
             state.webSocket?.close()
-            state = .closed
         }
     }
 }
