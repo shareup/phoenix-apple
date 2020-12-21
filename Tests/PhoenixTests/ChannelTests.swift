@@ -8,12 +8,11 @@ class ChannelTests: XCTestCase {
     override func setUpWithError() throws {
         try super.setUpWithError()
         socket = makeSocket()
-        sleep(1)
     }
     
     override func tearDownWithError() throws {
         try super.tearDownWithError()
-        socket.disconnect()
+        socket.disconnectAndWait()
         socket = nil
     }
 
@@ -174,7 +173,16 @@ class ChannelTests: XCTestCase {
         // Then a second time after the Socket publishes its open message and the Channel tries to reconnect.
         XCTAssertEqual(2, counter)
     }
-    
+
+    // TODO: This test doesn't really do what we want it to. The original join message should
+    // timeout, but, in the meantime, a leave message should be sent and (?) its reply received
+    // back. Then, at some point (either before or after the leave reply is received), another
+    // join message should be sent and the reply received, resulting the channel actually
+    // being joined. The problem is the Elixir server is just sleeping after it gets the
+    // original join message, which means it can't process the leave or second join message
+    // until the initial sleep finishes. Replacing the Phoenix server with a more custom one
+    // should fix this.
+    //
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L206
     func testJoinRetriesWithBackoffIfTimeout() throws {
         var counter = 0
@@ -185,23 +193,34 @@ class ChannelTests: XCTestCase {
         channel = Channel(
             topic: "room:timeout",
             joinPayloadBlock: {
-                counter += 1
-                if counter >= 3 {
-                    let time = startTime.timeIntervalSinceNow * -1000 // Convert to positive milliseconds
-                    XCTAssertGreaterThan(time, 190 as Double)
-                    DispatchQueue.main.async { channel?.leave() }
-                    return ["timeout": 1_000, "join": true]
-                } else {
-                    return ["timeout": 100, "join": true]
+                defer { counter += 1 }
+                let time = startTime.timeIntervalSinceNow * -1000 // Convert to positive milliseconds
+
+                Swift.print("<<<>>> COUNTER:", counter)
+                Swift.print("<<<>>> TIME:", time)
+
+                switch counter {
+                case 0:
+                    return ["timeout": 2_000, "join": true]
+                case 1:
+                    XCTAssertGreaterThanOrEqual(time, 100)
+                    return ["timeout": 0, "join": true]
+                case 2:
+                    XCTAssertGreaterThanOrEqual(time, 4150)
+                    return ["timeout": 0, "join": true]
+                default:
+                    return ["timeout": 0, "join": true]
                 }
             },
             socket: socket
         )
         channel!.rejoinTimeout = { attempt in
+            Swift.print("<<<>>> REJOIN \(attempt)")
             switch attempt {
             case 0: XCTFail("Rejoin timeouts start at 1"); return .seconds(1)
-            case 1, 2: return .milliseconds(50 * attempt)
-            default: return .seconds(2)
+            case 1: return .milliseconds(100)
+            case 2: return .seconds(4)
+            default: return .seconds(10)
             }
         }
 
@@ -210,14 +229,18 @@ class ChannelTests: XCTestCase {
         )
         defer { socketSub.cancel() }
 
-        let channelSub = channel!.sink(receiveValue:
-            expectAndThen([ .leave: { XCTAssertEqual(3, counter) } ])
-        )
+        let joinEx = expectation(description: "Did join after backoff")
+        joinEx.assertForOverFulfill = false
+        let channelSub = channel!.sink { message in
+            Swift.print("<<<>>> CHANNEL:", message)
+            guard case .join = message else { return }
+            joinEx.fulfill()
+        }
         defer { channelSub.cancel() }
 
         socket.connect()
 
-        waitForExpectations(timeout: 4)
+        waitForExpectations(timeout: 10)
     }
     
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L233

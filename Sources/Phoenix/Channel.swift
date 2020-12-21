@@ -138,7 +138,7 @@ public final class Channel: Publisher {
     func errored(_ error: Swift.Error) {
         sync {
             os_log(
-                "errored: oldstate=%{public}@ error=%s",
+                "channel.errored: oldstate=%{public}@ error=%s",
                 log: .phoenix,
                 type: .error,
                 state.debugDescription,
@@ -185,15 +185,15 @@ extension Channel {
     
     private func rejoin() {
         guard let socket = self.socket else {
-            os_log("rejoin with nil socket", log: .phoenix, type: .error)
-            return assertionFailure("No socket")
+            os_log("channel.rejoin with nil socket", log: .phoenix, type: .debug)
+            return
         }
 
         sync {
             guard shouldRejoin else { return }
 
             os_log(
-                "rejoin: topic=%s oldstate=${public}@",
+                "channel.rejoin: topic=%s oldstate=%{public}@",
                 log: .phoenix,
                 type: .debug,
                 topic,
@@ -248,7 +248,7 @@ extension Channel {
             self._joinTimer = .off
 
             os_log(
-                "leave: topic=%s oldstate=${public}@",
+                "channel.leave: topic=%s oldstate=%{public}@",
                 log: .phoenix,
                 type: .debug,
                 topic,
@@ -266,7 +266,8 @@ extension Channel {
                 backgroundQueue.async {
                     self.send(message)
                     self.sync {
-                        self.leaveTimer = Timer(fireAt: timeout) { [weak self] in self?.timeoutLeavePush() }
+                        let block: () -> Void = { [weak self] in self?.timeoutLeavePush() }
+                        self.leaveTimer = Timer(fireAt: timeout, block: block)
                     }
                 }
             case .leaving, .errored, .closed:
@@ -330,11 +331,10 @@ extension Channel {
     
     private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
         guard let socket = socket else {
-            // TODO: maybe we should just hard ref the socket?
             os_log(
-                "send with nil socket: topic=%s message=%s",
+                "channel.send with nil socket: topic=%s message=%s",
                 log: .phoenix,
-                type: .error,
+                type: .debug,
                 topic,
                 message.debugDescription
             )
@@ -344,7 +344,7 @@ extension Channel {
         }
 
         os_log(
-            "send: topic=%s message=%s",
+            "channel.send: topic=%s message=%s",
             log: .phoenix,
             type: .debug,
             topic,
@@ -359,7 +359,7 @@ extension Channel {
                     break
                 default:
                     os_log(
-                        "send error: error=%s",
+                        "channel.send error: error=%s",
                         log: .phoenix,
                         type: .error,
                         error.localizedDescription
@@ -418,6 +418,10 @@ extension Channel {
 extension Channel {
     func timeoutJoinPush() {
         errored(Error.joinTimeout)
+        sync {
+            guard let ref = socket?.advanceRef(), let joinRef = self.joinRef else { return }
+            send(OutgoingMessage(leavePush, ref: ref, joinRef: joinRef))
+        }
         createRejoinTimer()
     }
 
@@ -546,7 +550,7 @@ extension Channel {
         let completion: (Subscribers.Completion<SocketFailure>) -> Void = { _ in fatalError("`Never` means never") }
         let receiveValue = { [weak self] (input: SocketOutput) -> Void in
             os_log(
-                "receive: topic=%s message=%s",
+                "channel.receive: topic=%s message=%s",
                 log: .phoenix,
                 type: .debug,
                 topic,

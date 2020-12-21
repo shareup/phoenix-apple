@@ -70,7 +70,6 @@ public struct OutgoingMessage: CustomDebugStringConvertible {
         let jr = joinRef?.debugDescription ?? "<nil>"
         let r = ref.debugDescription
         let e = event.stringValue
-        let p = "{\(payload.keys.count) values}"
-        return "[\(jr),\(r),\"\(topic)\",\"\(e)\",\(p)]"
+        return "[\(jr),\(r),\"\(topic)\",\"\(e)\",\(payload._debugDescription)]"
     }
 }

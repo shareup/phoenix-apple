@@ -7,7 +7,7 @@ func oneTenthOfOneThousand(of amount: Int) -> Int {
 
 class Timer {
     private let source: DispatchSourceTimer
-    private let block: () -> ()
+    private let block: () -> Void
     private let lock = RecursiveLock()
     
     let isRepeating: Bool
@@ -15,7 +15,11 @@ class Timer {
     var nextDeadline: DispatchTime { lock.locked { return _nextDeadline } }
     private var _nextDeadline: DispatchTime
     
-    init(_ interval: DispatchTimeInterval, repeat shouldRepeat: Bool = false, block: @escaping () -> ()) {
+    init(
+        _ interval: DispatchTimeInterval,
+        repeat shouldRepeat: Bool = false,
+        block: @escaping () -> Void
+    ) {
         self.source = DispatchSource.makeTimerSource()
         self.block = block
         self.isRepeating = shouldRepeat
@@ -35,7 +39,7 @@ class Timer {
         source.activate()
     }
     
-    init(fireAt deadline: DispatchTime, block: @escaping () -> ()) {
+    init(fireAt deadline: DispatchTime, block: @escaping () -> Void) {
         self.source = DispatchSource.makeTimerSource()
         self.block = block
         self.isRepeating = false
