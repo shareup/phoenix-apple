@@ -4,6 +4,10 @@ import Combine
 import WebSocketProtocol
 
 class SocketTests: XCTestCase {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        sleep(1)
+    }
 
     // MARK: init, connect, and disconnect
 
@@ -142,8 +146,9 @@ class SocketTests: XCTestCase {
         let socket = makeSocket()
 
         self.expectationWithTest(description: "Socket enters connecting state", test: socket.isConnecting)
-        let sub = socket.autoconnect().sink(receiveValue: expect(.connecting))
+        let sub = socket.sink(receiveValue: expect(.connecting))
         defer { sub.cancel() }
+        socket.connect()
 
         waitForExpectations(timeout: 2)
     }

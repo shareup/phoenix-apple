@@ -5,11 +5,14 @@ import Combine
 class ChannelTests: XCTestCase {
     var socket: Socket!
     
-    override func setUp() {
+    override func setUpWithError() throws {
+        try super.setUpWithError()
         socket = makeSocket()
+        sleep(1)
     }
     
-    override func tearDown() {
+    override func tearDownWithError() throws {
+        try super.tearDownWithError()
         socket.disconnect()
         socket = nil
     }
