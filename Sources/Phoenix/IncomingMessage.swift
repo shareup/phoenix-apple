@@ -13,7 +13,7 @@ public enum RawIncomingMessage: CustomStringConvertible, Hashable {
     }
 }
 
-public struct IncomingMessage {
+public struct IncomingMessage: CustomDebugStringConvertible {
     enum DecodingError: Error {
         case invalidType(Any?)
         case missingValue(String)
@@ -84,6 +84,14 @@ public struct IncomingMessage {
         self.topic = topic
         self.event = event
         self.payload = payload
+    }
+
+    public var debugDescription: String {
+        let jr = joinRef?.debugDescription ?? "<nil>"
+        let r = ref?.debugDescription ?? "<nil>"
+        let e = event.stringValue
+        let p = "{\(payload.keys.count) values}"
+        return "[\(jr),\(r),\"\(topic)\",\"\(e)\",\(p)]"
     }
 }
 

@@ -35,7 +35,7 @@ public final class Socket {
     public let url: URL
     public let timeout: DispatchTimeInterval
 
-    private let notifySubjectQueue = DispatchQueue(label: "Socket.notifySubjectQueue")
+    private let notifySubjectQueue: DispatchQueue
 
     private let refGenerator: Ref.Generator
 
@@ -113,7 +113,8 @@ public final class Socket {
         timeout: DispatchTimeInterval = Socket.defaultTimeout,
         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
         customEncoder: OutgoingMessageEncoder? = nil,
-        customDecoder: IncomingMessageDecoder? = nil
+        customDecoder: IncomingMessageDecoder? = nil,
+        publisherQueue: DispatchQueue? = nil
     ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
@@ -121,6 +122,12 @@ public final class Socket {
         self.url = Socket.webSocketURLV2(url: url)
         self.encoder = customEncoder ?? { try $0.encoded() }
         self.decoder = customDecoder ?? IncomingMessage.init
+        self.notifySubjectQueue = DispatchQueue(
+            label: "app.shareup.websocket.subjectqueue",
+            attributes: [],
+            autoreleaseFrequency: .workItem,
+            target: publisherQueue
+        )
     }
     
     init(
@@ -129,7 +136,8 @@ public final class Socket {
         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
         refGenerator: Ref.Generator,
         customEncoder: OutgoingMessageEncoder? = nil,
-        customDecoder: IncomingMessageDecoder? = nil
+        customDecoder: IncomingMessageDecoder? = nil,
+        publisherQueue: DispatchQueue? = nil
     ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
@@ -137,6 +145,12 @@ public final class Socket {
         self.url = Socket.webSocketURLV2(url: url)
         self.encoder = customEncoder ?? { try $0.encoded() }
         self.decoder = customDecoder ?? IncomingMessage.init
+        self.notifySubjectQueue = DispatchQueue(
+            label: "app.shareup.websocket.subjectqueue",
+            attributes: [],
+            autoreleaseFrequency: .workItem,
+            target: publisherQueue
+        )
     }
 
     deinit {

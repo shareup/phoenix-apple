@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import os.log
 import Synchronized
 import WebSocket
 
@@ -136,6 +137,14 @@ public final class Channel: Publisher {
     
     func errored(_ error: Swift.Error) {
         sync {
+            os_log(
+                "errored: oldstate=%{public}@ error=%s",
+                log: .phoenix,
+                type: .error,
+                state.debugDescription,
+                error.localizedDescription
+            )
+
             self.state = .errored(error)
             let subject = self.subject
             notifySubjectQueue.async { subject.send(.error(error)) }
@@ -175,11 +184,22 @@ extension Channel {
     }
     
     private func rejoin() {
-        guard let socket = self.socket else { return assertionFailure("No socket") }
+        guard let socket = self.socket else {
+            os_log("rejoin with nil socket", log: .phoenix, type: .error)
+            return assertionFailure("No socket")
+        }
 
         sync {
             guard shouldRejoin else { return }
-            
+
+            os_log(
+                "rejoin: topic=%s oldstate=${public}@",
+                log: .phoenix,
+                type: .debug,
+                topic,
+                state.debugDescription
+            )
+
             switch state {
             case .joining, .joined:
                 return
@@ -226,6 +246,14 @@ extension Channel {
         sync {
             self.shouldRejoin = false
             self._joinTimer = .off
+
+            os_log(
+                "leave: topic=%s oldstate=${public}@",
+                log: .phoenix,
+                type: .debug,
+                topic,
+                state.debugDescription
+            )
 
             switch state {
             case .joining(let joinRef), .joined(let joinRef):
@@ -303,10 +331,25 @@ extension Channel {
     private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
         guard let socket = socket else {
             // TODO: maybe we should just hard ref the socket?
+            os_log(
+                "send with nil socket: topic=%s message=%s",
+                log: .phoenix,
+                type: .error,
+                topic,
+                message.debugDescription
+            )
             self.errored(Channel.Error.lostSocket)
             completionHandler(Channel.Error.lostSocket)
             return
         }
+
+        os_log(
+            "send: topic=%s message=%s",
+            log: .phoenix,
+            type: .debug,
+            topic,
+            message.debugDescription
+        )
         
         socket.send(message) { error in
             if let error = error {
@@ -315,7 +358,12 @@ extension Channel {
                     // Expected error
                     break
                 default:
-                    Swift.print("There was an error writing to the socket: \(error)")
+                    os_log(
+                        "send error: error=%s",
+                        log: .phoenix,
+                        type: .error,
+                        error.localizedDescription
+                    )
                     // NOTE: we don't change state to error here, instead we let the socket close do that for us
                 }
             }
@@ -345,10 +393,9 @@ extension Channel {
             }
             
             createInFlightMessagesTimer()
-            
+
             send(message) { error in
-                if let error = error {
-                    Swift.print("Couldn't write to socket from Channel \(self) – \(error) - \(message)")
+                if error != nil {
                     self.sync {
                         // put it back to try again later
                         self._inFlight[ref] = nil
@@ -463,10 +510,18 @@ extension Channel {
 // MARK: Socket Subscriber
 
 extension Channel {
-    enum ChannelSpecificSocketMessage {
+    enum ChannelSpecificSocketMessage: CustomDebugStringConvertible {
         case socketOpen
         case socketClose
         case channelMessage(IncomingMessage)
+
+        var debugDescription: String {
+            switch self {
+            case .socketOpen: return "open"
+            case .socketClose: return "close"
+            case let .channelMessage(msg): return msg.debugDescription
+            }
+        }
     }
 
     func makeSocketSubscriber(
@@ -490,6 +545,14 @@ extension Channel {
 
         let completion: (Subscribers.Completion<SocketFailure>) -> Void = { _ in fatalError("`Never` means never") }
         let receiveValue = { [weak self] (input: SocketOutput) -> Void in
+            os_log(
+                "receive: topic=%s message=%s",
+                log: .phoenix,
+                type: .debug,
+                topic,
+                input.debugDescription
+            )
+
             switch input {
             case .channelMessage(let message):
                 self?.handle(message)
