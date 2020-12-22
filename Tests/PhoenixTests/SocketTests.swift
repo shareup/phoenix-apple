@@ -154,7 +154,11 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L328
     func testSocketIsOpen() throws {
         try withSocket { (socket) in
-            self.expectationWithTest(description: "Socket enters open state", test: socket.isOpen)
+            let openEx = self.expectation(description: "Socket enters open state")
+            socket.onStateChange = { state in
+                guard case .open = state else { return }
+                openEx.fulfill()
+            }
             let sub = socket.autoconnect().sink(receiveValue: expect(.open))
             defer { sub.cancel() }
 
@@ -165,6 +169,11 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L336
     func testSocketIsClosing() throws {
         try withSocket { (socket) in
+            let closingEx = self.expectation(description: "Socket enters closing state")
+            socket.onStateChange = { state in
+                guard case .closing = state else { return }
+                closingEx.fulfill()
+            }
             let sub = socket.autoconnect().sink(receiveValue:
                 expectAndThen([
                     .open: { socket.disconnect() },
@@ -231,7 +240,11 @@ class SocketTests: XCTestCase {
                 ])
             )
 
-            self.expectationWithTest(description: "Socket did close", test: socket.isClosed)
+            let closedEx = self.expectation(description: "Socket enters closed state")
+            socket.onStateChange = { state in
+                guard case .closed = state else { return }
+                closedEx.fulfill()
+            }
 
             waitForExpectations(timeout: 2)
         }
@@ -281,9 +294,7 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L360
     func testChannelInitWithParams() throws {
         try withSocket { (socket) in
-//            let channel = socket.channel("room:lobby", payload: ["success": true])
             let channel = socket.join("room:lobby", payload: ["success": true])
-
             XCTAssertEqual(channel.topic, "room:lobby")
             XCTAssertEqual(channel.joinPush.payload["success"] as? Bool, true)
         }
@@ -293,17 +304,26 @@ class SocketTests: XCTestCase {
     func testChannelsAreTracked() throws {
         try withSocket { (socket) in
             let channel1 = socket.join("room:timeout1", payload: ["timeout": 2_000, "join": true])
-
             XCTAssertEqual(socket.joinedChannels.count, 1)
 
             let channel2 = socket.join("room:timeout2", payload: ["timeout": 2_000, "join": true])
-
             XCTAssertEqual(socket.joinedChannels.count, 2)
 
-            expectationWithTest(
-                description: "Should be joining channels",
-                test: channel1.connectionState == "joining" && channel2.connectionState == "joining"
-            )
+            let ex1 = expectation(description: "Should start joining channel 1")
+            channel1.onStateChange = { (newState: Channel.State) in
+                switch newState {
+                case .joining: ex1.fulfill()
+                default: break
+                }
+            }
+
+            let ex2 = expectation(description: "Should start joining channel 2")
+            channel2.onStateChange = { (newState: Channel.State) in
+                switch newState {
+                case .joining: ex2.fulfill()
+                default: break
+                }
+            }
 
             waitForExpectations(timeout: 2)
         }
@@ -748,15 +768,26 @@ class SocketTests: XCTestCase {
 
     func testRemoteExceptionPublishesError() throws {
         try withSocket { (socket) in
-            let sub = socket.autoconnect().sink(receiveValue:
-                expectAndThen([
-                    .open: { socket.send("boom") },
-                    .websocketError: { }
-                ])
-            )
+            let errorEx = self.expectation(description: "Should have received error")
+            errorEx.assertForOverFulfill = false
+            let sub = socket.autoconnect().sink { value in
+                switch value {
+                case .open:
+                    socket.send("boom")
+                case .websocketError:
+                    errorEx.fulfill()
+                case .close:
+                    // Whether or not the underlying `WebSocket` publishes an error
+                    // is undetermined. Sometimes it will publish an error. Other
+                    // times it will just close the connection.
+                    errorEx.fulfill()
+                default:
+                    break
+                }
+            }
             defer { sub.cancel() }
 
-            waitForExpectations(timeout: 4)
+            waitForExpectations(timeout: 2)
         }
     }
 
