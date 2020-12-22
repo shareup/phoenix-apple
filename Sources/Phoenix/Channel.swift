@@ -28,7 +28,13 @@ public final class Channel: Publisher {
     private var _inFlight: [Ref: PushedMessage] = [:]
     
     private var shouldRejoin = true
+
+    #if DEBUG
+    private var state: State = .closed { didSet { onStateChange?(state) } }
+    internal var onStateChange: ((State) -> Void)?
+    #else
     private var state: State = .closed
+    #endif
     
     private weak var socket: Socket?
 

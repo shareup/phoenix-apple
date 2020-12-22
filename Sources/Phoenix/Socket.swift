@@ -20,11 +20,17 @@ public final class Socket {
     private let decoder: IncomingMessageDecoder
     
     private let subject = PassthroughSubject<Output, Failure>()
-    private var state: State = .closed
     private var shouldReconnect = true
     private var webSocketSubscriber: AnyCancellable?
     private var channels = [Topic: WeakChannel]()
-    
+
+    #if DEBUG
+    private var state: State = .closed { didSet { onStateChange?(state) } }
+    internal var onStateChange: ((State) -> Void)?
+    #else
+    private var state: State = .closed
+    #endif
+
     public var joinedChannels: [Channel] {
         let channels = sync { self.channels }
         return channels.compactMap { $0.value.channel }
