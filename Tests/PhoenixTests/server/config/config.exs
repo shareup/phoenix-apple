@@ -1,7 +1,7 @@
 use Mix.Config
 
 config :server, ServerWeb.Endpoint,
-  http: [port: 4000],
+  http: [port: 4003],
   url: [host: "localhost"],
   secret_key_base: "x951AKdZkB9fM7C7DCuUc/DuoaLXULjSeFrI3Wrin6znJqB3J7nv9XelIKvgNAhC",
   render_errors: [view: ServerWeb.ErrorView, accepts: ~w(json)],

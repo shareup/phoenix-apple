@@ -3,7 +3,7 @@ Phoenix test Socket
 <script src="./phoenix.js" type="module"></script>
 <script type="module">
   import {Socket} from './phoenix.js';
-  const socket = new Socket('ws://0.0.0.0:4000/socket', { params: { user_id: 1 } });
+  const socket = new Socket('ws://0.0.0.0:4003/socket', { params: { user_id: 1 } });
 
   socket.onOpen((data) => console.debug('socket open', data))
   socket.onError((data) => console.error('socket error', data))
