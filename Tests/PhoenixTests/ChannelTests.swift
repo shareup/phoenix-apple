@@ -655,8 +655,7 @@ class ChannelTests: XCTestCase {
             expectAndThen([
                 .join: {
                     channel.push("echo_error", payload: ["error": "whatever"], callback: callback)
-                },
-                .message: { }
+                }
             ])
         )
         defer { channelSub.cancel() }
@@ -807,30 +806,30 @@ class ChannelTests: XCTestCase {
     // MARK: on
     
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L792
-    func testCallsCallbackAndNotifiesSubscriberForMessage() throws {
-        let channel = makeChannel(topic: "room:lobby")
-        
-        channel.push("echo", callback: expectOk(response: [:]))
-        
-        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
-        defer { socketSub.cancel() }
-        
-        let messageEx = self.expectation(description: "Should have received message")
-        let channelSub = channel.sink { (output) in
-            switch output {
-            case .message(let message):
-                XCTAssertEqual("phx_reply", message.event)
-                XCTAssertEqual([:], message.payload["response"] as! [String:String])
-                messageEx.fulfill()
-            default: break
-            }
-        }
-        defer { channelSub.cancel() }
-        
-        socket.connect()
-        
-        waitForExpectations(timeout: 2)
-    }
+//    func testCallsCallbackAndNotifiesSubscriberForMessage() throws {
+//        let channel = makeChannel(topic: "room:lobby")
+//
+//        channel.push("echo", callback: expectOk(response: [:]))
+//
+//        let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
+//        defer { socketSub.cancel() }
+//
+//        let messageEx = self.expectation(description: "Should have received message")
+//        let channelSub = channel.sink { (output) in
+//            switch output {
+//            case .message(let message):
+//                XCTAssertEqual("phx_reply", message.event)
+//                XCTAssertEqual([:], message.payload["response"] as! [String:String])
+//                messageEx.fulfill()
+//            default: break
+//            }
+//        }
+//        defer { channelSub.cancel() }
+//
+//        socket.connect()
+//
+//        waitForExpectations(timeout: 2)
+//    }
     
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L805
     func testDoesNotCallCallbackForOtherMessages() throws {
@@ -953,14 +952,17 @@ class ChannelTests: XCTestCase {
         noPushEx.isInverted = true
         let pushEx = self.expectation(description: "Should have sent push after joining")
         
-        channel.push("echo") { _ in noPushEx.fulfill(); pushEx.fulfill() }
+        channel.push("echo") { _ in
+            noPushEx.fulfill()
+            pushEx.fulfill()
+        }
         
         wait(for: [noPushEx], timeout: 0.2)
         
         let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
         
-        let channelSub = channel.sink(receiveValue: expect([.join, .message]))
+        let channelSub = channel.sink(receiveValue: expect([.join]))
         defer { channelSub.cancel() }
         
         socket.connect()

@@ -20,6 +20,7 @@ public final class Channel: Publisher {
     private func sync<T>(_ block: () throws -> T) rethrows -> T { return try lock.locked(block) }
     
     private var subject = PassthroughSubject<Output, Failure>()
+//    private var repliesSubject = PassthroughSubject<Channel.Reply, Failure>()
     
     var pending: [Push] { sync { return _pending } }
     private var _pending: [Push] = []
@@ -674,9 +675,9 @@ extension Channel {
                       reply.joinRef == joinRef else {
                     return
                 }
-                
-                let subject = self.subject
-                notifySubjectQueue.async { subject.send(.message(reply.message)) }
+
+//                repliesSubject.send(reply)
+
                 backgroundQueue.async { pushed.callback(reply: reply) }
                 
             case .leaving(let joinRef, let leavingRef):
