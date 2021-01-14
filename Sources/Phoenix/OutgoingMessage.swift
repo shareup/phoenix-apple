@@ -25,8 +25,14 @@ public struct OutgoingMessage: CustomDebugStringConvertible {
         case missingChannelJoinRef
     }
     
-    init(ref: Ref, topic: Topic, event: PhxEvent, payload: Payload) {
-        self.joinRef = nil
+    public init(
+        joinRef: Ref? = nil,
+        ref: Ref,
+        topic: Topic,
+        event: PhxEvent,
+        payload: Payload
+    ) {
+        self.joinRef = joinRef
         self.ref = ref
         self.topic = topic
         self.event = event
