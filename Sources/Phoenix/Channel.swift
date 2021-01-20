@@ -674,9 +674,6 @@ extension Channel {
                       reply.joinRef == joinRef else {
                     return
                 }
-                
-                let subject = self.subject
-                notifySubjectQueue.async { subject.send(.message(reply.message)) }
                 backgroundQueue.async { pushed.callback(reply: reply) }
                 
             case .leaving(let joinRef, let leavingRef):

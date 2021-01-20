@@ -656,7 +656,6 @@ class ChannelTests: XCTestCase {
                 .join: {
                     channel.push("echo_error", payload: ["error": "whatever"], callback: callback)
                 },
-                .message: { }
             ])
         )
         defer { channelSub.cancel() }
@@ -807,20 +806,26 @@ class ChannelTests: XCTestCase {
     // MARK: on
     
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L792
-    func testCallsCallbackAndNotifiesSubscriberForMessage() throws {
+    func testCallsCallbackButDoesNotNotifySubscriberForReply() throws {
         let channel = makeChannel(topic: "room:lobby")
-        
-        channel.push("echo", callback: expectOk(response: [:]))
+
+        let replyEx = expectation(description: "Should have received reply")
+        channel.push("echo", payload: ["echo": "hello"])
+            { (result: Result<Channel.Reply, Swift.Error>) in
+                guard case let .success(reply) = result else { return XCTFail() }
+                XCTAssertTrue(reply.isOk)
+                XCTAssertEqual("hello", reply.response["echo"] as? String)
+                replyEx.fulfill()
+            }
         
         let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
         
-        let messageEx = self.expectation(description: "Should have received message")
+        let messageEx = self.expectation(description: "Should not have received message")
+        messageEx.isInverted = true
         let channelSub = channel.sink { (output) in
             switch output {
-            case .message(let message):
-                XCTAssertEqual("phx_reply", message.event)
-                XCTAssertEqual([:], message.payload["response"] as! [String:String])
+            case .message:
                 messageEx.fulfill()
             default: break
             }
@@ -828,8 +833,9 @@ class ChannelTests: XCTestCase {
         defer { channelSub.cancel() }
         
         socket.connect()
-        
-        waitForExpectations(timeout: 2)
+
+        wait(for: [replyEx], timeout: 2)
+        wait(for: [messageEx], timeout: 0.1)
     }
     
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L805
@@ -948,23 +954,32 @@ class ChannelTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L918
     func testEnqueuesPushEventToBeSentWhenChannelIsJoined() throws {
         let channel = makeChannel(topic: "room:lobby")
-        
+
+        var didReceiveJoin = false
         let noPushEx = self.expectation(description: "Should have wait to send push after joining")
         noPushEx.isInverted = true
         let pushEx = self.expectation(description: "Should have sent push after joining")
         
-        channel.push("echo") { _ in noPushEx.fulfill(); pushEx.fulfill() }
-        
-        wait(for: [noPushEx], timeout: 0.2)
-        
+        channel.push("echo") { _ in
+            DispatchQueue.main.async {
+                if didReceiveJoin == false {
+                    noPushEx.fulfill()
+                }
+                pushEx.fulfill()
+            }
+        }
+
         let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
         
-        let channelSub = channel.sink(receiveValue: expect([.join, .message]))
+        let channelSub = channel
+            .receive(on: DispatchQueue.main)
+            .sink(receiveValue: expectAndThen([ .join: { didReceiveJoin = true } ]))
         defer { channelSub.cancel() }
         
         socket.connect()
         
+        wait(for: [noPushEx], timeout: 0.2)
         waitForExpectations(timeout: 2)
     }
     
