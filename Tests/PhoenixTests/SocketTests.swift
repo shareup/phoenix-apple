@@ -447,14 +447,24 @@ class SocketTests: XCTestCase {
             let closeEx = expectation(description: "Should not have closed")
             closeEx.isInverted = true
 
-            let sub = socket.autoconnect().sink(receiveValue:
-                onResults([
-                    .close: { closeEx.fulfill() }
-                ])
-            )
+            var isActive = true
+
+            let sub = socket
+                .autoconnect()
+                .receive(on: DispatchQueue.main)
+                .sink(receiveValue:
+                        onResults([
+                            .close: {
+                                if isActive {
+                                    closeEx.fulfill()
+                                }
+                            }
+                        ])
+                )
             defer { sub.cancel() }
 
             waitForExpectations(timeout: 0.5)
+            isActive = false
         }
     }
 
