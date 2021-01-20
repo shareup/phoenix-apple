@@ -222,7 +222,7 @@
 
 - [x] sets up callback for event
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L792
-	- `testCallsCallbackAndNotifiesSubscriberForMessage()`
+	- `testCallsCallbackButDoesNotNotifySubscriberForReply()`
 
 - [x] other event callbacks are ignored
 	- https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L805
