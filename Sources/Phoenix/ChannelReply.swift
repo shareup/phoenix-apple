@@ -12,7 +12,7 @@ extension Channel {
         
         public let response: [String: Any]
         
-        init?(incomingMessage: IncomingMessage) {
+        public init?(incomingMessage: IncomingMessage) {
             guard incomingMessage.event == .reply,
                 let ref = incomingMessage.ref,
                 let status = incomingMessage.payload["status"] as? String,
