@@ -7,7 +7,7 @@ protocol RawCaseConvertible {
 }
 
 extension RawCaseConvertible {
-    func matches(_ rawCase: RawCase) -> Bool { self.toRawCase() == rawCase }
+    func matches(_ rawCase: RawCase) -> Bool { toRawCase() == rawCase }
 }
 
 extension Channel.Event: RawCaseConvertible {
@@ -25,7 +25,10 @@ extension Channel.Event: RawCaseConvertible {
 }
 
 extension Socket.Message: RawCaseConvertible {
-    enum _RawCase { case close, connecting, open, closing, incomingMessage, unreadableMessage, websocketError }
+    enum _RawCase { case close, connecting, open, closing, incomingMessage, unreadableMessage,
+                         websocketError
+    }
+
     typealias RawCase = _RawCase
 
     func toRawCase() -> RawCase {

@@ -44,12 +44,12 @@ public enum PhxEvent: Equatable, ExpressibleByStringLiteral {
             return "phx_error"
         case .heartbeat:
             return "heartbeat"
-        case .custom(let string):
+        case let .custom(string):
             return string
         }
     }
 
     public static func == (lhs: PhxEvent, rhs: PhxEvent) -> Bool {
-        return lhs.stringValue == rhs.stringValue
+        lhs.stringValue == rhs.stringValue
     }
 }

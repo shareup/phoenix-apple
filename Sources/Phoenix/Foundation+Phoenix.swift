@@ -1,7 +1,7 @@
 import Foundation
 
 extension Collection {
-    var isNotEmpty: Bool { return self.isEmpty == false }
+    var isNotEmpty: Bool { isEmpty == false }
 }
 
 extension Optional {
@@ -20,7 +20,7 @@ extension String {
                 domain: "app.shareup.phoenix",
                 code: 10000,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "Could not decode '\(data)' into a UTF8 string"
+                    NSLocalizedDescriptionKey: "Could not decode '\(data)' into a UTF8 string",
                 ]
             )
         }
@@ -41,7 +41,7 @@ extension String {
                 domain: "app.shareup.phoenix",
                 code: 10001,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "Could not encode '\(self)' into UTF8 bytes"
+                    NSLocalizedDescriptionKey: "Could not encode '\(self)' into UTF8 bytes",
                 ]
             )
         }

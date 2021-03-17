@@ -1,5 +1,5 @@
-extension Channel {
-    public struct Message {
+public extension Channel {
+    struct Message {
         public let event: String
         public let payload: Payload
 
@@ -7,10 +7,10 @@ extension Channel {
             self.event = event
             self.payload = payload
         }
-        
+
         init(incomingMessage: IncomingMessage) {
-            self.event = incomingMessage.event.stringValue
-            self.payload = incomingMessage.payload
+            event = incomingMessage.event.stringValue
+            payload = incomingMessage.payload
         }
     }
 }

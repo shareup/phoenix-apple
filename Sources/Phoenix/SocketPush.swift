@@ -2,13 +2,13 @@ import Foundation
 
 extension Socket {
     public typealias Callback = (Swift.Error?) -> Void
-    
+
     struct Push: CustomDebugStringConvertible {
         public let topic: Topic
         public let event: PhxEvent
         public let payload: Payload
         public let callback: Callback?
-        
+
         init(topic: Topic, event: PhxEvent, payload: Payload = [:], callback: Callback? = nil) {
             self.topic = topic
             self.event = event

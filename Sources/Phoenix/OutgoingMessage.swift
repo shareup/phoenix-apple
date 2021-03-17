@@ -19,12 +19,12 @@ public struct OutgoingMessage: CustomDebugStringConvertible {
     public var topic: Topic
     public var event: PhxEvent
     public var payload: Payload
-    var sentAt: DispatchTime = DispatchTime.now()
-    
+    var sentAt = DispatchTime.now()
+
     enum Error: Swift.Error {
         case missingChannelJoinRef
     }
-    
+
     public init(
         joinRef: Ref? = nil,
         ref: Ref,
@@ -38,36 +38,36 @@ public struct OutgoingMessage: CustomDebugStringConvertible {
         self.event = event
         self.payload = payload
     }
-    
+
     init(_ push: Channel.Push, ref: Ref, joinRef: Ref) {
         if push.channel.joinRef != joinRef {
             preconditionFailure("joinRef should match the channel's joinRef")
         }
-        
+
         self.joinRef = joinRef
         self.ref = ref
-        self.topic = push.channel.topic
-        self.event = push.event
-        self.payload = push.payload
+        topic = push.channel.topic
+        event = push.event
+        payload = push.payload
     }
-    
+
     init(_ push: Socket.Push, ref: Ref, joinRef: Ref? = nil) {
         self.joinRef = joinRef
         self.ref = ref
-        self.topic = push.topic
-        self.event = push.event
-        self.payload = push.payload
+        topic = push.topic
+        event = push.event
+        payload = push.payload
     }
-    
+
     public func encoded() throws -> RawOutgoingMessage {
         let array: [Any?] = [
             joinRef?.rawValue,
             ref.rawValue,
             topic,
             event.stringValue,
-            payload
+            payload,
         ]
-        
+
         let data = try JSONSerialization.data(withJSONObject: array, options: [])
         return .text(try String(data: data, encoding: .utf8))
     }
