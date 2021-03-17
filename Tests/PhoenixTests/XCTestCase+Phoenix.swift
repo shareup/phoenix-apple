@@ -133,9 +133,10 @@ extension XCTestCase {
 
 extension XCTestCase {
     @discardableResult
-    func expectationWithTest(description: String,
-                             test: @escaping @autoclosure () -> Bool) -> XCTestExpectation
-    {
+    func expectationWithTest(
+        description: String,
+        test: @escaping @autoclosure () -> Bool
+    ) -> XCTestExpectation {
         let expectation = self.expectation(description: description)
         evaluateTest(test, for: expectation)
         return expectation

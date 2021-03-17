@@ -4,3 +4,4 @@
 --typeattributes prev-line
 --wraparguments before-first
 --wrapcollections before-first
+--selfrequired expectationWithTest 
