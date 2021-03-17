@@ -24,7 +24,7 @@ extension Channel {
 
         func asyncCallback(result: Result<Channel.Reply, Swift.Error>) {
             if let cb = callback {
-                DispatchQueue.global().async { cb(result) }
+                DispatchQueue.backgroundQueue.async { cb(result) }
             }
         }
     }

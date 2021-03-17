@@ -128,7 +128,7 @@ extension XCTestCase {
 }
 
 private func evaluateTest(_ test: @escaping () -> Bool, for expectation: XCTestExpectation) {
-    DispatchQueue.global().async {
+    testQueue.async {
         let didPass = DispatchQueue.main.sync { test() }
         if didPass {
             expectation.fulfill()
@@ -137,3 +137,10 @@ private func evaluateTest(_ test: @escaping () -> Bool, for expectation: XCTestE
         }
     }
 }
+
+private let testQueue = DispatchQueue(
+    label: "app.shareup.phoenix.testqueue",
+    qos: .default,
+    autoreleaseFrequency: .workItem,
+    target: DispatchQueue.global()
+)

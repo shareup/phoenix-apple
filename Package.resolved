@@ -2,6 +2,15 @@
   "object": {
     "pins": [
       {
+        "package": "DispatchTimer",
+        "repositoryURL": "https://github.com/shareup/dispatch-timer.git",
+        "state": {
+          "branch": null,
+          "revision": "c59ca3bd129a4f3d2126963dbd50efebe0379f56",
+          "version": "1.1.0"
+        }
+      },
+      {
         "package": "Synchronized",
         "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {
@@ -15,8 +24,8 @@
         "repositoryURL": "https://github.com/shareup/websocket-apple.git",
         "state": {
           "branch": null,
-          "revision": "17747e72d46848ee4dfa1f6384778c8dbebc2a8a",
-          "version": "2.2.2"
+          "revision": "00de3b986cae0832a7f0f06e0f68ee4477cb570b",
+          "version": "2.3.0"
         }
       },
       {
