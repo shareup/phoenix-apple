@@ -1,11 +1,10 @@
+import DispatchTimer
 import Combine
 import Foundation
 import os.log
 import Synchronized
 import WebSocket
 import WebSocketProtocol
-
-private let backgroundQueue = DispatchQueue(label: "Socket.backgroundQueue")
 
 public final class Socket {
     public typealias Output = Socket.Message
@@ -43,6 +42,11 @@ public final class Socket {
     public let timeout: DispatchTimeInterval
 
     private let notifySubjectQueue: DispatchQueue
+    private let backgroundQueue = DispatchQueue(
+        label: "app.shareup.phoenix.socket.backgroundqueue",
+        qos: .default,
+        target: DispatchQueue.backgroundQueue
+    )
 
     private let refGenerator: Ref.Generator
 
@@ -51,7 +55,7 @@ public final class Socket {
 
     private let heartbeatPush = Push(topic: "phoenix", event: .heartbeat)
     private var pendingHeartbeatRef: Ref? = nil
-    private var heartbeatTimer: Timer? = nil
+    private var heartbeatTimer: DispatchTimer? = nil
 
     public static let defaultTimeout: DispatchTimeInterval = .seconds(10)
     public static let defaultHeartbeatInterval: DispatchTimeInterval = .seconds(30)
@@ -110,7 +114,7 @@ public final class Socket {
         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
         customEncoder: OutgoingMessageEncoder? = nil,
         customDecoder: IncomingMessageDecoder? = nil,
-        publisherQueue: DispatchQueue? = nil
+        publisherQueue: DispatchQueue = .global()
     ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
@@ -119,8 +123,8 @@ public final class Socket {
         self.encoder = customEncoder ?? { try $0.encoded() }
         self.decoder = customDecoder ?? IncomingMessage.init
         self.notifySubjectQueue = DispatchQueue(
-            label: "app.shareup.websocket.subjectqueue",
-            attributes: [],
+            label: "app.shareup.phoenix.socket.subjectqueue",
+            qos: .default,
             autoreleaseFrequency: .workItem,
             target: publisherQueue
         )
@@ -133,7 +137,7 @@ public final class Socket {
         refGenerator: Ref.Generator,
         customEncoder: OutgoingMessageEncoder? = nil,
         customDecoder: IncomingMessageDecoder? = nil,
-        publisherQueue: DispatchQueue? = nil
+        publisherQueue: DispatchQueue = .global()
     ) {
         self.timeout = timeout
         self.heartbeatInterval = heartbeatInterval
@@ -142,8 +146,8 @@ public final class Socket {
         self.encoder = customEncoder ?? { try $0.encoded() }
         self.decoder = customDecoder ?? IncomingMessage.init
         self.notifySubjectQueue = DispatchQueue(
-            label: "app.shareup.websocket.subjectqueue",
-            attributes: [],
+            label: "app.shareup.phoenix.socket.subjectqueue",
+            qos: .default,
             autoreleaseFrequency: .workItem,
             target: publisherQueue
         )
@@ -195,7 +199,7 @@ extension Socket: ConnectablePublisher {
             
             switch state {
             case .closed:
-                let ws = WebSocket(url: url)
+                let ws = WebSocket(url: url, timeoutIntervalForRequest: 2)
                 ws.maximumMessageSize = maximumMessageSize
                 self.state = .connecting(ws)
                 ws.connect()
@@ -278,6 +282,18 @@ extension Socket: ConnectablePublisher {
         )
 
         return result
+    }
+
+    private func reconnectIfPossible() {
+        sync {
+            if shouldReconnect {
+                _reconnectAttempts += 1
+                let deadline = DispatchTime.now().advanced(by: reconnectTimeInterval(_reconnectAttempts))
+                backgroundQueue.asyncAfter(deadline: deadline) {
+                    self.connect()
+                }
+            }
+        }
     }
 }
 
@@ -546,6 +562,8 @@ extension Socket {
 
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.close) }
+
+                reconnectIfPossible()
             }
         }
     }
@@ -555,7 +573,7 @@ extension Socket {
     }
     
     func createHeartbeatTimer() {
-        self.heartbeatTimer = Timer(self.heartbeatInterval, repeat: true) { [weak self] in
+        self.heartbeatTimer = DispatchTimer(self.heartbeatInterval, repeat: true) { [weak self] in
             self?.sendHeartbeat()
         }
     }
@@ -677,13 +695,7 @@ extension Socket {
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.close) }
 
-                if shouldReconnect {
-                    _reconnectAttempts += 1
-                    let deadline = DispatchTime.now().advanced(by: reconnectTimeInterval(_reconnectAttempts))
-                    backgroundQueue.asyncAfter(deadline: deadline) {
-                        self.connect()
-                    }
-                }
+                reconnectIfPossible()
             }
         }
     }
@@ -695,8 +707,8 @@ private extension Subscribers.Completion where Failure == Socket.WebSocketFailur
         case .finished:
             return "finished"
         case let .failure(error):
-            return error.localizedDescription.isNotEmpty ?
-                error.localizedDescription : "failure"
+            let description = (error as NSError).description
+            return description.isEmpty ? description : "failure"
         }
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import DispatchTimer
 
 extension Channel {
     enum JoinTimer {
@@ -7,11 +8,11 @@ extension Channel {
 
         /// Channel is trying to be joined. When the timer fires, the join
         /// should be cancelled.
-        case join(timer: Timer, attempt: Int)
+        case join(timer: DispatchTimer, attempt: Int)
 
         /// Channel is trying to be rejoined. In this case, the timer signifies
         /// the next time a join attempt should be made.
-        case rejoin(timer: Timer, attempt: Int)
+        case rejoin(timer: DispatchTimer, attempt: Int)
 
         var attempt: Int? {
             switch self {

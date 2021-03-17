@@ -1,10 +1,10 @@
+import DispatchTimer
 import Combine
 import Foundation
 import os.log
 import Synchronized
 import WebSocket
-
-private let backgroundQueue = DispatchQueue(label: "Channel.backgroundQueue")
+import DispatchTimer
 
 public final class Channel: Publisher {
     public typealias Output = Channel.Event
@@ -54,14 +54,25 @@ public final class Channel: Publisher {
     
     var canPush: Bool { return self.isJoined }
     
-    private let notifySubjectQueue = DispatchQueue(label: "Channel.notifySubjectQueue")
+    private let notifySubjectQueue = DispatchQueue(
+        label: "app.shareup.phoenix.channel.notifysubjectqueue",
+        qos: .default,
+        autoreleaseFrequency: .workItem,
+        target: DispatchQueue.global()
+    )
+
+    private let backgroundQueue = DispatchQueue(
+        label: "app.shareup.phoenix.channel.backgroundqueue",
+        qos: .default,
+        target: DispatchQueue.backgroundQueue
+    )
     
-    private var inFlightMessagesTimer: Timer?
+    private var inFlightMessagesTimer: DispatchTimer?
 
     var joinTimer: JoinTimer { sync { _joinTimer } }
     private var _joinTimer: JoinTimer = .off
 
-    private var leaveTimer: Timer? = nil
+    private var leaveTimer: DispatchTimer? = nil
 
     var rejoinTimeout: RejoinTimeout = { attempt in
         // https://github.com/phoenixframework/phoenix/blob/7bb70decc747e6b4286f17abfea9d3f00f11a77e/assets/js/phoenix.js#L777
@@ -237,9 +248,7 @@ extension Channel {
     }
     
     private func writeJoinPushAsync() {
-        backgroundQueue.async {
-            self.writeJoinPush()
-        }
+        backgroundQueue.async { self.writeJoinPush() }
     }
 }
 
@@ -273,7 +282,7 @@ extension Channel {
                     self.send(message)
                     self.sync {
                         let block: () -> Void = { [weak self] in self?.timeoutLeavePush() }
-                        self.leaveTimer = Timer(fireAt: timeout, block: block)
+                        self.leaveTimer = DispatchTimer(fireAt: timeout, block: block)
                     }
                 }
             case .leaving, .errored, .closed:
@@ -444,7 +453,7 @@ extension Channel {
             let attempt = (_joinTimer.attempt ?? 0) + 1
             self._joinTimer = .off
 
-            let timer = Timer(timeout) { [weak self] in self?.timeoutJoinPush() }
+            let timer = DispatchTimer(timeout) { [weak self] in self?.timeoutJoinPush() }
 
             self._joinTimer = .join(timer: timer, attempt: attempt)
         }
@@ -453,14 +462,13 @@ extension Channel {
     private func createRejoinTimer() {
         sync {
             guard _joinTimer.isNotRejoinTimer else { return }
+            guard let attempt = _joinTimer.attempt, attempt > 0 else { return }
             
-            let attempt = _joinTimer.attempt ?? 0
-            assert(attempt > 0, "we should always join before rejoining")
             self._joinTimer = .off
 
             let interval = rejoinTimeout(attempt)
             
-            let timer = Timer(interval) { [weak self] in self?.rejoin() }
+            let timer = DispatchTimer(interval) { [weak self] in self?.rejoin() }
             
             self._joinTimer = .rejoin(timer: timer, attempt: attempt)
         }
@@ -501,10 +509,17 @@ extension Channel {
             guard let next = possibleNext else { return }
             guard next.timeoutDate < inFlightMessagesTimer?.nextDeadline else { return }
             
-            self.inFlightMessagesTimer =  Timer(fireAt: next.timeoutDate) { [weak self] in
+            self.inFlightMessagesTimer = DispatchTimer(fireAt: next.timeoutDate) { [weak self] in
                 self?.timeoutInFlightMessagesAsync()
             }
         }
+    }
+}
+
+private extension DispatchTime {
+    static func < (lhs: DispatchTime, rhs: Optional<DispatchTime>) -> Bool {
+        guard let rhs = rhs else { return true }
+        return lhs < rhs
     }
 }
 
@@ -674,8 +689,8 @@ extension Channel {
                       reply.joinRef == joinRef else {
                     return
                 }
-                backgroundQueue.async { pushed.callback(reply: reply) }
-                
+                pushed.callback(reply: reply)
+
             case .leaving(let joinRef, let leavingRef):
                 guard reply.ref == leavingRef, reply.joinRef == joinRef else { break }
 

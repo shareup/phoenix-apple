@@ -203,7 +203,7 @@ class ChannelTests: XCTestCase {
                     XCTAssertGreaterThanOrEqual(time, 100)
                     return ["timeout": 0, "join": true]
                 case 2:
-                    XCTAssertGreaterThanOrEqual(time, 4150)
+                    XCTAssertGreaterThanOrEqual(time, 4000)
                     return ["timeout": 0, "join": true]
                 default:
                     return ["timeout": 0, "join": true]

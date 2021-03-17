@@ -18,7 +18,7 @@ extension Socket {
 
         func asyncCallback(_ error: Swift.Error?) {
             if let cb = callback {
-                DispatchQueue.global().async { cb(error) }
+                DispatchQueue.backgroundQueue.async { cb(error) }
             }
         }
 
