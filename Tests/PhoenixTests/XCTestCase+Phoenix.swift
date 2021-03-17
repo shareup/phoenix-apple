@@ -1,6 +1,6 @@
-import XCTest
 import Combine
 import Phoenix
+import XCTest
 
 extension XCTestCase {
     func expectFinished<E: Error>() -> (Subscribers.Completion<E>) -> Void {
@@ -11,7 +11,9 @@ extension XCTestCase {
         }
     }
 
-    func expectFailure<E>(_ error: E) -> (Subscribers.Completion<E>) -> Void where E: Error, E: Equatable {
+    func expectFailure<E>(_ error: E) -> (Subscribers.Completion<E>) -> Void where E: Error,
+        E: Equatable
+    {
         let expectation = self.expectation(description: "Should have failed")
         return { completion in
             guard case Subscribers.Completion.failure(error) = completion else { return }
@@ -22,25 +24,31 @@ extension XCTestCase {
 
 extension XCTestCase {
     func expect<T: RawCaseConvertible>(_ value: T.RawCase) -> (T) -> Void {
-        return expect([value])
-    }
-    
-    func expect<T: RawCaseConvertible>(_ values: Set<T.RawCase>) -> (T) -> Void {
-        let valueToAction = values.reduce(into: [:]) { $0[$1] = { } }
-        return expectAndThen(valueToAction)
-    }
-    
-    func expectAndThen<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
-        return expectAndThen([value: block])
+        expect([value])
     }
 
-    func expectAndThen<T: RawCaseConvertible>(_ valueToAction: Dictionary<T.RawCase, (() -> Void)>) -> (T) -> Void {
-        let valueToExpectation = valueToAction.reduce(into: Dictionary<T.RawCase, XCTestExpectation>())
-        { [unowned self] (dict, valueToAction) in
-            let key = valueToAction.key
-            let expectation = self.expectation(description: "Should have received '\(String(describing: key))'")
-            dict[key] = expectation
-        }
+    func expect<T: RawCaseConvertible>(_ values: Set<T.RawCase>) -> (T) -> Void {
+        let valueToAction = values.reduce(into: [:]) { $0[$1] = {} }
+        return expectAndThen(valueToAction)
+    }
+
+    func expectAndThen<T: RawCaseConvertible>(
+        _ value: T.RawCase,
+        _ block: @escaping @autoclosure () -> Void
+    ) -> (T) -> Void {
+        expectAndThen([value: block])
+    }
+
+    func expectAndThen<T: RawCaseConvertible>(_ valueToAction: [T.RawCase: () -> Void])
+        -> (T) -> Void
+    {
+        let valueToExpectation = valueToAction.reduce(into: [T.RawCase: XCTestExpectation]())
+            { [unowned self] dict, valueToAction in
+                let key = valueToAction.key
+                let expectation = self
+                    .expectation(description: "Should have received '\(String(describing: key))'")
+                dict[key] = expectation
+            }
 
         return { v in
             let rawCase = v.toRawCase()
@@ -51,12 +59,14 @@ extension XCTestCase {
         }
     }
 
-    func onResult<T: RawCaseConvertible>(_ value: T.RawCase, _ block: @escaping @autoclosure () -> Void) -> (T) -> Void {
-        return onResults([value: block])
+    func onResult<T: RawCaseConvertible>(_ value: T.RawCase,
+                                         _ block: @escaping @autoclosure () -> Void) -> (T) -> Void
+    {
+        onResults([value: block])
     }
 
-    func onResults<T: RawCaseConvertible>(_ valueToAction: Dictionary<T.RawCase, (() -> Void)>) -> (T) -> Void {
-        return { v in
+    func onResults<T: RawCaseConvertible>(_ valueToAction: [T.RawCase: () -> Void]) -> (T) -> Void {
+        { v in
             if let block = valueToAction[v.toRawCase()] {
                 block()
             }
@@ -66,19 +76,19 @@ extension XCTestCase {
 
 extension XCTestCase {
     func expectOk(response expected: [String: String]? = nil) -> Channel.Callback {
-        return _expectReply(isSuccess: true, response: expected)
+        _expectReply(isSuccess: true, response: expected)
     }
-    
+
     func expectError(response expected: [String: String]? = nil) -> Channel.Callback {
-        return _expectReply(isSuccess: false, response: expected)
+        _expectReply(isSuccess: false, response: expected)
     }
-    
+
     func expectFailure(_ error: Channel.Error? = nil) -> Channel.Callback {
         let expectation = self.expectation(description: "Should have received failure")
         return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
             guard case .failure = result else { return }
             if let error = error {
-                guard case .failure(let channelError as Channel.Error) = result else { return }
+                guard case let .failure(channelError as Channel.Error) = result else { return }
                 switch (error, channelError) {
                 case (.invalidJoinReply, .invalidJoinReply): expectation.fulfill()
                 case (.socketIsClosed, .socketIsClosed): expectation.fulfill()
@@ -93,12 +103,15 @@ extension XCTestCase {
             }
         }
     }
-    
-    private func _expectReply(isSuccess: Bool, response: [String: String]? = nil) -> Channel.Callback {
+
+    private func _expectReply(isSuccess: Bool, response: [String: String]? = nil) -> Channel
+        .Callback
+    {
         let replyDescription = isSuccess ? "successful" : "error"
-        let expectation = self.expectation(description: "Should have received \(replyDescription) response")
+        let expectation = self
+            .expectation(description: "Should have received \(replyDescription) response")
         return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
-            if case .success(let reply) = result {
+            if case let .success(reply) = result {
                 guard reply.isOk == isSuccess else { return }
                 if let expected = response {
                     guard let actual = reply.response as? [String: String] else { return }
@@ -120,7 +133,10 @@ extension XCTestCase {
 
 extension XCTestCase {
     @discardableResult
-    func expectationWithTest(description: String, test: @escaping @autoclosure () -> Bool) -> XCTestExpectation {
+    func expectationWithTest(
+        description: String,
+        test: @escaping @autoclosure () -> Bool
+    ) -> XCTestExpectation {
         let expectation = self.expectation(description: description)
         evaluateTest(test, for: expectation)
         return expectation

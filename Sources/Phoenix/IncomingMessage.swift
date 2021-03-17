@@ -25,7 +25,7 @@ public struct IncomingMessage: CustomDebugStringConvertible {
     public var topic: Topic
     public var event: PhxEvent
     public var payload: Payload
-    
+
     init(string: String) throws {
         try self.init(data: Data(string.utf8))
     }
@@ -94,7 +94,7 @@ public struct IncomingMessage: CustomDebugStringConvertible {
     }
 }
 
-fileprivate func _ref(_ object: Any?) -> Phoenix.Ref? {
+private func _ref(_ object: Any?) -> Phoenix.Ref? {
     guard let object = object else { return nil }
 
     if let intValue = object as? UInt64 {

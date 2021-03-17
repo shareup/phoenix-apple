@@ -14,35 +14,36 @@ extension URL {
         guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
             fatalError()
         }
-        
+
         var queryItems: [URLQueryItem] = components
             .queryItemsOrEmpty
-            .map { URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncodingForFormData()) }
-        
-        items.forEach { (name, value) in
+            .map { URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncodingForFormData())
+            }
+
+        items.forEach { name, value in
             queryItems.append(
                 URLQueryItem(name: name, value: value.addingPercentEncodingForFormData())
             )
         }
-        
+
         components.percentEncodedQueryItems = queryItems
 
         guard let url = components.url else {
             fatalError()
         }
-        
+
         return url
     }
 }
 
-extension URLComponents {
-    fileprivate var queryItemsOrEmpty: [URLQueryItem] {
+private extension URLComponents {
+    var queryItemsOrEmpty: [URLQueryItem] {
         queryItems ?? []
     }
 }
 
-extension String {
-    fileprivate func addingPercentEncodingForFormData() -> String? {
+private extension String {
+    func addingPercentEncodingForFormData() -> String? {
         let allowedCharacters = "*-._ "
         var allowedCharacterSet = CharacterSet.alphanumerics
         allowedCharacterSet.insert(charactersIn: allowedCharacters)

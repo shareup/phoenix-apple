@@ -1,12 +1,12 @@
-import XCTest
 @testable import Phoenix
+import XCTest
 
 class RefGeneratorTests: XCTestCase {
     func testRefGenerator() {
         let generator = Ref.Generator()
         let group = DispatchGroup()
 
-        (0..<100).forEach { _ in
+        (0 ..< 100).forEach { _ in
             group.enter()
             DispatchQueue.global().async {
                 _ = generator.advance()
@@ -34,7 +34,7 @@ class RefGeneratorTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L456
     func testRefGeneratorRestartsForOverflow() {
         // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Number/MAX_SAFE_INTEGER
-        let generator = Ref.Generator(start: 9007199254740991)
+        let generator = Ref.Generator(start: 9_007_199_254_740_991)
         XCTAssertEqual(generator.advance(), 0)
     }
 }

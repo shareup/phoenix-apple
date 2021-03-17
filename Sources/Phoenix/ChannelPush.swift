@@ -1,20 +1,37 @@
 import Foundation
 
 extension Channel {
-    public typealias Callback = (Result<Channel.Reply, Swift.Error>) -> ()
+    public typealias Callback = (Result<Channel.Reply, Swift.Error>) -> Void
 
-    struct Push {    
+    struct Push {
         let channel: Channel
         let event: PhxEvent
         let payload: Payload
         let timeout: DispatchTimeInterval
         let callback: Callback?
-        
-        init(channel: Channel, event: PhxEvent, timeout: DispatchTimeInterval, callback: Callback? = nil) {
-            self.init(channel: channel, event: event, payload: [String: String](), timeout: timeout, callback: callback)
+
+        init(
+            channel: Channel,
+            event: PhxEvent,
+            timeout: DispatchTimeInterval,
+            callback: Callback? = nil
+        ) {
+            self.init(
+                channel: channel,
+                event: event,
+                payload: [String: String](),
+                timeout: timeout,
+                callback: callback
+            )
         }
-        
-        init(channel: Channel, event: PhxEvent, payload: Payload, timeout: DispatchTimeInterval, callback: Callback? = nil) {
+
+        init(
+            channel: Channel,
+            event: PhxEvent,
+            payload: Payload,
+            timeout: DispatchTimeInterval,
+            callback: Callback? = nil
+        ) {
             self.channel = channel
             self.event = event
             self.payload = payload

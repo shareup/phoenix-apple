@@ -1,7 +1,7 @@
-import XCTest
-@testable import Phoenix
 import Combine
+@testable import Phoenix
 import WebSocketProtocol
+import XCTest
 
 class SocketTests: XCTestCase {
     // MARK: init, connect, and disconnect
@@ -14,7 +14,7 @@ class SocketTests: XCTestCase {
         // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L35
         XCTAssertEqual(Socket.defaultHeartbeatInterval, .seconds(30))
 
-        let url: URL = URL(string: "ws://0.0.0.0:4003/socket")!
+        let url = URL(string: "ws://0.0.0.0:4003/socket")!
         let socket = Socket(url: url)
 
         XCTAssertEqual(socket.timeout, Socket.defaultTimeout)
@@ -46,7 +46,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L242
     func testSocketConnectIsNoOp() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.connect()
             socket.connect() // calling connect again doesn't blow up
         }
@@ -54,11 +54,12 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L153
     func testSocketConnectAndDisconnect() throws {
-        try withSocket { (socket) in
-            let sub = socket.sink(receiveValue:
+        try withSocket { socket in
+            let sub = socket.sink(
+                receiveValue:
                 expectAndThen([
                     .open: { socket.disconnect() },
-                    .close: { }
+                    .close: {},
                 ])
             )
             defer { sub.cancel() }
@@ -71,17 +72,21 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L161
     func testSocketConnectDisconnectAndReconnect() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let closeMessageEx = expectation(description: "Should have received a close message")
             let openMesssageEx = expectation(description: "Should have received an open message")
-            let reopenMessageEx = expectation(description: "Should have reopened and got an open message")
+            let reopenMessageEx =
+                expectation(description: "Should have reopened and got an open message")
 
             var openExs = [reopenMessageEx, openMesssageEx]
 
-            let sub = socket.sink(receiveValue:
+            let sub = socket.sink(
+                receiveValue:
                 onResults([
-                    .open: { openExs.popLast()?.fulfill(); if !openExs.isEmpty { socket.disconnect() } },
-                    .close: { closeMessageEx.fulfill(); socket.connect() }
+                    .open: {
+                        openExs.popLast()?.fulfill(); if !openExs.isEmpty { socket.disconnect() }
+                    },
+                    .close: { closeMessageEx.fulfill(); socket.connect() },
                 ])
             )
             defer { sub.cancel() }
@@ -93,11 +98,12 @@ class SocketTests: XCTestCase {
     }
 
     func testSocketAutoconnectHasUpstream() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let conn = socket.autoconnect()
-            let sub = conn.sink(receiveValue:
+            let sub = conn.sink(
+                receiveValue:
                 expectAndThen([
-                    .open: { conn.upstream.disconnect() }
+                    .open: { conn.upstream.disconnect() },
                 ])
             )
             defer { sub.cancel() }
@@ -106,21 +112,23 @@ class SocketTests: XCTestCase {
     }
 
     func testSocketAutoconnectSubscriberCancelDisconnects() throws {
-        try withSocket { (socket) in
-            let sub = socket.sink(receiveValue:
+        try withSocket { socket in
+            let sub = socket.sink(
+                receiveValue:
                 expectAndThen([
-                    .close: { XCTAssertEqual(socket.connectionState, "closed") }
+                    .close: { XCTAssertEqual(socket.connectionState, "closed") },
                 ])
             )
             defer { sub.cancel() }
 
-            var autoSub: AnyCancellable? = nil
-            autoSub = socket.autoconnect().sink(receiveValue:
+            var autoSub: AnyCancellable?
+            autoSub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     .open: {
                         XCTAssertEqual(socket.connectionState, "open")
                         autoSub?.cancel()
-                    }
+                    },
                 ])
             )
             defer { autoSub?.cancel() }
@@ -133,7 +141,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L309
     func testSocketDefaultsToClosed() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             XCTAssertEqual(socket.connectionState, "closed")
             XCTAssert(socket.isClosed)
         }
@@ -141,8 +149,11 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L320
     func testSocketIsConnecting() throws {
-        try withSocket { (socket) in
-            self.expectationWithTest(description: "Socket enters connecting state", test: socket.isConnecting)
+        try withSocket { socket in
+            self.expectationWithTest(
+                description: "Socket enters connecting state",
+                test: socket.isConnecting
+            )
             let sub = socket.sink(receiveValue: expect(.connecting))
             defer { sub.cancel() }
             socket.connect()
@@ -153,7 +164,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L328
     func testSocketIsOpen() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let openEx = self.expectation(description: "Socket enters open state")
             socket.onStateChange = { state in
                 guard case .open = state else { return }
@@ -168,16 +179,17 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L336
     func testSocketIsClosing() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let closingEx = self.expectation(description: "Socket enters closing state")
             socket.onStateChange = { state in
                 guard case .closing = state else { return }
                 closingEx.fulfill()
             }
-            let sub = socket.autoconnect().sink(receiveValue:
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     .open: { socket.disconnect() },
-                    .closing: { }
+                    .closing: {},
                 ])
             )
             defer { sub.cancel() }
@@ -190,15 +202,16 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L277
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L287
     func testSocketIsClosed() throws {
-        try withSocket { (socket) in
-            let sub = socket.autoconnect().sink(receiveValue:
+        try withSocket { socket in
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     .open: { socket.disconnect() },
                     .close: {
                         XCTAssertEqual(socket.connectionState, "closed")
                         XCTAssert(socket.isClosed)
                         XCTAssertFalse(socket.isOpen)
-                    }
+                    },
                 ])
             )
             defer { sub.cancel() }
@@ -208,14 +221,15 @@ class SocketTests: XCTestCase {
     }
 
     func testSocketIsConnectedEvenAfterSubscriptionIsCancelled() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let closeMessageEx = expectation(description: "Shouldn't have closed")
             closeMessageEx.isInverted = true
 
             let openEx = expectation(description: "Should have gotten an open message")
 
-            var sub: AnyCancellable? = nil
-            sub = socket.sink(receiveValue:
+            var sub: AnyCancellable?
+            sub = socket.sink(
+                receiveValue:
                 onResults([
                     .open: { openEx.fulfill(); sub?.cancel() },
                     .closing: { closeMessageEx.fulfill() },
@@ -232,9 +246,10 @@ class SocketTests: XCTestCase {
     }
 
     func testSocketIsDisconnectedAfterAutconnectSubscriptionIsCancelled() throws {
-        try withSocket { (socket) in
-            var sub: AnyCancellable? = nil
-            sub = socket.autoconnect().sink(receiveValue:
+        try withSocket { socket in
+            var sub: AnyCancellable?
+            sub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     .open: { sub?.cancel() },
                 ])
@@ -253,17 +268,20 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L268
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L297
     func testDisconnectTwiceOnlySendsMessagesOnce() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let openEx = expectation(description: "Should have opened once")
             let closeMessageEx = expectation(description: "Should closed once")
 
-            let sub = socket.sink(receiveValue:
+            let sub = socket.sink(
+                receiveValue:
                 onResults([
                     .open: { openEx.fulfill(); socket.disconnect() },
                     .close: {
                         socket.disconnect()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100)) { closeMessageEx.fulfill()
-                        }
+                        DispatchQueue.main
+                            .asyncAfter(deadline: .now() + .milliseconds(100)) {
+                                closeMessageEx.fulfill()
+                            }
                     },
                 ])
             )
@@ -278,7 +296,7 @@ class SocketTests: XCTestCase {
     // MARK: channel
 
     func testChannelInit() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.connect()
 
             let channel = socket.join("room:lobby")
@@ -293,7 +311,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L360
     func testChannelInitWithParams() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let channel = socket.join("room:lobby", payload: ["success": true])
             XCTAssertEqual(channel.topic, "room:lobby")
             XCTAssertEqual(channel.joinPush.payload["success"] as? Bool, true)
@@ -302,11 +320,11 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L368
     func testChannelsAreTracked() throws {
-        try withSocket { (socket) in
-            let channel1 = socket.join("room:timeout1", payload: ["timeout": 2_000, "join": true])
+        try withSocket { socket in
+            let channel1 = socket.join("room:timeout1", payload: ["timeout": 2000, "join": true])
             XCTAssertEqual(socket.joinedChannels.count, 1)
 
-            let channel2 = socket.join("room:timeout2", payload: ["timeout": 2_000, "join": true])
+            let channel2 = socket.join("room:timeout2", payload: ["timeout": 2000, "join": true])
             XCTAssertEqual(socket.joinedChannels.count, 2)
 
             let ex1 = expectation(description: "Should start joining channel 1")
@@ -331,7 +349,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L385
     func testChannelsAreRemoved() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let channel1 = socket.channel("room:lobby")
             let channel2 = socket.channel("room:lobby2")
 
@@ -339,7 +357,8 @@ class SocketTests: XCTestCase {
             let sub2 = channel2.sink(receiveValue: expect(.join))
             defer { [sub1, sub2].forEach { $0.cancel() } }
 
-            let socketSub = socket.autoconnect().sink(receiveValue:
+            let socketSub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([.open: { socket.join(channel1); socket.join(channel2) }])
             )
             defer { socketSub.cancel() }
@@ -375,13 +394,18 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L413
     func testPushOntoSocket() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let expectPushSuccess = self.expectPushSuccess()
-            let sub = socket.autoconnect().sink(receiveValue:
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     .open: {
-                        socket.push(topic: "phoenix", event: .heartbeat, callback: expectPushSuccess)
-                    }
+                        socket.push(
+                            topic: "phoenix",
+                            event: .heartbeat,
+                            callback: expectPushSuccess
+                        )
+                    },
                 ])
             )
             defer { sub.cancel() }
@@ -392,7 +416,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L424
     func testPushOntoDisconnectedSocketBuffers() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let expectPushSuccess = self.expectPushSuccess()
             socket.push(topic: "phoenix", event: .heartbeat, callback: expectPushSuccess)
 
@@ -411,12 +435,13 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L470
     func testHeartbeatTimeoutMovesSocketToClosedState() throws {
-        try withSocket { (socket) in
-            let sub = socket.autoconnect().sink(receiveValue:
+        try withSocket { socket in
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     // Attempting to send a heartbeat before the previous one has returned causes the socket to timeout
                     .open: { socket.sendHeartbeat(); socket.sendHeartbeat() },
-                    .close: { }
+                    .close: {},
                 ])
             )
             defer { sub.cancel() }
@@ -427,13 +452,18 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L481
     func testPushesHeartbeatWhenConnected() throws {
-        try withSocket { (socket) in
-            let heartbeatExpectation = self.expectation(description: "Sends heartbeat when connected")
+        try withSocket { socket in
+            let heartbeatExpectation = self
+                .expectation(description: "Sends heartbeat when connected")
 
-            let sub = socket.autoconnect().sink(receiveValue:
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
-                    .open: { socket.sendHeartbeat { heartbeatExpectation.fulfill(); socket.disconnect() } },
-                    .close: { }
+                    .open: {
+                        socket
+                            .sendHeartbeat { heartbeatExpectation.fulfill(); socket.disconnect() }
+                    },
+                    .close: {},
                 ])
             )
             defer { sub.cancel() }
@@ -443,7 +473,7 @@ class SocketTests: XCTestCase {
     }
 
     func testHeartbeatKeepsSocketConnected() throws {
-        try withSocket(heartbeatInterval: .milliseconds(100)) { (socket) in
+        try withSocket(heartbeatInterval: .milliseconds(100)) { socket in
             let closeEx = expectation(description: "Should not have closed")
             closeEx.isInverted = true
 
@@ -452,14 +482,15 @@ class SocketTests: XCTestCase {
             let sub = socket
                 .autoconnect()
                 .receive(on: DispatchQueue.main)
-                .sink(receiveValue:
-                        onResults([
-                            .close: {
-                                if isActive {
-                                    closeEx.fulfill()
-                                }
+                .sink(
+                    receiveValue:
+                    onResults([
+                        .close: {
+                            if isActive {
+                                closeEx.fulfill()
                             }
-                        ])
+                        },
+                    ])
                 )
             defer { sub.cancel() }
 
@@ -480,8 +511,9 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L491
     func testHeartbeatIsNotSentWhenDisconnected() throws {
-        try withSocket { (socket) in
-            let noHeartbeatExpectation = self.expectation(description: "Does not send heartbeat when disconnected")
+        try withSocket { socket in
+            let noHeartbeatExpectation = self
+                .expectation(description: "Does not send heartbeat when disconnected")
             noHeartbeatExpectation.isInverted = true
 
             let sub = socket.sink(receiveValue: onResult(.close, noHeartbeatExpectation.fulfill()))
@@ -498,7 +530,7 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L508
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L551
     func testFlushesPushesOnOpen() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let receivedResponses = self.expectation(description: "Received response")
             receivedResponses.expectedFulfillmentCount = 2
 
@@ -507,9 +539,11 @@ class SocketTests: XCTestCase {
 
             let sub = socket.autoconnect().sink { message in
                 switch message {
-                case .incomingMessage(let incoming):
-                    guard let response = incoming.payload["response"] as? Dictionary<String, String> else { return }
-                    guard let reason = response["reason"], reason == "unmatched topic" else { return }
+                case let .incomingMessage(incoming):
+                    guard let response = incoming.payload["response"] as? [String: String]
+                    else { return }
+                    guard let reason = response["reason"],
+                          reason == "unmatched topic" else { return }
                     receivedResponses.fulfill()
                 default:
                     break
@@ -523,7 +557,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L523
     func testFlushesAllQueuedMessages() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let receivedResponses = self.expectation(description: "Received response")
             receivedResponses.expectedFulfillmentCount = 3
 
@@ -573,7 +607,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L561
     func testConnectionOpenResetsReconnectTimer() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.reconnectAttempts = 123
 
             let sub = socket.autoconnect().sink(receiveValue: expect(.open))
@@ -587,7 +621,7 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L569
     func testConnectionOpenPublishesOpenMessage() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let sub = socket.autoconnect().sink(receiveValue: expect(.open))
             defer { sub.cancel() }
 
@@ -599,16 +633,17 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L598
     func testSocketReconnectAfterRemoteClose() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.reconnectTimeInterval = { _ in .milliseconds(10) }
 
             let open = self.expectation(description: "Opened multiple times")
             open.assertForOverFulfill = false
             open.expectedFulfillmentCount = 2
 
-            let sub = socket.autoconnect().sink(receiveValue:
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 onResults([
-                    .open: { open.fulfill(); socket.send("disconnect") }
+                    .open: { open.fulfill(); socket.send("disconnect") },
                 ])
             )
             defer { sub.cancel() }
@@ -619,10 +654,11 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L608
     func testSocketDoesNotReconnectIfExplicitDisconnect() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.reconnectTimeInterval = { _ in .milliseconds(10) }
 
-            let sub1 = socket.autoconnect().sink(receiveValue:
+            let sub1 = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([.open: { socket.disconnect() }])
             )
             defer { sub1.cancel() }
@@ -640,16 +676,17 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L618
     func testSocketReconnectAfterRemoteException() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.reconnectTimeInterval = { _ in .milliseconds(10) }
 
             let open = self.expectation(description: "Opened multiple times")
             open.assertForOverFulfill = false
             open.expectedFulfillmentCount = 2
 
-            let sub = socket.autoconnect().sink(receiveValue:
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 onResults([
-                    .open: { open.fulfill(); socket.send("boom") }
+                    .open: { open.fulfill(); socket.send("boom") },
                 ])
             )
             defer { sub.cancel() }
@@ -660,33 +697,37 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L628
     func testSocketReconnectsAfterExplicitDisconnectAndThenConnect() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.reconnectTimeInterval = { _ in .milliseconds(10) }
 
-            let sub1 = socket.autoconnect().sink(receiveValue:
+            let sub1 = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     .open: { socket.disconnect() },
-                    .close: { },
+                    .close: {},
                 ])
             )
             waitForExpectations(timeout: 2)
             sub1.cancel()
 
-            let doesNotReconnect = self.expectation(description: "Does not reconnect after disconnect")
+            let doesNotReconnect = self
+                .expectation(description: "Does not reconnect after disconnect")
             doesNotReconnect.isInverted = true
             let sub2 = socket.sink(receiveValue: onResult(.open, doesNotReconnect.fulfill()))
             waitForExpectations(timeout: 0.1)
             sub2.cancel()
 
-            let reconnects = self.expectation(description: "Reconnects again after explicit connect")
+            let reconnects = self
+                .expectation(description: "Reconnects again after explicit connect")
             reconnects.expectedFulfillmentCount = 2
             reconnects.assertForOverFulfill = false
-            let sub3 = socket.sink(receiveValue:
+            let sub3 = socket.sink(
+                receiveValue:
                 onResults([
                     .open: {
                         reconnects.fulfill()
                         socket.send("boom")
-                    }
+                    },
                 ])
             )
             defer { sub3.cancel() }
@@ -697,11 +738,12 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L643
     func testRemoteClosePublishesClose() throws {
-        try withSocket { (socket) in
-            let sub = socket.autoconnect().sink(receiveValue:
+        try withSocket { socket in
+            let sub = socket.autoconnect().sink(
+                receiveValue:
                 expectAndThen([
                     .open: { socket.send("disconnect") },
-                    .close: { },
+                    .close: {},
                 ])
             )
             defer { sub.cancel() }
@@ -712,13 +754,14 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L664
     func testRemoteExceptionErrorsChannels() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let channel = socket.join("room:lobby")
 
-            let sub = channel.sink(receiveValue:
+            let sub = channel.sink(
+                receiveValue:
                 expectAndThen([
                     .join: { socket.send("boom") },
-                    .error: { },
+                    .error: {},
                 ])
             )
             defer { sub.cancel() }
@@ -730,13 +773,14 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L664
     func testSocketCloseErrorsChannels() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let channel = socket.join("room:lobby")
 
-            let sub = channel.sink(receiveValue:
+            let sub = channel.sink(
+                receiveValue:
                 expectAndThen([
                     .join: { socket.send("disconnect") },
-                    .error: { }
+                    .error: {},
                 ])
             )
             defer { sub.cancel() }
@@ -748,15 +792,16 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L676
     func testSocketCloseDoesNotErrorChannelsIfLeft() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             socket.reconnectTimeInterval = { _ in .milliseconds(10) }
 
             let channel = socket.join("room:lobby")
 
-            let sub1 = channel.sink(receiveValue:
+            let sub1 = channel.sink(
+                receiveValue:
                 expectAndThen([
                     .join: { socket.leave(channel) },
-                    .leave: { }
+                    .leave: {},
                 ])
             )
             socket.connect()
@@ -777,7 +822,7 @@ class SocketTests: XCTestCase {
     }
 
     func testRemoteExceptionPublishesError() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let errorEx = self.expectation(description: "Should have received error")
             errorEx.assertForOverFulfill = false
             let sub = socket.autoconnect().sink { value in
@@ -805,17 +850,17 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L771
     func testChannelReceivesMessages() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let channel = socket.join("room:lobby")
             let echoEcho = "yahoo"
             let echoEx = expectation(description: "Should have received the echo text response")
 
             channel.push("echo", payload: ["echo": echoEcho]) { result in
-                guard case .success(let reply) = result else { return }
+                guard case let .success(reply) = result else { return }
                 XCTAssertTrue(reply.isOk)
                 XCTAssertEqual(socket.currentRef, reply.ref)
                 XCTAssertEqual(channel.topic, reply.incomingMessage.topic)
-                XCTAssertEqual(["echo": echoEcho], reply.response as? Dictionary<String, String>)
+                XCTAssertEqual(["echo": echoEcho], reply.response as? [String: String])
                 XCTAssertEqual(channel.joinRef, reply.joinRef)
                 echoEx.fulfill()
             }
@@ -828,18 +873,19 @@ class SocketTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/socket_test.js#L788
     func testSocketDecodesAndPublishesMessage() throws {
-        try withSocket { (socket) in
+        try withSocket { socket in
             let channel = socket.join("room:lobby")
 
             let echoEcho = "kapow"
             let echoEx = expectation(description: "Should have received the echo text response")
 
             let sub = socket.autoconnect().sink { msg in
-                guard case .incomingMessage(let message) = msg else { return }
-                guard "ok" == message.payload["status"] as? String else { return }
-                guard .reply == message.event else { return }
+                guard case let .incomingMessage(message) = msg else { return }
+                guard message.payload["status"] as? String == "ok" else { return }
+                guard message.event == .reply else { return }
                 guard channel.topic == message.topic else { return }
-                guard let response = message.payload["response"] as? [String: String] else { return }
+                guard let response = message.payload["response"] as? [String: String]
+                else { return }
                 guard echoEcho == response["echo"] else { return }
                 echoEx.fulfill()
             }
@@ -861,17 +907,18 @@ class SocketTests: XCTestCase {
                     message.ref.rawValue,
                     "room:lobbylobbylobby",
                     message.event.stringValue,
-                    message.payload
+                    message.payload,
                 ]
                 return .binary(try JSONSerialization.data(withJSONObject: array, options: []))
             }
 
-        let decoder: IncomingMessageDecoder = { (raw: RawIncomingMessage) throws -> IncomingMessage in
-            var decoded = try IncomingMessage(raw)
-            XCTAssertEqual("room:lobbylobbylobby", decoded.topic)
-            decoded.topic = "notwhatyouexpected"
-            return decoded
-        }
+        let decoder: IncomingMessageDecoder =
+            { (raw: RawIncomingMessage) throws -> IncomingMessage in
+                var decoded = try IncomingMessage(raw)
+                XCTAssertEqual("room:lobbylobbylobby", decoded.topic)
+                decoded.topic = "notwhatyouexpected"
+                return decoded
+            }
 
         try withSocket(encoder: encoder, decoder: decoder) { socket in
             let sub = socket.sink { (message: Socket.Message) in
@@ -919,7 +966,7 @@ private extension SocketTests {
     }
 
     func expectPushSuccess() -> (Error?) -> Void {
-        let pushSuccess = self.expectation(description: "Should have received response")
+        let pushSuccess = expectation(description: "Should have received response")
         return { e in
             if let error = e {
                 Swift.print("Couldn't write to socket with error '\(error)'")

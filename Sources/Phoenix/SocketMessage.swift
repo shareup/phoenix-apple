@@ -1,7 +1,7 @@
 import Foundation
 
-extension Socket {
-    public enum Message {
+public extension Socket {
+    enum Message {
         case close
         case connecting
         case open

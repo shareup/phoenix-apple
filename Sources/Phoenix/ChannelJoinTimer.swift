@@ -1,5 +1,5 @@
-import Foundation
 import DispatchTimer
+import Foundation
 
 extension Channel {
     enum JoinTimer {
@@ -18,15 +18,15 @@ extension Channel {
             switch self {
             case .off:
                 return nil
-            case .join(_, let attempt):
+            case let .join(_, attempt):
                 return attempt
-            case .rejoin(_, let attempt):
+            case let .rejoin(_, attempt):
                 return attempt
             }
         }
-        
-        var isOn: Bool { return self.isJoinTimer || self.isRejoinTimer }
-        var isOff: Bool { return self.isOn == false }
+
+        var isOn: Bool { isJoinTimer || isRejoinTimer }
+        var isOff: Bool { isOn == false }
 
         var isJoinTimer: Bool {
             switch self {
@@ -36,7 +36,7 @@ extension Channel {
             }
         }
 
-        var isNotRejoinTimer: Bool { return self.isRejoinTimer == false }
+        var isNotRejoinTimer: Bool { isRejoinTimer == false }
         var isRejoinTimer: Bool {
             switch self {
             case .off: return false
