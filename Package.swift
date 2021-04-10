@@ -15,23 +15,27 @@ let package = Package(
         .package(
             name: "DispatchTimer",
             url: "https://github.com/shareup/dispatch-timer.git",
-            from: "1.1.0"
+            from: "1.3.0"
         ),
         .package(
             name: "Synchronized",
             url: "https://github.com/shareup/synchronized.git",
-            from: "2.1.0"
+            from: "2.3.0"
         ),
         .package(
             name: "WebSocket",
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "2.3.0"
+            from: "2.4.0"
         ),
     ],
     targets: [
         .target(
             name: "Phoenix",
-            dependencies: ["DispatchTimer", "Synchronized", "WebSocket"]
+            dependencies: [
+                "DispatchTimer",
+                .product(name: "SynchronizedDynamic", package: "Synchronized"),
+                "WebSocket",
+            ]
         ),
         .testTarget(
             name: "PhoenixTests",
