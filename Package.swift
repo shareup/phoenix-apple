@@ -32,7 +32,7 @@ let package = Package(
         .target(
             name: "Phoenix",
             dependencies: [
-                "DispatchTimer",
+                .product(name: "DispatchTimerDynamic", package: "DispatchTimer"),
                 .product(name: "SynchronizedDynamic", package: "Synchronized"),
                 "WebSocket",
             ]
