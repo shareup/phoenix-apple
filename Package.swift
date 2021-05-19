@@ -1,4 +1,4 @@
-// swift-tools-version:5.2
+// swift-tools-version:5.3
 import PackageDescription
 let package = Package(
     name: "Phoenix",
@@ -8,25 +8,25 @@ let package = Package(
     products: [
         .library(
             name: "Phoenix",
-            targets: ["Phoenix"]
-        ),
+            targets: ["Phoenix"]),
+        .library(
+            name: "PhoenixDynamic",
+            type: .dynamic,
+            targets: ["Phoenix"]),
     ],
     dependencies: [
         .package(
             name: "DispatchTimer",
             url: "https://github.com/shareup/dispatch-timer.git",
-            from: "1.3.0"
-        ),
+            from: "1.3.0"),
         .package(
             name: "Synchronized",
             url: "https://github.com/shareup/synchronized.git",
-            from: "2.3.0"
-        ),
+            from: "2.3.0"),
         .package(
             name: "WebSocket",
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "2.4.0"
-        ),
+            from: "2.4.0"),
     ],
     targets: [
         .target(
@@ -35,11 +35,10 @@ let package = Package(
                 .product(name: "DispatchTimerDynamic", package: "DispatchTimer"),
                 .product(name: "SynchronizedDynamic", package: "Synchronized"),
                 "WebSocket",
-            ]
-        ),
+            ]),
         .testTarget(
             name: "PhoenixTests",
-            dependencies: ["Phoenix"]
-        ),
+            dependencies: ["Phoenix"],
+            exclude: ["phoenix-js", "server"]),
     ]
 )
