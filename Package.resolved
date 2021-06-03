@@ -6,8 +6,8 @@
         "repositoryURL": "https://github.com/shareup/dispatch-timer.git",
         "state": {
           "branch": null,
-          "revision": "711c8feb2356c05979880a6bda8a8b9471a03275",
-          "version": "1.3.0"
+          "revision": "a4b2b9d3415216b97715bc95b16fc51c2660651a",
+          "version": "2.0.0"
         }
       },
       {
@@ -15,8 +15,8 @@
         "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {
           "branch": null,
-          "revision": "56f5956cbd9cf4bcd2f92153c03ae293dffb0987",
-          "version": "2.3.0"
+          "revision": "f01e4a1ee5fbf586d612a8dc0bc068603f6b9450",
+          "version": "3.0.0"
         }
       },
       {
@@ -24,8 +24,8 @@
         "repositoryURL": "https://github.com/shareup/websocket-apple.git",
         "state": {
           "branch": null,
-          "revision": "25c9078fd878b1a2e14bc9a7b4074dbd80c7db8e",
-          "version": "2.4.0"
+          "revision": "78df9bfe7a43d13a8fc3c8857c2250c9354aa838",
+          "version": "2.5.0"
         }
       },
       {
