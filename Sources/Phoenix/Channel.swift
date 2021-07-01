@@ -157,8 +157,8 @@ public final class Channel: Publisher {
                 "channel.errored: oldstate=%{public}@ error=%s",
                 log: .phoenix,
                 type: .error,
-                state.debugDescription,
-                error.localizedDescription
+                state.description,
+                String(describing: error)
             )
 
             self.state = .errored(error)
@@ -213,7 +213,7 @@ extension Channel {
                 log: .phoenix,
                 type: .debug,
                 topic,
-                state.debugDescription
+                state.description
             )
 
             switch state {
@@ -266,7 +266,7 @@ extension Channel {
                 log: .phoenix,
                 type: .debug,
                 topic,
-                state.debugDescription
+                state.description
             )
 
             switch state {
@@ -345,25 +345,11 @@ extension Channel {
 
     private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
         guard let socket = socket else {
-            os_log(
-                "channel.send with nil socket: topic=%s message=%s",
-                log: .phoenix,
-                type: .debug,
-                topic,
-                message.debugDescription
-            )
+            os_log("channel.send with nil socket: topic=%s", log: .phoenix, type: .debug, topic)
             errored(Channel.Error.lostSocket)
             completionHandler(Channel.Error.lostSocket)
             return
         }
-
-        os_log(
-            "channel.send: topic=%s message=%s",
-            log: .phoenix,
-            type: .debug,
-            topic,
-            message.debugDescription
-        )
 
         socket.send(message) { error in
             if let error = error {
@@ -376,7 +362,7 @@ extension Channel {
                         "channel.send error: error=%s",
                         log: .phoenix,
                         type: .error,
-                        error.localizedDescription
+                        String(describing: error)
                     )
                     // NOTE: we don't change state to error here, instead we let the socket close do that for us
                 }
@@ -535,16 +521,16 @@ public extension Channel {
 // MARK: Socket Subscriber
 
 extension Channel {
-    enum ChannelSpecificSocketMessage: CustomDebugStringConvertible {
+    enum ChannelSpecificSocketMessage: CustomStringConvertible {
         case socketOpen
         case socketClose
         case channelMessage(IncomingMessage)
 
-        var debugDescription: String {
+        var description: String {
             switch self {
             case .socketOpen: return "open"
             case .socketClose: return "close"
-            case let .channelMessage(msg): return msg.debugDescription
+            case let .channelMessage(msg): return "topic: \(msg.topic)"
             }
         }
     }
@@ -571,14 +557,6 @@ extension Channel {
             fatalError("`Never` means never")
         }
         let receiveValue = { [weak self] (input: SocketOutput) -> Void in
-            os_log(
-                "channel.receive: topic=%s message=%s",
-                log: .phoenix,
-                type: .debug,
-                topic,
-                input.debugDescription
-            )
-
             switch input {
             case let .channelMessage(message):
                 self?.handle(message)

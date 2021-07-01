@@ -1,6 +1,6 @@
 import Synchronized
 
-public struct Ref: Comparable, CustomDebugStringConvertible, Hashable, ExpressibleByIntegerLiteral {
+public struct Ref: Comparable, CustomStringConvertible, Hashable, ExpressibleByIntegerLiteral {
     public let rawValue: UInt64
 
     public init(_ rawValue: UInt64) {
@@ -11,7 +11,7 @@ public struct Ref: Comparable, CustomDebugStringConvertible, Hashable, Expressib
         rawValue = value
     }
 
-    public var debugDescription: String { "\(rawValue)" }
+    public var description: String { "\(rawValue)" }
 
     public static func == (lhs: Ref, rhs: Ref) -> Bool {
         lhs.rawValue == rhs.rawValue

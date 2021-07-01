@@ -13,7 +13,7 @@ public enum RawOutgoingMessage: CustomStringConvertible, Hashable {
     }
 }
 
-public struct OutgoingMessage: CustomDebugStringConvertible {
+public struct OutgoingMessage {
     public var joinRef: Ref?
     public var ref: Ref
     public var topic: Topic
@@ -70,12 +70,5 @@ public struct OutgoingMessage: CustomDebugStringConvertible {
 
         let data = try JSONSerialization.data(withJSONObject: array, options: [])
         return .text(try String(data: data, encoding: .utf8))
-    }
-
-    public var debugDescription: String {
-        let jr = joinRef?.debugDescription ?? "<nil>"
-        let r = ref.debugDescription
-        let e = event.stringValue
-        return "[\(jr),\(r),\"\(topic)\",\"\(e)\",\(payload._debugDescription)]"
     }
 }

@@ -108,7 +108,7 @@ public final class Socket {
         return true
     } }
 
-    var connectionState: String { sync { state.debugDescription } }
+    var connectionState: String { sync { state.description } }
 
     public init(
         url: URL,
@@ -233,7 +233,7 @@ extension Socket: ConnectablePublisher {
                 "socket.disconnect: oldstate=%{public}@",
                 log: .phoenix,
                 type: .debug,
-                state.debugDescription
+                state.description
             )
 
             shouldReconnect = false
@@ -282,7 +282,7 @@ extension Socket: ConnectablePublisher {
             "socket.disconnectAndWait: result=%{public}@",
             log: .phoenix,
             type: .debug,
-            result.debugDescription
+            result.description
         )
 
         return result
@@ -372,13 +372,6 @@ public extension Socket {
             callback: callback
         )
 
-        os_log(
-            "socket.push: message=%s",
-            log: .phoenix,
-            type: .debug,
-            thePush.debugDescription
-        )
-
         sync {
             pending.append(thePush)
         }
@@ -440,24 +433,15 @@ extension Socket {
 
     func send(_ string: String, completionHandler: @escaping Callback) {
         sync {
-            os_log(
-                "socket.send: message=%s state=%{public}@",
-                log: .phoenix,
-                type: .debug,
-                string,
-                state.debugDescription
-            )
-
             switch state {
             case let .open(ws):
                 ws.send(string) { error in
                     if let error = error {
                         os_log(
-                            "socket.send.error: message=%s error=%s",
+                            "socket.send.text.error: error=%s",
                             log: .phoenix,
-                            type: .debug,
-                            string,
-                            error.localizedDescription
+                            type: .error,
+                            String(describing: error)
                         )
 
                         self.state = .closing(ws) // TODO: write a test to prove this works
@@ -481,24 +465,15 @@ extension Socket {
 
     func send(_ data: Data, completionHandler: @escaping Callback) {
         sync {
-            os_log(
-                "socket.send: %lld bytes state=%{public}@",
-                log: .phoenix,
-                type: .debug,
-                data.count,
-                state.debugDescription
-            )
-
             switch state {
             case let .open(ws):
                 ws.send(data) { error in
                     if let error = error {
                         os_log(
-                            "socket.send.error: %lld bytes error=%s",
+                            "socket.send.data.error: error=%s",
                             log: .phoenix,
-                            type: .debug,
-                            data.count,
-                            error.localizedDescription
+                            type: .error,
+                            String(describing: error)
                         )
 
                         self.state = .closing(ws) // TODO: write a test to prove this works
@@ -553,7 +528,7 @@ extension Socket {
                 "socket.heartbeatTimeout: oldstate=%{public}@",
                 log: .phoenix,
                 type: .debug,
-                state.debugDescription
+                state.description
             )
 
             self.pendingHeartbeatRef = nil
@@ -624,12 +599,12 @@ extension Socket {
                     "socket.receive could not decode message: message=%s error=%s",
                     log: .phoenix,
                     type: .error,
-                    rawMessage.debugDescription,
+                    rawMessage.description,
                     error.localizedDescription
                 )
 
                 notifySubjectQueue.async {
-                    subject.send(.unreadableMessage(rawMessage.debugDescription))
+                    subject.send(.unreadableMessage(rawMessage.description))
                 }
             }
         }
@@ -639,19 +614,12 @@ extension Socket {
             os_log(
                 "socket.receive.failure: error=%s",
                 log: .phoenix,
-                type: .debug,
-                error.localizedDescription
+                type: .error,
+                String(describing: error)
             )
 
             notifySubjectQueue.async { subject.send(.websocketError(error)) }
         case let .success(message):
-            os_log(
-                "socket.receive.success: message=%s",
-                log: .phoenix,
-                type: .debug,
-                message.debugDescription
-            )
-
             switch message {
             case .open:
                 sync {
@@ -663,7 +631,7 @@ extension Socket {
                             "socket.receive open in wrong state: state=%{public}@",
                             log: .phoenix,
                             type: .error,
-                            state.debugDescription
+                            state.description
                         )
 
                         return
@@ -686,14 +654,6 @@ extension Socket {
 
     private func receive(completion: Subscribers.Completion<WebSocketFailure>) {
         sync {
-            os_log(
-                "socket.receiveCompletion: oldstate=%{public}@ completion=%s",
-                log: .phoenix,
-                type: .debug,
-                state.debugDescription,
-                completion._debugDescription
-            )
-
             switch state {
             case .closed:
                 return
@@ -706,18 +666,6 @@ extension Socket {
 
                 reconnectIfPossible()
             }
-        }
-    }
-}
-
-private extension Subscribers.Completion where Failure == Socket.WebSocketFailure {
-    var _debugDescription: String {
-        switch self {
-        case .finished:
-            return "finished"
-        case let .failure(error):
-            let description = (error as NSError).description
-            return description.isEmpty ? description : "failure"
         }
     }
 }
