@@ -50,8 +50,8 @@ extension String {
     }
 }
 
-extension DispatchTimeoutResult: CustomDebugStringConvertible {
-    public var debugDescription: String {
+extension DispatchTimeoutResult: CustomStringConvertible {
+    public var description: String {
         switch self {
         case .success: return "success"
         case .timedOut: return "timedOut"

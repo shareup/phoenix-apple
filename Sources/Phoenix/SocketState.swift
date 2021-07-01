@@ -1,7 +1,7 @@
 import WebSocket
 
 extension Socket {
-    enum State: CustomDebugStringConvertible {
+    enum State: CustomStringConvertible {
         case closed
         case connecting(WebSocket)
         case open(WebSocket)
@@ -16,7 +16,7 @@ extension Socket {
             }
         }
 
-        var debugDescription: String {
+        var description: String {
             switch self {
             case .closed: return "closed"
             case .connecting: return "connecting"

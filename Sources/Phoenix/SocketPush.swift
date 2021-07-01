@@ -3,7 +3,7 @@ import Foundation
 extension Socket {
     public typealias Callback = (Swift.Error?) -> Void
 
-    struct Push: CustomDebugStringConvertible {
+    struct Push {
         public let topic: Topic
         public let event: PhxEvent
         public let payload: Payload
@@ -20,10 +20,6 @@ extension Socket {
             if let cb = callback {
                 DispatchQueue.backgroundQueue.async { cb(error) }
             }
-        }
-
-        var debugDescription: String {
-            "[\(topic),\(event.stringValue),\(payload)]"
         }
     }
 }

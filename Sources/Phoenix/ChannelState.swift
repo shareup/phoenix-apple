@@ -1,12 +1,12 @@
 extension Channel {
-    enum State: CustomDebugStringConvertible {
+    enum State: CustomStringConvertible {
         case closed
         case joining(Ref)
         case joined(Ref)
         case leaving(joinRef: Ref, leavingRef: Ref)
         case errored(Swift.Error)
 
-        var debugDescription: String {
+        var description: String {
             switch self {
             case .closed: return "closed"
             case .joining: return "joining"
