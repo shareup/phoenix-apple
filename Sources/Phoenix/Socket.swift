@@ -227,15 +227,22 @@ extension Socket: ConnectablePublisher {
     }
 
     public func disconnect() {
+        os_log(
+            "socket.disconnect: oldstate=%{public}@",
+            log: .phoenix,
+            type: .debug,
+            state.description
+        )
+
         // Calling `Channel.leave()` inside `sync` can cause a deadlock.
         let channels: [Channel] = sync {
-            os_log(
-                "socket.disconnect: oldstate=%{public}@",
-                log: .phoenix,
-                type: .debug,
-                state.description
-            )
+            let channels = self.channels.compactMap(\.value.channel)
+            self.channels.removeAll()
+            return channels
+        }
+        channels.forEach { $0.leave() }
 
+        sync {
             shouldReconnect = false
             cancelHeartbeatTimer()
 
@@ -250,10 +257,7 @@ extension Socket: ConnectablePublisher {
 
                 ws.close()
             }
-
-            return self.channels.compactMap(\.value.channel)
         }
-        channels.forEach { $0.leave() }
     }
 
     @discardableResult
@@ -294,7 +298,9 @@ extension Socket: ConnectablePublisher {
                 _reconnectAttempts += 1
                 let deadline = DispatchTime.now()
                     .advanced(by: reconnectTimeInterval(_reconnectAttempts))
-                backgroundQueue.asyncAfter(deadline: deadline) {
+                backgroundQueue.asyncAfter(deadline: deadline) { [weak self] in
+                    guard let self = self else { return }
+                    guard self.lock.locked({ self.shouldReconnect }) else { return }
                     self.connect()
                 }
             }
