@@ -298,7 +298,9 @@ extension Socket: ConnectablePublisher {
                 _reconnectAttempts += 1
                 let deadline = DispatchTime.now()
                     .advanced(by: reconnectTimeInterval(_reconnectAttempts))
-                backgroundQueue.asyncAfter(deadline: deadline) {
+                backgroundQueue.asyncAfter(deadline: deadline) { [weak self] in
+                    guard let self = self else { return }
+                    guard self.lock.locked({ self.shouldReconnect }) else { return }
                     self.connect()
                 }
             }

@@ -28,6 +28,7 @@ extension Channel {
         var isOn: Bool { isJoinTimer || isRejoinTimer }
         var isOff: Bool { isOn == false }
 
+        var isNotJoinTimer: Bool { !isJoinTimer }
         var isJoinTimer: Bool {
             switch self {
             case .off: return false
@@ -36,7 +37,7 @@ extension Channel {
             }
         }
 
-        var isNotRejoinTimer: Bool { isRejoinTimer == false }
+        var isNotRejoinTimer: Bool { !isRejoinTimer }
         var isRejoinTimer: Bool {
             switch self {
             case .off: return false
