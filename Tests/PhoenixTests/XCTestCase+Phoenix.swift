@@ -59,9 +59,10 @@ extension XCTestCase {
         }
     }
 
-    func onResult<T: RawCaseConvertible>(_ value: T.RawCase,
-                                         _ block: @escaping @autoclosure () -> Void) -> (T) -> Void
-    {
+    func onResult<T: RawCaseConvertible>(
+        _ value: T.RawCase,
+        _ block: @escaping @autoclosure () -> Void
+    ) -> (T) -> Void {
         onResults([value: block])
     }
 
@@ -85,7 +86,7 @@ extension XCTestCase {
 
     func expectFailure(_ error: Channel.Error? = nil) -> Channel.Callback {
         let expectation = self.expectation(description: "Should have received failure")
-        return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
+        return { (result: Result<Channel.Reply, Swift.Error>) in
             guard case .failure = result else { return }
             if let error = error {
                 guard case let .failure(channelError as Channel.Error) = result else { return }
@@ -110,7 +111,7 @@ extension XCTestCase {
         let replyDescription = isSuccess ? "successful" : "error"
         let expectation = self
             .expectation(description: "Should have received \(replyDescription) response")
-        return { (result: Result<Channel.Reply, Swift.Error>) -> Void in
+        return { (result: Result<Channel.Reply, Swift.Error>) in
             if case let .success(reply) = result {
                 guard reply.isOk == isSuccess else { return }
                 if let expected = response {

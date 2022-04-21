@@ -200,7 +200,7 @@ extension Channel {
     }
 
     private func rejoin() {
-        guard let socket = self.socket else {
+        guard let socket = socket else {
             os_log("channel.rejoin with nil socket", log: .phoenix, type: .debug)
             return
         }
@@ -255,7 +255,7 @@ extension Channel {
 
 extension Channel {
     public func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
-        guard let socket = self.socket else { return }
+        guard let socket = socket else { return }
 
         sync {
             self.shouldRejoin = false
@@ -556,7 +556,7 @@ extension Channel {
         let completion: (Subscribers.Completion<SocketFailure>) -> Void = { _ in
             fatalError("`Never` means never")
         }
-        let receiveValue = { [weak self] (input: SocketOutput) -> Void in
+        let receiveValue = { [weak self] (input: SocketOutput) in
             switch input {
             case let .channelMessage(message):
                 self?.handle(message)
@@ -577,7 +577,7 @@ extension Channel {
 
 extension Channel {
     private func handleSocketOpen() {
-        guard let socket = self.socket else { return assertionFailure("No socket") }
+        guard let socket = socket else { return assertionFailure("No socket") }
 
         sync {
             switch state {

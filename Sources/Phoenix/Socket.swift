@@ -366,11 +366,12 @@ public extension Socket {
         push(topic: topic, event: event, payload: payload) { _ in }
     }
 
-    func push(topic: Topic,
-              event: PhxEvent,
-              payload: Payload = [:],
-              callback: @escaping Callback)
-    {
+    func push(
+        topic: Topic,
+        event: PhxEvent,
+        payload: Payload = [:],
+        callback: @escaping Callback
+    ) {
         let thePush = Socket.Push(
             topic: topic,
             event: event,
@@ -658,7 +659,7 @@ extension Socket {
         }
     }
 
-    private func receive(completion: Subscribers.Completion<WebSocketFailure>) {
+    private func receive(completion _: Subscribers.Completion<WebSocketFailure>) {
         sync {
             switch state {
             case .closed:

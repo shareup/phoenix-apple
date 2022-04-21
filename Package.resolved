@@ -18,24 +18,6 @@
           "revision": "f01e4a1ee5fbf586d612a8dc0bc068603f6b9450",
           "version": "3.0.0"
         }
-      },
-      {
-        "package": "WebSocket",
-        "repositoryURL": "https://github.com/shareup/websocket-apple.git",
-        "state": {
-          "branch": null,
-          "revision": "78df9bfe7a43d13a8fc3c8857c2250c9354aa838",
-          "version": "2.5.0"
-        }
-      },
-      {
-        "package": "WebSocketProtocol",
-        "repositoryURL": "https://github.com/shareup/websocket-protocol.git",
-        "state": {
-          "branch": null,
-          "revision": "bd6257e3c4b23484dfc73c550b025f96c8e151f6",
-          "version": "2.3.1"
-        }
       }
     ]
   },

@@ -338,7 +338,7 @@ class ChannelTests: XCTestCase {
         let joinEx = expectation(description: "Should have joined channel")
         var unexpectedOutputCount = 0
 
-        let channelSub = channel.sink { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink { (output: Channel.Output) in
             switch output {
             case .join: joinEx.fulfill()
             default: unexpectedOutputCount += 1
@@ -409,7 +409,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 3000, "join": true])
 
         let timeoutEx = expectation(description: "Should have received timeout error")
-        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) in
             guard case Channel.Output.error(Channel.Error.joinTimeout) = output else { return }
             timeoutEx.fulfill()
         })
@@ -439,7 +439,7 @@ class ChannelTests: XCTestCase {
         let timeoutEx = expectation(description: "Should have received timeout error")
         var unexpectedOutputCount = 0
 
-        let channelSub = channel.sink { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink { (output: Channel.Output) in
             switch output {
             case .error(Channel.Error.joinTimeout): timeoutEx.fulfill()
             default: unexpectedOutputCount += 1
@@ -462,7 +462,7 @@ class ChannelTests: XCTestCase {
         channel.rejoinTimeout = { _ in .seconds(30) }
 
         let timeoutEx = expectation(description: "Should have received timeout error")
-        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) in
             guard case Channel.Output.error(Channel.Error.joinTimeout) = output else { return }
             timeoutEx.fulfill()
         })
@@ -493,7 +493,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:error", payload: ["error": "boom"])
 
         let timeoutEx = expectation(description: "Should have received error")
-        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) in
             guard case let .error(Channel.Error.invalidJoinReply(reply)) = output else { return }
             XCTAssertEqual(["error": "boom"], reply.response as? [String: String])
             timeoutEx.fulfill()
@@ -519,7 +519,7 @@ class ChannelTests: XCTestCase {
         let errorEx = expectation(description: "Should have received error")
         var unexpectedOutputCount = 0
 
-        let channelSub = channel.sink { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink { (output: Channel.Output) in
             switch output {
             case .error(Channel.Error.invalidJoinReply): errorEx.fulfill()
             default: unexpectedOutputCount += 1
@@ -541,7 +541,7 @@ class ChannelTests: XCTestCase {
         let channel = makeChannel(topic: "room:error", payload: ["error": "boom"])
 
         let timeoutEx = expectation(description: "Should have received error")
-        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) -> Void in
+        let channelSub = channel.sink(receiveValue: { (output: Channel.Output) in
             guard case .error(Channel.Error.invalidJoinReply) = output else { return }
             timeoutEx.fulfill()
         })
