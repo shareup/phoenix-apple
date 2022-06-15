@@ -343,7 +343,10 @@ extension Channel {
         send(message) { _ in }
     }
 
-    private func send(_ message: OutgoingMessage, completionHandler: @escaping Socket.Callback) {
+    private func send(
+        _ message: OutgoingMessage,
+        completionHandler: @escaping Socket.Callback
+    ) {
         guard let socket = socket else {
             os_log("channel.send with nil socket: topic=%s", log: .phoenix, type: .debug, topic)
             errored(Channel.Error.lostSocket)
@@ -494,9 +497,13 @@ extension Channel {
             guard let next = possibleNext else { return }
             guard next.timeoutDate < inFlightMessagesTimer?.nextDeadline else { return }
 
-            self.inFlightMessagesTimer = DispatchTimer(fireAt: next.timeoutDate) { [weak self] in
-                self?.timeoutInFlightMessagesAsync()
-            }
+            self
+                .inFlightMessagesTimer = DispatchTimer(
+                    fireAt: next
+                        .timeoutDate
+                ) { [weak self] in
+                    self?.timeoutInFlightMessagesAsync()
+                }
         }
     }
 }

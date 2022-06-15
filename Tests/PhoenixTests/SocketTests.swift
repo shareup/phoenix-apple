@@ -73,8 +73,10 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L161
     func testSocketConnectDisconnectAndReconnect() throws {
         try withSocket { socket in
-            let closeMessageEx = expectation(description: "Should have received a close message")
-            let openMesssageEx = expectation(description: "Should have received an open message")
+            let closeMessageEx =
+                expectation(description: "Should have received a close message")
+            let openMesssageEx =
+                expectation(description: "Should have received an open message")
             let reopenMessageEx =
                 expectation(description: "Should have reopened and got an open message")
 
@@ -84,7 +86,8 @@ class SocketTests: XCTestCase {
                 receiveValue:
                 onResults([
                     .open: {
-                        openExs.popLast()?.fulfill(); if !openExs.isEmpty { socket.disconnect() }
+                        openExs.popLast()?.fulfill(); if !openExs
+                            .isEmpty { socket.disconnect() }
                     },
                     .close: { closeMessageEx.fulfill(); socket.connect() },
                 ])
@@ -321,10 +324,16 @@ class SocketTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/a1120f6f292b44ab2ad1b673a937f6aa2e63c225/assets/test/socket_test.js#L368
     func testChannelsAreTracked() throws {
         try withSocket { socket in
-            let channel1 = socket.join("room:timeout1", payload: ["timeout": 2000, "join": true])
+            let channel1 = socket.join(
+                "room:timeout1",
+                payload: ["timeout": 2000, "join": true]
+            )
             XCTAssertEqual(socket.joinedChannels.count, 1)
 
-            let channel2 = socket.join("room:timeout2", payload: ["timeout": 2000, "join": true])
+            let channel2 = socket.join(
+                "room:timeout2",
+                payload: ["timeout": 2000, "join": true]
+            )
             XCTAssertEqual(socket.joinedChannels.count, 2)
 
             let ex1 = expectation(description: "Should start joining channel 1")
@@ -461,7 +470,9 @@ class SocketTests: XCTestCase {
                 expectAndThen([
                     .open: {
                         socket
-                            .sendHeartbeat { heartbeatExpectation.fulfill(); socket.disconnect() }
+                            .sendHeartbeat {
+                                heartbeatExpectation.fulfill(); socket.disconnect()
+                            }
                     },
                     .close: {},
                 ])
@@ -516,7 +527,8 @@ class SocketTests: XCTestCase {
                 .expectation(description: "Does not send heartbeat when disconnected")
             noHeartbeatExpectation.isInverted = true
 
-            let sub = socket.sink(receiveValue: onResult(.close, noHeartbeatExpectation.fulfill()))
+            let sub = socket
+                .sink(receiveValue: onResult(.close, noHeartbeatExpectation.fulfill()))
             defer { sub.cancel() }
 
             socket.sendHeartbeat { noHeartbeatExpectation.fulfill() }

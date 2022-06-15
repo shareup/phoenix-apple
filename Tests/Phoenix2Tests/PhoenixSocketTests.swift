@@ -1,7 +1,9 @@
-import XCTest
-@testable import Phoenix2
+import AsyncTestExtensions
 import Combine
+@testable import Phoenix2
+import Synchronized
 import WebSocket
+import XCTest
 
 // NOTE: Names in quotation marks below correspond to groups of tests
 // delimited by `describe("some name", {})` blocks in Phoenix JS'
@@ -65,7 +67,7 @@ final class PhoenixSocketTests: XCTestCase {
         var opens = 0
         let onOpen: () -> Void = { opens += 1 }
 
-        try await withWebSocket(self.fake(), onOpen: onOpen) { socket in
+        try await withWebSocket(fake(), onOpen: onOpen) { socket in
             try await socket.connect()
         }
 
@@ -90,12 +92,10 @@ final class PhoenixSocketTests: XCTestCase {
         let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket)
 
         try await socket.connect()
-        let id1 = await socket.webSocket?.id
-        XCTAssertNotNil(id1)
+        await AssertNotNil(await socket.webSocket?.id)
 
         try await socket.disconnect()
-        let id2 = await socket.webSocket?.id
-        XCTAssertNil(id2)
+        await AssertNil(await socket.webSocket?.id)
     }
 
     func testCloseStateCallbackIsCalled() async throws {
@@ -114,7 +114,7 @@ final class PhoenixSocketTests: XCTestCase {
         }
 
         try await withWebSocket(
-            self.fake({}, onClose),
+            fake(onOpen: {}, onClose: onClose),
             onClose: onPhoenixClose
         ) { socket in
             try await socket.connect()
@@ -129,7 +129,10 @@ final class PhoenixSocketTests: XCTestCase {
         let onPhoenixClose: () -> Void = { closes += 1 }
         let onClose: WebSocketOnClose = { _ in closes += 1 }
 
-        try await withWebSocket(self.fake({}, onClose), onClose: onPhoenixClose) { socket in
+        try await withWebSocket(
+            fake(onOpen: {}, onClose: onClose),
+            onClose: onPhoenixClose
+        ) { socket in
             try await socket.disconnect()
             try await socket.disconnect()
             try await socket.disconnect()
@@ -140,48 +143,279 @@ final class PhoenixSocketTests: XCTestCase {
 
     // MARK: "connectionState"
 
+    func testConnectionStateIsClosedInitially() async throws {
+        try await withWebSocket(fake()) { socket in
+            await AssertTrue(await socket.connectionState.isClosed)
+        }
+    }
 
+    func testConnectionStateIsConnectingWhenConnecting() async throws {
+        var didChangeToConnecting = false
+        let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket) { state in
+            guard state.isConnecting else { return }
+            guard !didChangeToConnecting
+            else { return XCTFail("Should have only changed to connecting once") }
+            didChangeToConnecting = true
+        }
+        try await socket.connect()
+        XCTAssertTrue(didChangeToConnecting)
+    }
+
+    func testConnectionStateIsOpenAfterConnecting() async throws {
+        try await withWebSocket(fake()) { socket in
+            try await socket.connect()
+            await AssertTrue(await socket.connectionState.isOpen)
+        }
+    }
+
+    func testConnectionStateIsClosingWhenDisconnecting() async throws {
+        var didChangeToClosing = false
+        let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket) { state in
+            guard state.isClosing else { return }
+            guard !didChangeToClosing
+            else { return XCTFail("Should have only changed to closing once") }
+            didChangeToClosing = true
+        }
+        try await socket.connect()
+        try await socket.disconnect()
+        XCTAssertTrue(didChangeToClosing)
+    }
+
+    func testConnectionStateIsClosedAfterDisconnecting() async throws {
+        try await withWebSocket(fake()) { socket in
+            try await socket.connect()
+            await AssertTrue(await socket.connectionState.isOpen)
+
+            try await socket.disconnect()
+            await AssertTrue(await socket.connectionState.isClosed)
+        }
+    }
+
+    // MARK: "channel"
+
+    func testCreateChannelWithTopicAndPayload() async throws {
+        try await withWebSocket(fake()) { socket in
+            let channel = await socket.channel("topic", joinPayload: ["one": "two"])
+            XCTAssertEqual("topic", channel.topic)
+            XCTAssertEqual(["one": "two"], channel.joinPayload)
+        }
+    }
+
+    func testCreatingChannelsAddsItToChannelsDictionary() async throws {
+        try await withWebSocket(fake()) { socket in
+            _ = await socket.channel("topic", joinPayload: ["one": "two"])
+
+            let channels = await socket.channels
+            XCTAssertEqual(1, channels.count)
+            let channel = try XCTUnwrap(channels["topic"])
+
+            XCTAssertEqual("topic", channel.topic)
+            XCTAssertEqual(["one": "two"], channel.joinPayload)
+        }
+    }
+
+    // TODO: Test calling `channel()` twice with the same topic only creates
+    // one channel. _This is different from Phoenix JS's native behavior_
+
+    // MARK: "remove"
+
+    func testRemoveRemovesChannelFromChannelsDictionary() async throws {
+        try await withWebSocket(fake()) { socket in
+            let channel1 = await socket.channel("topic-1")
+            let channel2 = await socket.channel("topic-2")
+            await AssertEqual(2, await socket.channels.count)
+
+            await socket.remove(channel1)
+
+            await AssertEqual(1, await socket.channels.count)
+
+            let channel = await socket.channels.first?.value
+            XCTAssertEqual(channel2.topic, channel?.topic)
+        }
+    }
+
+    // MARK: "push"
+
+    func testPushSendsDataToWebSocketWhenConnected() async throws {
+        var sent = [WebSocketMessage]()
+
+        let ws: WebSocket = fake(onSend: { sent.append($0) })
+        try await withWebSocket(ws) { socket in
+            try await socket.connect()
+            try await socket.push(self.push1, waitForReply: false)
+            await AssertEqualEventually(self.encodedPush1, sent.first)
+        }
+    }
+
+    func testBuffersDataWhenWebSocketIsNotConnected() async throws {
+        let canSend = Locked(false)
+        let didSend = Locked(false)
+
+        let ws: WebSocket = fake(
+            onSend: { message in
+                if canSend.access({ $0 }) {
+                    XCTAssertEqual(self.encodedPush1, message)
+                    didSend.access { $0 = true }
+                } else {
+                    XCTFail("Should not have received a message")
+                }
+            }
+        )
+
+        try await withWebSocket(ws) { socket in
+            Task.detached { try await socket.push(self.push1) }
+            let sleep = Task {
+                try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+                canSend.access { $0 = true }
+            }
+            try await sleep.value
+
+            try await socket.connect()
+            await AssertEqualEventually(true, didSend.access { $0 })
+        }
+    }
+
+    // MARK: "makeRef"
+
+    func testRefNextReturnsNextRef() async throws {
+        try await withWebSocket(fake()) { socket in
+            await AssertEqual(0, await socket.ref)
+
+            let one = await socket.makeRef()
+            XCTAssertEqual(1, one)
+            await AssertEqual(1, await socket.ref)
+
+            let two = await socket.makeRef()
+            XCTAssertEqual(2, two)
+            await AssertEqual(2, await socket.ref)
+
+            let three = await socket.makeRef()
+            XCTAssertEqual(3, three)
+            await AssertEqual(3, await socket.ref)
+        }
+    }
+
+    func testRefRestartsAtZeroAfterOverflow() throws {
+        let ref: Ref = 9_007_199_254_740_991
+        XCTAssertEqual(0, ref.next)
+    }
+
+    // MARK: "sendHeartbeat"
+
+    func testClosesSocketWhenHeartbeatIsNotAcknowledged() async throws {
+        let ws: WebSocket = fake(onSend: { _ in })
+        try await withWebSocket(ws) { _ in
+        }
+    }
+}
+
+private func AssertEqualEventually<T: Equatable>(
+    _ expression1: @escaping @autoclosure () async throws -> T,
+    _ expression2: @escaping @autoclosure () async throws -> T,
+    _ timeout: TimeInterval = 5,
+    _ message: @escaping @autoclosure () -> String = "",
+    file: StaticString = #filePath,
+    line: UInt = #line
+) async {
+    do {
+        try await withThrowingTaskGroup(
+            of: Void.self
+        ) { (group: inout ThrowingTaskGroup<Void, Error>) in
+            _ = group.addTaskUnlessCancelled {
+                try await Task.sleep(nanoseconds: UInt64(timeout * Double(NSEC_PER_SEC)))
+                throw CancellationError()
+            }
+
+            _ = group.addTaskUnlessCancelled {
+                var expr1 = try await expression1()
+                var expr2 = try await expression2()
+
+                while expr1 != expr2 {
+                    try await Task.sleep(nanoseconds: 10 * NSEC_PER_MSEC)
+
+                    expr1 = try await expression1()
+                    expr2 = try await expression2()
+                }
+
+                XCTAssertEqual(expr1, expr2, message(), file: file, line: line)
+            }
+
+            _ = try await group.next()
+            group.cancelAll()
+        }
+    } catch is CancellationError {
+        do {
+            let expr1 = try await expression1()
+            let expr2 = try await expression2()
+            XCTAssertEqual(expr1, expr2, message(), file: file, line: line)
+        } catch {
+            XCTFail("\(message()): \(String(describing: error))", file: file, line: line)
+        }
+    } catch {
+        XCTFail("\(message()): \(String(describing: error))", file: file, line: line)
+    }
+}
+
+private extension PhoenixSocketTests {
+    var push1: Push {
+        Push(
+            joinRef: .init(1),
+            ref: .init(2),
+            topic: "topic",
+            event: "event",
+            payload: ["one": 1]
+        )
+    }
+
+    var encodedPush1: WebSocketMessage {
+        try! Push.encode(push1)
+    }
 }
 
 private extension PhoenixSocketTests {
     func system(
-        _ onOpen: @escaping WebSocketOnOpen = {},
-        _ onClose: @escaping WebSocketOnClose = { _ in }
+        onOpen: @escaping WebSocketOnOpen = {},
+        onClose: @escaping WebSocketOnClose = { _ in }
     ) async throws -> WebSocket {
         try await .system(url: url, onOpen: onOpen, onClose: onClose)
     }
 
     func fake(
-        _ onOpen: @escaping WebSocketOnOpen = {},
-        _ onClose: @escaping WebSocketOnClose = { _ in }
+        onOpen: @escaping WebSocketOnOpen = {},
+        onClose: @escaping WebSocketOnClose = { _ in },
+        onSend: @escaping (WebSocketMessage) -> Void = { _ in }
     ) -> WebSocket {
         WebSocket(
-            id: .random(in: 1...1_000_000),
+            id: .random(in: 1 ... 1_000_000),
             onOpen: onOpen,
             onClose: onClose,
             open: { _ in onOpen() },
-            close: { code, _ in onClose(.success((code, nil))) }
+            close: { code, _ in onClose(.success((code, nil))) },
+            send: { onSend($0) }
         )
     }
 
     var makeFakeWebSocket: MakeWebSocket {
-        { [weak self] (_, _, onOpen, onClose) async throws in
+        { [weak self] _, _, onOpen, onClose async throws in
             guard let self = self else { throw CancellationError() }
-            return self.fake(onOpen, onClose)
+            return self.fake(onOpen: onOpen, onClose: onClose)
         }
     }
 
     func withWebSocket(
         _ ws: WebSocket,
+        heartbeatInterval: TimeInterval = 30,
         onOpen: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {},
-        block: (PhoenixSocket) async throws -> Void
+        block: @escaping (PhoenixSocket) async throws -> Void
     ) async throws {
-        let makeWS: MakeWebSocket = { _, _, _, _ in
-            return ws
-        }
+        let makeWS: MakeWebSocket = { _, _, _, _ in ws }
 
-        let socket = PhoenixSocket(url: url, makeWebSocket: makeWS) { state in
+        let socket = PhoenixSocket(
+            url: url,
+            heartbeatInterval: heartbeatInterval,
+            makeWebSocket: makeWS
+        ) { state in
             switch state {
             case .connecting: break
             case .open: onOpen()
@@ -191,6 +425,18 @@ private extension PhoenixSocketTests {
             }
         }
 
-        try await block(socket)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try await Task.sleep(nanoseconds: 2 * NSEC_PER_SEC)
+                guard !Task.isCancelled else { return }
+                throw CancellationError()
+            }
+            group.addTask {
+                try await block(socket)
+            }
+
+            try await group.next()
+            group.cancelAll()
+        }
     }
 }

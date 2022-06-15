@@ -15,14 +15,27 @@ let package = Package(
     ],
     dependencies: [
         .package(
+            name: "AsyncExtensions",
+            url: "https://github.com/shareup/async-extensions.git",
+            from: "1.2.0"
+        ),
+        .package(
             name: "DispatchTimer",
             url: "https://github.com/shareup/dispatch-timer.git",
             from: "2.0.0"
         ),
+//        .package(
+//            url: "https://github.com/apple/swift-async-algorithms",
+//            from: "0.0.1"
+//        ),
+        .package(
+            url: "https://github.com/apple/swift-collections.git",
+            from: "1.0.2"
+        ),
         .package(
             name: "Synchronized",
             url: "https://github.com/shareup/synchronized.git",
-            from: "3.0.0"
+            from: "3.1.0"
         ),
         .package(
             name: "WebSocket",
@@ -41,7 +54,11 @@ let package = Package(
         ),
         .target(
             name: "Phoenix2",
-            dependencies: ["WebSocket"]
+            dependencies: [
+                .product(name: "Collections", package: "swift-collections"),
+                "Synchronized",
+                "WebSocket",
+            ]
         ),
         .testTarget(
             name: "PhoenixTests",
@@ -50,7 +67,10 @@ let package = Package(
         ),
         .testTarget(
             name: "Phoenix2Tests",
-            dependencies: ["Phoenix2"],
+            dependencies: [
+                .product(name: "AsyncTestExtensions", package: "AsyncExtensions"),
+                "Phoenix2",
+            ],
             exclude: ["server"]
         ),
     ]

@@ -245,7 +245,10 @@ class ChannelTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L233
     func testChannelConnectsAfterSocketAndJoinDelay() throws {
-        let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 100, "join": true])
+        let channel = makeChannel(
+            topic: "room:timeout",
+            payload: ["timeout": 100, "join": true]
+        )
 
         var didReceiveError = false
         let didJoinEx = expectation(description: "Did join")
@@ -406,7 +409,10 @@ class ChannelTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L444
     func testReceivesCorrectErrorAfterJoinTimeout() throws {
-        let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 3000, "join": true])
+        let channel = makeChannel(
+            topic: "room:timeout",
+            payload: ["timeout": 3000, "join": true]
+        )
 
         let timeoutEx = expectation(description: "Should have received timeout error")
         let channelSub = channel.sink(receiveValue: { (output: Channel.Output) in
@@ -428,7 +434,10 @@ class ChannelTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L454
     func testOnlyReceivesTimeoutErrorAfterJoinTimeout() throws {
-        let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 3000, "join": true])
+        let channel = makeChannel(
+            topic: "room:timeout",
+            payload: ["timeout": 3000, "join": true]
+        )
 
         let socketSub = socket.autoconnect().sink(
             receiveValue:
@@ -458,7 +467,10 @@ class ChannelTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/496627f2f7bbe92fc481bad81a59dd89d8205508/assets/test/channel_test.js#L473
     func testSchedulesRejoinTimerAfterJoinTimeout() throws {
-        let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 3000, "join": true])
+        let channel = makeChannel(
+            topic: "room:timeout",
+            payload: ["timeout": 3000, "join": true]
+        )
         channel.rejoinTimeout = { _ in .seconds(30) }
 
         let timeoutEx = expectation(description: "Should have received timeout error")
@@ -494,7 +506,8 @@ class ChannelTests: XCTestCase {
 
         let timeoutEx = expectation(description: "Should have received error")
         let channelSub = channel.sink(receiveValue: { (output: Channel.Output) in
-            guard case let .error(Channel.Error.invalidJoinReply(reply)) = output else { return }
+            guard case let .error(Channel.Error.invalidJoinReply(reply)) = output
+            else { return }
             XCTAssertEqual(["error": "boom"], reply.response as? [String: String])
             timeoutEx.fulfill()
         })
@@ -685,7 +698,11 @@ class ChannelTests: XCTestCase {
             receiveValue:
             expectAndThen([
                 .join: {
-                    channel.push("echo_error", payload: ["error": "whatever"], callback: callback)
+                    channel.push(
+                        "echo_error",
+                        payload: ["error": "whatever"],
+                        callback: callback
+                    )
                 },
             ])
         )
@@ -709,7 +726,11 @@ class ChannelTests: XCTestCase {
             receiveCompletion: expectFinished(),
             receiveValue: expectAndThen([
                 .join: {
-                    channel.push("echo_close", payload: ["close": "whatever"], callback: callback)
+                    channel.push(
+                        "echo_close",
+                        payload: ["close": "whatever"],
+                        callback: callback
+                    )
                 },
                 .leave: {},
             ])
@@ -734,7 +755,11 @@ class ChannelTests: XCTestCase {
             receiveCompletion: expectFinished(),
             receiveValue: expectAndThen([
                 .join: {
-                    channel.push("echo_close", payload: ["close": "whatever"], callback: callback)
+                    channel.push(
+                        "echo_close",
+                        payload: ["close": "whatever"],
+                        callback: callback
+                    )
                 },
                 .leave: {},
             ])
@@ -762,7 +787,11 @@ class ChannelTests: XCTestCase {
             receiveCompletion: expectFinished(),
             receiveValue: expectAndThen([
                 .join: {
-                    channel.push("echo_close", payload: ["close": "whatever"], callback: callback)
+                    channel.push(
+                        "echo_close",
+                        payload: ["close": "whatever"],
+                        callback: callback
+                    )
                 },
                 .leave: {},
             ])
@@ -1033,7 +1062,10 @@ class ChannelTests: XCTestCase {
 
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L930
     func testDoesNotPushIfChannelJoinTimesOut() throws {
-        let channel = makeChannel(topic: "room:timeout", payload: ["timeout": 500, "join": true])
+        let channel = makeChannel(
+            topic: "room:timeout",
+            payload: ["timeout": 500, "join": true]
+        )
 
         let noPushEx = expectation(description: "Should not have sent push")
         noPushEx.isInverted = true
@@ -1231,7 +1263,8 @@ class ChannelTests: XCTestCase {
         let channel2Sub = channel2.sink(
             receiveValue:
             expectAndThen([
-                .join: { XCTAssertEqual(2, self.socket.joinedChannels.count); channel1.leave() },
+                .join: { XCTAssertEqual(2, self.socket.joinedChannels.count); channel1.leave()
+                },
             ])
         )
         defer { channel2Sub.cancel() }
@@ -1244,7 +1277,7 @@ class ChannelTests: XCTestCase {
         // message before testing to see if the channel has been removed from `joinedChannels`.
         expectationWithTest(
             description: "Channel should have been removed",
-            test: self.socket.joinedChannels.count == 1
+            test: socket.joinedChannels.count == 1
         )
 
         waitForExpectations(timeout: 2)
@@ -1318,7 +1351,11 @@ class ChannelTests: XCTestCase {
             receiveValue:
             expectAndThen([
                 .join: {
-                    channel.push("echo_error", payload: ["error": "whatever"], callback: callback)
+                    channel.push(
+                        "echo_error",
+                        payload: ["error": "whatever"],
+                        callback: callback
+                    )
                 },
             ])
         )
@@ -1349,7 +1386,8 @@ class ChannelTests: XCTestCase {
         let joinEx = expectation(description: "Should have joined")
         joinEx.expectedFulfillmentCount = 2
         let messageEx = expectation(description: "Channel 1 should have received a message")
-        let noMessageEx = expectation(description: "Channel 2 should not have received a message")
+        let noMessageEx =
+            expectation(description: "Channel 2 should not have received a message")
         noMessageEx.isInverted = true
 
         let channelSub1 = channel1.sink(
@@ -1377,7 +1415,8 @@ class ChannelTests: XCTestCase {
         channel.rejoinTimeout = { _ in .milliseconds(30) }
         channel.join()
 
-        let openEx = expectation(description: "Should have opened twice (once after disconnect)")
+        let openEx =
+            expectation(description: "Should have opened twice (once after disconnect)")
         openEx.expectedFulfillmentCount = 2
         openEx.assertForOverFulfill = false
 

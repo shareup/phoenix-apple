@@ -592,7 +592,8 @@ extension Socket {
                 let msg = try decoder(rawMessage)
                 sync {
                     switch msg.event {
-                    case .reply where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
+                    case .reply
+                        where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
                         self.pendingHeartbeatRef = nil
                     case .close:
                         removeChannel(for: msg.topic)

@@ -17,7 +17,8 @@ extension URL {
 
         var queryItems: [URLQueryItem] = components
             .queryItemsOrEmpty
-            .map { URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncodingForFormData())
+            .map {
+                URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncodingForFormData())
             }
 
         items.forEach { name, value in

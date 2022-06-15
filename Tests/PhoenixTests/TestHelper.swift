@@ -10,7 +10,9 @@ final class TestHelper {
     let userIDGen = Ref.Generator()
 
     var defaultURL: URL {
-        URL(string: "ws://\(defaultLocalIP):4003/socket?user_id=\(userIDGen.advance().rawValue)")!
+        URL(
+            string: "ws://\(defaultLocalIP):4003/socket?user_id=\(userIDGen.advance().rawValue)"
+        )!
     }
 
     var defaultWebSocketURL: URL { Socket.webSocketURLV2(url: defaultURL) }

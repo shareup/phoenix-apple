@@ -46,13 +46,17 @@ extension XCTestCase {
             { [unowned self] dict, valueToAction in
                 let key = valueToAction.key
                 let expectation = self
-                    .expectation(description: "Should have received '\(String(describing: key))'")
+                    .expectation(
+                        description: "Should have received '\(String(describing: key))'"
+                    )
                 dict[key] = expectation
             }
 
         return { v in
             let rawCase = v.toRawCase()
-            if let block = valueToAction[rawCase], let expectation = valueToExpectation[rawCase] {
+            if let block = valueToAction[rawCase],
+               let expectation = valueToExpectation[rawCase]
+            {
                 block()
                 expectation.fulfill()
             }
@@ -66,7 +70,9 @@ extension XCTestCase {
         onResults([value: block])
     }
 
-    func onResults<T: RawCaseConvertible>(_ valueToAction: [T.RawCase: () -> Void]) -> (T) -> Void {
+    func onResults<T: RawCaseConvertible>(_ valueToAction: [T.RawCase: () -> Void])
+        -> (T) -> Void
+    {
         { v in
             if let block = valueToAction[v.toRawCase()] {
                 block()

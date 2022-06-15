@@ -2,6 +2,15 @@
   "object": {
     "pins": [
       {
+        "package": "AsyncExtensions",
+        "repositoryURL": "https://github.com/shareup/async-extensions.git",
+        "state": {
+          "branch": null,
+          "revision": "c35156a60edef5d1c72ec74828deff2d1e3ed26d",
+          "version": "1.2.0"
+        }
+      },
+      {
         "package": "DispatchTimer",
         "repositoryURL": "https://github.com/shareup/dispatch-timer.git",
         "state": {
@@ -11,12 +20,21 @@
         }
       },
       {
+        "package": "swift-collections",
+        "repositoryURL": "https://github.com/apple/swift-collections.git",
+        "state": {
+          "branch": null,
+          "revision": "48254824bb4248676bf7ce56014ff57b142b77eb",
+          "version": "1.0.2"
+        }
+      },
+      {
         "package": "Synchronized",
         "repositoryURL": "https://github.com/shareup/synchronized.git",
         "state": {
           "branch": null,
-          "revision": "f01e4a1ee5fbf586d612a8dc0bc068603f6b9450",
-          "version": "3.0.0"
+          "revision": "ab58ad52ede004d65ee11b07aebb76392d9c0cec",
+          "version": "3.1.0"
         }
       }
     ]
