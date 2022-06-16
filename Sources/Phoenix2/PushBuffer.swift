@@ -11,27 +11,7 @@ private typealias AwaitingNextContinuation = CheckedContinuation<Push, Never>
 final class PushBuffer: AsyncSequence {
     typealias Element = Push
 
-    var isActive: Bool {
-        get {
-            lock.locked { _isActive }
-        }
-        set {
-            let nextAndCont = lock.locked { () -> (Push, AwaitingNextContinuation)? in
-                _isActive = newValue
-                if !buffer.isEmpty, let awaitingNextContinuation = awaitingNextContinuation {
-                    self.awaitingNextContinuation = nil
-                    let next = buffer.removeFirst()
-                    inFlightBuffer.append(next)
-                    return (next.push, awaitingNextContinuation)
-                } else {
-                    return nil
-                }
-            }
-
-            guard let (next, cont) = nextAndCont else { return }
-            cont.resume(returning: next)
-        }
-    }
+    var isActive: Bool { lock.locked { _isActive } }
 
     private var _isActive: Bool
     private var awaitingNextContinuation: AwaitingNextContinuation?
@@ -42,6 +22,29 @@ final class PushBuffer: AsyncSequence {
     init(isActive: Bool = false) { _isActive = isActive }
 
     func makeAsyncIterator() -> PushBuffer.Iterator { Iterator(self) }
+
+    func start() {
+        let nextAndCont = lock.locked { () -> (Push, AwaitingNextContinuation)? in
+            _isActive = true
+
+            if !buffer.isEmpty, let awaitingNextContinuation = awaitingNextContinuation {
+                self.awaitingNextContinuation = nil
+                let next = buffer.removeFirst()
+                inFlightBuffer.append(next)
+                return (next.push, awaitingNextContinuation)
+            } else {
+                return nil
+            }
+        }
+
+        guard let (next, cont) = nextAndCont else { return }
+        cont.resume(returning: next)
+    }
+
+    func stop(_ error: Error) {
+        lock.locked { _isActive = false }
+        cancelAllInFlight(error)
+    }
 
     func append(_ push: Push) async throws {
         try await withCheckedThrowingContinuation {
@@ -92,15 +95,16 @@ final class PushBuffer: AsyncSequence {
         bufferedPush.resume()
     }
 
-    func didReceive(_ message: Message) {
+    func didReceive(_ message: Message) -> Bool {
         let bufferedPush: BufferedPush? = lock.locked {
             let index = inFlightBuffer.firstIndex(where: message.matches)
             guard let index = index else { return nil }
             return inFlightBuffer.remove(at: index)
         }
 
-        guard let bufferedPush = bufferedPush else { return }
+        guard let bufferedPush = bufferedPush else { return false }
         bufferedPush.resume(with: message)
+        return true
     }
 
     func cancelAllInFlight(_ error: Error) {
@@ -125,10 +129,19 @@ final class PushBuffer: AsyncSequence {
             return next
         } else {
             return await withCheckedContinuation { cont in
-                lock.locked {
-                    precondition(awaitingNextContinuation == nil)
-                    awaitingNextContinuation = cont
+                let push: Push? = lock.locked {
+                    if _isActive, !buffer.isEmpty {
+                        let bufferedPush = buffer.removeFirst()
+                        inFlightBuffer.append(bufferedPush)
+                        return bufferedPush.push
+                    } else {
+                        precondition(awaitingNextContinuation == nil)
+                        awaitingNextContinuation = cont
+                        return nil
+                    }
                 }
+
+                if let push = push { cont.resume(returning: push) }
             }
         }
     }

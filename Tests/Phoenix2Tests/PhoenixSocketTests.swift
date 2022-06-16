@@ -8,7 +8,7 @@ import XCTest
 // NOTE: Names in quotation marks below correspond to groups of tests
 // delimited by `describe("some name", {})` blocks in Phoenix JS'
 // test suite, which can be found here:
-// https://github.com/phoenixframework/phoenix/blob/v1.6.7/assets/test/socket_test.js
+// https://github.com/phoenixframework/phoenix/blob/v1.6.10/assets/test/socket_test.js
 
 final class PhoenixSocketTests: XCTestCase {
     private let url = URL(string: "ws://0.0.0.0:4003/socket")!

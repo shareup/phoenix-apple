@@ -38,7 +38,7 @@ final class PushBufferTests: XCTestCase {
         Task {
             try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
             isActive.access { $0 = true }
-            buffer.isActive = true
+            buffer.start()
         }
 
         for await push in buffer {
@@ -85,7 +85,7 @@ final class PushBufferTests: XCTestCase {
             group.addTask {
                 for await push in buffer {
                     buffer.didSend(push)
-                    buffer.didReceive(self.makeReply(for: push))
+                    XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
                     break
                 }
             }
@@ -125,7 +125,7 @@ final class PushBufferTests: XCTestCase {
                     if count == 0 {
                         buffer.cancelAllInFlight(CancellationError())
                     } else {
-                        buffer.didReceive(self.makeReply(for: push))
+                        XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
                     }
                     count += 1
                     if count == 3 { return }
@@ -162,10 +162,10 @@ final class PushBufferTests: XCTestCase {
                     if push == pushes[0] {
                         Task {
                             try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
-                            buffer.didReceive(self.makeReply(for: push))
+                            XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
                         }
                     } else {
-                        buffer.didReceive(self.makeReply(for: push))
+                        XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
                     }
 
                     if count == 5 { return }

@@ -63,8 +63,8 @@ actor PhoenixSocket {
     ) {
         self.url = url.webSocketURLV2
         connectOptions = connectionOptions
-        self.timeout = UInt64(timeout) * NSEC_PER_SEC
-        self.heartbeatInterval = UInt64(heartbeatInterval) * NSEC_PER_SEC
+        self.timeout = timeout.nanoseconds
+        self.heartbeatInterval = heartbeatInterval.nanoseconds
         self.pushEncoder = pushEncoder
         self.messageDecoder = messageDecoder
         self.makeWebSocket = makeWebSocket
@@ -107,7 +107,7 @@ actor PhoenixSocket {
 
             connectionState = .open(ws)
             reconnectAttempts = 0
-            pushes.isActive = true
+            pushes.start()
             flush()
             scheduleHeartbeat()
 
@@ -127,7 +127,7 @@ actor PhoenixSocket {
         )
 
         shouldReconnect = false
-        pushes.isActive = false
+        pushes.stop(PhoenixError.disconnect)
         cancelHeartbeat()
 
         switch connectionState {
@@ -200,25 +200,89 @@ extension PhoenixSocket {
     private func flush() {
         Task { [weak self] in
             guard let self = self, !Task.isCancelled,
-                  let ws = await self.webSocket else { return }
+                  let ws = await self.webSocket
+            else { return }
 
-            do {
-                let encoder = self.pushEncoder
+            let encoder = self.pushEncoder
 
-                for try await push in self.pushes {
-                    os_log(
-                        "phoenix.send: %@",
-                        log: .phoenix,
-                        type: .debug,
-                        push.description
-                    )
+            for await push in self.pushes {
+                os_log(
+                    "phoenix.send: %@",
+                    log: .phoenix,
+                    type: .debug,
+                    push.description
+                )
 
+                do {
                     try await ws.send(encoder(push))
                     self.pushes.didSend(push)
-
-                    if Task.isCancelled { break }
+                } catch {
+                    await handleSocketError(error)
+                    return // Break out of `Task`
                 }
-            } catch {}
+
+                if Task.isCancelled { break }
+            }
+        }
+    }
+
+    private func listen() {
+        Task { [weak self] in
+            guard let self = self, !Task.isCancelled,
+                  let ws = await self.webSocket
+            else { return }
+
+            let decoder = self.messageDecoder
+
+            for await msg in ws.messages {
+                do {
+                    let message = try decoder(msg)
+                    guard !self.pushes.didReceive(message)
+                    else { continue }
+
+                    // Forward non-reply to correct channel
+
+                } catch {
+                    os_log(
+                        "phoenix.message.error: %@",
+                        log: .phoenix,
+                        type: .error,
+                        String(describing: error)
+                    )
+                }
+
+                if Task.isCancelled { break }
+            }
+        }
+    }
+
+    private func handleSocketError(_ error: Error) async {
+        os_log(
+            "phoenix.socket.error: %@",
+            log: .phoenix,
+            type: .error,
+            String(describing: error)
+        )
+
+        pushes.stop(error)
+        cancelHeartbeat()
+
+        let timeout = TimeInterval(nanoseconds: self.timeout)
+
+        switch connectionState {
+        case .waitingToReconnect, .closed, .closing:
+            return
+
+        case let .connecting(ws):
+            connectionState = .closing(ws)
+            try? await ws.close(.normalClosure, timeout)
+            connectionState = .closed
+
+        case let .open(ws):
+            connectionState = .closing(ws)
+            // try await flushPendingMessagesAndWait()
+            try? await ws.close(.normalClosure, timeout)
+            connectionState = .closed
         }
     }
 }
