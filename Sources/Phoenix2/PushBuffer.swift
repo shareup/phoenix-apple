@@ -47,15 +47,29 @@ final class PushBuffer: AsyncSequence {
     }
 
     func append(_ push: Push) async throws {
-        try await withCheckedThrowingContinuation {
-            append(push, .onSend($0))
-        }
+        try await withTaskCancellationHandler(
+            operation: {
+                try await withCheckedThrowingContinuation {
+                    append(push, .onSend($0))
+                }
+            },
+            onCancel: { [weak self] in
+                self?.cancelAllInFlight(CancellationError())
+            }
+        )
     }
 
     func appendAndWait(_ push: Push) async throws -> Message {
-        try await withCheckedThrowingContinuation {
-            append(push, .onReply($0))
-        }
+        try await withTaskCancellationHandler(
+            operation: {
+                try await withCheckedThrowingContinuation {
+                    append(push, .onReply($0))
+                }
+            },
+            onCancel: { [weak self] in
+                self?.cancelAllInFlight(CancellationError())
+            }
+        )
     }
 
     private func append(
@@ -200,8 +214,6 @@ private struct BufferedPush: Sendable {
 
 private extension Message {
     func matches(_ bufferedPush: BufferedPush) -> Bool {
-        topic == bufferedPush.push.topic &&
-            joinRef == bufferedPush.push.joinRef &&
-            ref == bufferedPush.push.ref
+        ref == bufferedPush.push.ref
     }
 }

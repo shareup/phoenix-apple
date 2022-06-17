@@ -49,7 +49,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
 
         let event = Event(eventName)
 
-        guard let payload = arr[4] as? Payload else {
+        guard let payload = arr[4] as? [String: Any?] else {
             throw DecodingError.invalidTypeForValue("payload", arr[4])
         }
 
@@ -58,7 +58,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
             ref: ref,
             topic: topic,
             event: event,
-            payload: payload
+            payload: Payload(payload)
         )
     }
 

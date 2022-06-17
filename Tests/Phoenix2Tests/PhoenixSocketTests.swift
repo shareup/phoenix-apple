@@ -242,7 +242,7 @@ final class PhoenixSocketTests: XCTestCase {
         let ws: WebSocket = fake(onSend: { sent.append($0) })
         try await withWebSocket(ws) { socket in
             try await socket.connect()
-            try await socket.push(self.push1, waitForReply: false)
+            try await socket.push(self.push1) as Void
             await AssertEqualEventually(self.encodedPush1, sent.first)
         }
     }
@@ -263,7 +263,7 @@ final class PhoenixSocketTests: XCTestCase {
         )
 
         try await withWebSocket(ws) { socket in
-            Task.detached { try await socket.push(self.push1) }
+            Task.detached { try await socket.push(self.push1) as Void }
             let sleep = Task {
                 try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
                 canSend.access { $0 = true }
@@ -303,57 +303,90 @@ final class PhoenixSocketTests: XCTestCase {
     // MARK: "sendHeartbeat"
 
     func testClosesSocketWhenHeartbeatIsNotAcknowledged() async throws {
-        let ws: WebSocket = fake(onSend: { _ in })
-        try await withWebSocket(ws) { _ in
+        let didClose = Locked(false)
+
+        let ws: WebSocket = fake(
+            onClose: { _ in didClose.access { $0 = true } },
+            onSend: { _ in }
+        )
+
+        try await withWebSocket(ws, timeout: 0.05, heartbeatInterval: 0.05) { socket in
+            try await socket.connect()
+            await AssertTrueEventually((didClose.access { $0 }))
         }
     }
-}
 
-private func AssertEqualEventually<T: Equatable>(
-    _ expression1: @escaping @autoclosure () async throws -> T,
-    _ expression2: @escaping @autoclosure () async throws -> T,
-    _ timeout: TimeInterval = 5,
-    _ message: @escaping @autoclosure () -> String = "",
-    file: StaticString = #filePath,
-    line: UInt = #line
-) async {
-    do {
-        try await withThrowingTaskGroup(
-            of: Void.self
-        ) { (group: inout ThrowingTaskGroup<Void, Error>) in
-            _ = group.addTaskUnlessCancelled {
-                try await Task.sleep(nanoseconds: UInt64(timeout * Double(NSEC_PER_SEC)))
-                throw CancellationError()
-            }
+    func testPushesHeartbeatWhenConnected() async throws {
+        let didSendHeartbeat = Locked(false)
 
-            _ = group.addTaskUnlessCancelled {
-                var expr1 = try await expression1()
-                var expr2 = try await expression2()
+        let ws: WebSocket = fake(
+            onSend: { message in
+                switch message {
+                case .data:
+                    XCTFail()
 
-                while expr1 != expr2 {
-                    try await Task.sleep(nanoseconds: 10 * NSEC_PER_MSEC)
-
-                    expr1 = try await expression1()
-                    expr2 = try await expression2()
+                case let .text(text):
+                    let expected = """
+                    [null,1,"phoenix","heartbeat",{}]
+                    """
+                    XCTAssertEqual(expected, text)
                 }
+                didSendHeartbeat.access { $0 = true }
+            }
+        )
 
-                XCTAssertEqual(expr1, expr2, message(), file: file, line: line)
+        try await withWebSocket(ws, heartbeatInterval: 0.1) { socket in
+            try await socket.connect()
+            await AssertTrueEventually((didSendHeartbeat.access { $0 }))
+        }
+    }
+
+    func testDoesNotPushHeartbeatWhenNotConnected() async throws {
+        let ws: WebSocket = fake(onSend: { _ in XCTFail() })
+
+        try await withWebSocket(ws, heartbeatInterval: 0.05) { socket in
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 150)
+        }
+    }
+
+    // MARK: "flushSendBuffer"
+
+    func testFlushesAllMessagesInBufferWhenConnected() async throws {
+        let pushes = Locked(makePushes(5))
+
+        let ws: WebSocket = fake(onSend: { msg in
+            let message = try! Message.decode(msg)
+            XCTAssertTrue(pushes.access({ pushes in
+                guard let index = pushes.firstIndex(where: { $0.ref == message.ref })
+                else { return false }
+                pushes.remove(at: index)
+                return true
+            }))
+        })
+
+        try await withWebSocket(ws, heartbeatInterval: 0.05) { socket in
+            Task {
+                // Wait until all of the pushes have been added
+                try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+                try await socket.connect()
             }
 
-            _ = try await group.next()
-            group.cancelAll()
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                pushes
+                    .access { $0 }
+                    .forEach { push in
+                        group.addTask { try await socket.push(push) }
+                    }
+                try await group.waitForAll()
+            }
+
+            XCTAssertTrue(pushes.access { $0.isEmpty })
         }
-    } catch is CancellationError {
-        do {
-            let expr1 = try await expression1()
-            let expr2 = try await expression2()
-            XCTAssertEqual(expr1, expr2, message(), file: file, line: line)
-        } catch {
-            XCTFail("\(message()): \(String(describing: error))", file: file, line: line)
-        }
-    } catch {
-        XCTFail("\(message()): \(String(describing: error))", file: file, line: line)
     }
+
+    // MARK: "onConnOpen"
+
+    
 }
 
 private extension PhoenixSocketTests {
@@ -363,12 +396,24 @@ private extension PhoenixSocketTests {
             ref: .init(2),
             topic: "topic",
             event: "event",
-            payload: ["one": 1]
+            payload: ["one": 1] as Payload
         )
     }
 
     var encodedPush1: WebSocketMessage {
         try! Push.encode(push1)
+    }
+
+    func makePushes(_ count: Int) -> [Push] {
+        (1...count).map { i in
+            Push(
+                joinRef: 1,
+                ref: Ref(UInt64(i)),
+                topic: "test",
+                event: .custom(String(i)),
+                payload: ["index": i]
+            )
+        }
     }
 }
 
@@ -386,7 +431,7 @@ private extension PhoenixSocketTests {
         onSend: @escaping (WebSocketMessage) -> Void = { _ in }
     ) -> WebSocket {
         WebSocket(
-            id: .random(in: 1 ... 1_000_000),
+            id: .random(in: 1 ... 1_000_000_000),
             onOpen: onOpen,
             onClose: onClose,
             open: { _ in onOpen() },
@@ -404,6 +449,7 @@ private extension PhoenixSocketTests {
 
     func withWebSocket(
         _ ws: WebSocket,
+        timeout: TimeInterval = 10,
         heartbeatInterval: TimeInterval = 30,
         onOpen: @escaping () -> Void = {},
         onClose: @escaping () -> Void = {},
@@ -413,6 +459,7 @@ private extension PhoenixSocketTests {
 
         let socket = PhoenixSocket(
             url: url,
+            timeout: timeout,
             heartbeatInterval: heartbeatInterval,
             makeWebSocket: makeWS
         ) { state in

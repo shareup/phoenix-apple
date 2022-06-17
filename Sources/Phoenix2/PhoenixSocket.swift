@@ -175,7 +175,7 @@ extension PhoenixSocket {
 }
 
 extension PhoenixSocket {
-    func push(_ push: Push, waitForReply: Bool = true) async throws {
+    func push(_ push: Push) async throws -> Message {
         os_log(
             "phoenix.push: %@",
             log: .phoenix,
@@ -183,12 +183,18 @@ extension PhoenixSocket {
             push.description
         )
 
-        if waitForReply {
-            let message = try await pushes.appendAndWait(push)
-            Swift.print("$$$ RECEIVED MESSAGE: \(message)")
-        } else {
-            try await pushes.append(push)
-        }
+        return try await pushes.appendAndWait(push)
+    }
+
+    func push(_ push: Push) async throws {
+        os_log(
+            "phoenix.push: %@",
+            log: .phoenix,
+            type: .debug,
+            push.description
+        )
+
+        try await pushes.append(push)
     }
 
     func makeRef() async -> Ref {
@@ -304,42 +310,40 @@ extension PhoenixSocket {
     }
 
     private func sendHeartbeat() async throws {
-        guard connectionState.isOpen else { return }
+        guard connectionState.isOpen else { return cancelHeartbeat() }
 
-//        await withTaskGroup(of: Void.self) { group in
-//            let heartbeatRef = await self.makeRef()
-//
-//            group.addTaskUnlessCancelled {
-//                await withCheckedContinuation { [weak self] (continuation: CheckedContinuation<Void, Error>) -> Void in
-//                    guard let self = self else { return continuation.resume() }
-//                    self.lock.locked { self.heartbeatContinuation = (heartbeatRef, continuation) }
-//                }
-//            }
-//
-//            group.addTaskUnlessCancelled { [weak self] in
-//                guard let self = self else { return }
-//                do {
-//
-//
-//                    withCheckedContinuation { continuation in
-//
-//                    }
-//
-//                    try await self.push(
-//                        .init(
-//                            joinRef: nil,
-//                            ref: heartbeatRef,
-//                            topic: "phoenix",
-//                            event: .heartbeat
-//                        )
-//                    )
-//                } catch {
-//
-//                }
-//            }
-//        }
+        let timeout = self.timeout
 
-        scheduleHeartbeat()
+        let didSucceed: Bool = (try? await withThrowingTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                try await Task.sleep(nanoseconds: timeout)
+                return false
+            }
+
+            group.addTask { [weak self] in
+                guard let self = self else { return false }
+                _ = try await self.push(
+                    Push(
+                        joinRef: nil,
+                        ref: await self.makeRef(),
+                        topic: "phoenix",
+                        event: .heartbeat
+                    )
+                ) as Message
+                return true
+            }
+
+            let didSucceed = try await group.next()
+            group.cancelAll()
+            return didSucceed ?? false
+        }) ?? false
+
+        if didSucceed {
+            scheduleHeartbeat()
+        } else {
+            os_log("phoenix.heartbeat.timeout", log: .phoenix, type: .error)
+            await handleSocketError(PhoenixError.heartbeatTimeout)
+        }
     }
 }
 
