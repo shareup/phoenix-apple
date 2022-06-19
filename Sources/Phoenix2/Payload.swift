@@ -26,6 +26,17 @@ public enum Payload: Hashable, Sendable, ExpressibleByDictionaryLiteral,
         self = .dictionary(dictionary)
     }
 
+    public subscript(key: String) -> Payload? {
+        guard case let .dictionary(dict) = self else { return nil }
+        return dict[key]
+    }
+
+    public subscript(index: Int) -> Payload? {
+        guard case let .array(arr) = self, index < arr.count
+        else { return nil }
+        return arr[index]
+    }
+
     public var jsonValue: Any {
         switch self {
         case let .array(array):
@@ -57,12 +68,98 @@ public enum Payload: Hashable, Sendable, ExpressibleByDictionaryLiteral,
     public var jsonDictionary: [String: Any] {
         guard let json = jsonValue as? [String: Any]
         else { preconditionFailure("\(self) must be a dictionary") }
-
         return json
     }
 
     public var description: String {
         String(describing: jsonValue)
+    }
+}
+
+extension Payload: Equatable {
+    public static func == (_ arg1: Payload, _ arg2: Payload) -> Bool {
+        switch (arg1, arg2) {
+        case let (.array(one), .array(two)):
+            return one == two
+
+        case let (.boolean(one), .boolean(two)):
+            return one == two
+
+        case let (.dictionary(one), .dictionary(two)):
+            return one == two
+
+        case let (.number(one), .number(two)):
+            return one == two
+
+        case (.null, .null):
+            return true
+
+        case let (.string(one), .string(two)):
+            return one == two
+
+        default:
+            return false
+        }
+    }
+}
+
+public extension Optional where Wrapped == Payload {
+    static func == (_ arg1: Payload, _ arg2: Payload?) -> Bool {
+        guard let arg2 = arg2 else { return false }
+        return arg1 == arg2
+    }
+
+    static func == (_ arg1: Payload?, _ arg2: Payload) -> Bool {
+        guard let arg1 = arg1 else { return false }
+        return arg1 == arg2
+    }
+
+    static func == (_ arg1: String, _ arg2: Payload?) -> Bool {
+        guard let arg2 = arg2, case let .string(unwrapped) = arg2
+        else { return false }
+        return arg1 == unwrapped
+    }
+
+    static func == (_ arg1: Payload?, _ arg2: String) -> Bool {
+        guard let arg1 = arg1, case let .string(unwrapped) = arg1
+        else { return false }
+        return arg2 == unwrapped
+    }
+
+    static func == (_ arg1: Int, _ arg2: Payload?) -> Bool {
+        guard let arg2 = arg2, case let .number(unwrapped) = arg2
+        else { return false }
+        return arg1 == Int(unwrapped)
+    }
+
+    static func == (_ arg1: Payload?, _ arg2: Int) -> Bool {
+        guard let arg1 = arg1, case let .number(unwrapped) = arg1
+        else { return false }
+        return arg2 == Int(unwrapped)
+    }
+
+    static func == (_ arg1: Double, _ arg2: Payload?) -> Bool {
+        guard let arg2 = arg2, case let .number(unwrapped) = arg2
+        else { return false }
+        return arg1 == unwrapped
+    }
+
+    static func == (_ arg1: Payload?, _ arg2: Double) -> Bool {
+        guard let arg1 = arg1, case let .number(unwrapped) = arg1
+        else { return false }
+        return arg2 == unwrapped
+    }
+
+    static func == (_ arg1: Bool, _ arg2: Payload?) -> Bool {
+        guard let arg2 = arg2, case let .boolean(unwrapped) = arg2
+        else { return false }
+        return arg1 == unwrapped
+    }
+
+    static func == (_ arg1: Payload?, _ arg2: Bool) -> Bool {
+        guard let arg1 = arg1, case let .boolean(unwrapped) = arg1
+        else { return false }
+        return arg2 == unwrapped
     }
 }
 
