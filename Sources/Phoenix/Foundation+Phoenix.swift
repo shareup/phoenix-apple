@@ -31,7 +31,7 @@ extension String {
         using encoding: String.Encoding,
         allowLossyConversion: Bool = false
     ) throws -> Data {
-        let optionalData: Data? = self.data(
+        let optionalData: Data? = data(
             using: encoding,
             allowLossyConversion: allowLossyConversion
         )

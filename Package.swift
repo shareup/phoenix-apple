@@ -9,18 +9,22 @@ let package = Package(
     products: [
         .library(
             name: "Phoenix",
-            targets: ["Phoenix"]),
+            targets: ["Phoenix"]
+        ),
     ],
     dependencies: [
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",
-            from: "3.0.0"),
+            from: "3.0.0"
+        ),
         .package(
             url: "https://github.com/shareup/synchronized.git",
-            from: "4.0.0"),
+            from: "4.0.0"
+        ),
         .package(
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "2.5.2"),
+            from: "2.5.2"
+        ),
     ],
     targets: [
         .target(
@@ -29,10 +33,12 @@ let package = Package(
                 .product(name: "DispatchTimer", package: "dispatch-timer"),
                 .product(name: "Synchronized", package: "synchronized"),
                 .product(name: "WebSocket", package: "websocket-apple"),
-            ]),
+            ]
+        ),
         .testTarget(
             name: "PhoenixTests",
             dependencies: ["Phoenix"],
-            exclude: ["phoenix-js", "server"]),
+            exclude: ["phoenix-js", "server"]
+        ),
     ]
 )
