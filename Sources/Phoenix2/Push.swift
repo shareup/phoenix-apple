@@ -25,7 +25,8 @@ public struct Push: Identifiable, Hashable, CustomStringConvertible, Sendable {
     }
 
     public var description: String {
-        "\(topic) \(event) \(String(describing: joinRef)) \(String(describing: ref))"
+        let _joinRef = joinRef != nil ? "\(joinRef!.rawValue)" : "nil"
+        return "\(topic) \(event) \(_joinRef) \(ref.rawValue)"
     }
 
     public static func encode(_ push: Push) throws -> WebSocketMessage {

@@ -99,10 +99,10 @@ final class PhoenixSocketTests: XCTestCase {
     }
 
     func testCloseStateCallbackIsCalled() async throws {
-        var closes = 0
-        let onPhoenixClose: () -> Void = { closes += 1 }
+        let closes = Locked(0)
+        let onPhoenixClose: () -> Void = { closes.access { $0 += 1 } }
         let onClose: WebSocketOnClose = { result in
-            closes += 1
+            closes.access { $0 += 1 }
             switch result {
             case let .success((code, reason)):
                 XCTAssertEqual(.normalClosure, code)
@@ -121,13 +121,13 @@ final class PhoenixSocketTests: XCTestCase {
             try await socket.disconnect()
         }
 
-        XCTAssertEqual(2, closes)
+        XCTAssertEqual(2, closes.access { $0 })
     }
 
     func testDisconnectIsNoopWhenNotConnected() async throws {
-        var closes = 0
-        let onPhoenixClose: () -> Void = { closes += 1 }
-        let onClose: WebSocketOnClose = { _ in closes += 1 }
+        let closes = Locked(0)
+        let onPhoenixClose: () -> Void = { closes.access { $0 += 1 } }
+        let onClose: WebSocketOnClose = { _ in closes.access { $0 += 1 } }
 
         try await withWebSocket(
             fake(onOpen: {}, onClose: onClose),
@@ -138,7 +138,7 @@ final class PhoenixSocketTests: XCTestCase {
             try await socket.disconnect()
         }
 
-        XCTAssertEqual(0, closes)
+        XCTAssertEqual(0, closes.access { $0 })
     }
 
     // MARK: "connectionState"
@@ -279,19 +279,19 @@ final class PhoenixSocketTests: XCTestCase {
 
     func testRefNextReturnsNextRef() async throws {
         try await withWebSocket(fake()) { socket in
-            await AssertEqual(0, await socket.ref)
+            await AssertEqual(0, socket.ref)
 
             let one = await socket.makeRef()
             XCTAssertEqual(1, one)
-            await AssertEqual(1, await socket.ref)
+            await AssertEqual(1, socket.ref)
 
             let two = await socket.makeRef()
             XCTAssertEqual(2, two)
-            await AssertEqual(2, await socket.ref)
+            await AssertEqual(2, socket.ref)
 
             let three = await socket.makeRef()
             XCTAssertEqual(3, three)
-            await AssertEqual(3, await socket.ref)
+            await AssertEqual(3, socket.ref)
         }
     }
 
@@ -355,16 +355,10 @@ final class PhoenixSocketTests: XCTestCase {
         let pushes = Locked(makePushes(5))
 
         let ws: WebSocket = fake(onSend: { msg in
-            let message = try! Message.decode(msg)
-            XCTAssertTrue(pushes.access({ pushes in
-                guard let index = pushes.firstIndex(where: { $0.ref == message.ref })
-                else { return false }
-                pushes.remove(at: index)
-                return true
-            }))
+            _ = pushes.access { $0.remove(matching: msg) }
         })
 
-        try await withWebSocket(ws, heartbeatInterval: 0.05) { socket in
+        try await withWebSocket(ws) { socket in
             Task {
                 // Wait until all of the pushes have been added
                 try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
@@ -386,7 +380,111 @@ final class PhoenixSocketTests: XCTestCase {
 
     // MARK: "onConnOpen"
 
-    
+    func testSendBufferIsFlushedOnConnect() async throws {
+        let pushes = Locked(makePushes(2))
+
+        let ws: WebSocket = fake(onSend: { msg in
+            XCTAssertTrue(pushes.access { $0.remove(matching: msg) })
+        })
+
+        try await withWebSocket(ws) { socket in
+            Task {
+                // Wait until all of the pushes have been added
+                try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+                try await socket.connect()
+            }
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                pushes
+                    .access { $0 }
+                    .forEach { push in
+                        group.addTask { try await socket.push(push) }
+                    }
+                try await group.waitForAll()
+            }
+
+            XCTAssertTrue(pushes.access { $0.isEmpty })
+        }
+    }
+
+    func testReconnectTimerIsResetOnConnect() async throws {
+        struct NoInternet: Error {}
+
+        let attempts = Locked(0)
+
+        let ws: WebSocket = fake(
+            open: { _ in
+                defer { attempts.access { $0 += 1 } }
+                if attempts.access({ $0 < 3 }) {
+                    throw  NoInternet()
+                }
+            }
+        )
+
+        try await withWebSocket(ws) { socket in
+            try await socket.connect()
+            await AssertEqual(0, await socket.reconnectAttempts)
+        }
+    }
+
+    func testCallsOnOpenCallbackOnConnect() async throws {
+        let didCall = Locked(false)
+        try await withWebSocket(
+            self.fake(),
+            onOpen: { didCall.access { $0 = true } }
+        ) { socket in
+            try await socket.connect()
+            XCTAssertTrue(didCall.access { $0 })
+        }
+    }
+
+    // MARK: "onConnClose"
+
+    // This test differs from the original, which is called
+    // "does not schedule reconnectTimer if normal close".
+    // We always try to reconnect unless the connection was
+    // closed by the client.
+    func testDoesNotReconnectIfClosedByClient() async throws {
+        let opens = Locked(0)
+        let closes = Locked(0)
+        let ws: WebSocket = fake(
+            onOpen: { opens.access { $0 += 1 }},
+            onClose: { _ in closes.access { $0 += 1 }}
+        )
+        try await withWebSocket(ws) { socket in
+            try await socket.connect()
+            XCTAssertEqual(1, opens.access { $0 })
+            XCTAssertEqual(0, closes.access { $0 })
+
+            try await socket.disconnect()
+            XCTAssertEqual(1, opens.access { $0 })
+            XCTAssertEqual(1, closes.access { $0 })
+
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+        }
+
+        XCTAssertEqual(1, opens.access { $0 })
+        XCTAssertEqual(1, closes.access { $0 })
+    }
+
+    func testReconnectsIfClosedRemotely() async throws {
+        let opens = Locked(0)
+        let closes = Locked(0)
+        let ws: WebSocket = fake(
+            onOpen: { opens.access { $0 += 1 }},
+            onClose: { _ in closes.access { $0 += 1 }}
+        )
+        try await withWebSocket(ws, timeout: 0.01, heartbeatInterval: 0.01) { socket in
+            try await socket.connect()
+            XCTAssertEqual(1, opens.access { $0 })
+            XCTAssertEqual(0, closes.access { $0 })
+
+            await AssertTrueEventually(opens.access({ $0 }) > 1)
+
+            XCTAssertLessThan(1, opens.access { $0 })
+        }
+
+    }
 }
 
 private extension PhoenixSocketTests {
@@ -428,14 +526,18 @@ private extension PhoenixSocketTests {
     func fake(
         onOpen: @escaping WebSocketOnOpen = {},
         onClose: @escaping WebSocketOnClose = { _ in },
-        onSend: @escaping (WebSocketMessage) -> Void = { _ in }
+        onSend: @escaping (WebSocketMessage) -> Void = { _ in },
+        open: (@Sendable (TimeInterval?) async throws -> Void)? = nil,
+        close: (@Sendable (WebSocketCloseCode, TimeInterval?) async throws -> Void)? = nil
     ) -> WebSocket {
-        WebSocket(
+        let _open = open ?? { _ in onOpen() }
+        let _close = close ?? { code, _ in onClose(.success((code, nil))) }
+        return WebSocket(
             id: .random(in: 1 ... 1_000_000_000),
             onOpen: onOpen,
             onClose: onClose,
-            open: { _ in onOpen() },
-            close: { code, _ in onClose(.success((code, nil))) },
+            open: _open,
+            close: _close,
             send: { onSend($0) }
         )
     }
@@ -478,12 +580,23 @@ private extension PhoenixSocketTests {
                 guard !Task.isCancelled else { return }
                 throw CancellationError()
             }
-            group.addTask {
-                try await block(socket)
-            }
+            group.addTask { try await block(socket) }
 
             try await group.next()
             group.cancelAll()
         }
+
+        try await socket.disconnectImmediately()
+    }
+}
+
+private extension Array where Element == Push {
+    mutating func remove(matching webSocketMessage: WebSocketMessage) -> Bool {
+        guard let message = try? Message.decode(webSocketMessage),
+              let index = firstIndex(where: { $0.ref == message.ref })
+        else { return false }
+
+        remove(at: index)
+        return true
     }
 }

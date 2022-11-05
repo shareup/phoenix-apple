@@ -17,12 +17,12 @@ let package = Package(
         .package(
             name: "AsyncExtensions",
             url: "https://github.com/shareup/async-extensions.git",
-            from: "1.3.0"
+            from: "1.3.1"
         ),
         .package(
             name: "DispatchTimer",
             url: "https://github.com/shareup/dispatch-timer.git",
-            from: "2.0.0"
+            from: "2.0.1"
         ),
 //        .package(
 //            url: "https://github.com/apple/swift-async-algorithms",
@@ -55,6 +55,7 @@ let package = Package(
         .target(
             name: "Phoenix2",
             dependencies: [
+                "DispatchTimer",
                 .product(name: "Collections", package: "swift-collections"),
                 "Synchronized",
                 "WebSocket",

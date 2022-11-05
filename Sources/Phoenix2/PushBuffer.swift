@@ -6,7 +6,7 @@ enum PushResultContinuation: Sendable {
     case onReply(CheckedContinuation<Message, Error>)
 }
 
-private typealias AwaitingNextContinuation = CheckedContinuation<Push, Never>
+private typealias AwaitingNextContinuation = CheckedContinuation<Push, Error>
 
 final class PushBuffer: AsyncSequence {
     typealias Element = Push
@@ -131,7 +131,7 @@ final class PushBuffer: AsyncSequence {
         inFlight.forEach { $0.resume(with: error) }
     }
 
-    fileprivate func next() async -> Push {
+    fileprivate func next() async throws -> Push {
         let next: Push? = lock.locked {
             guard _isActive, !buffer.isEmpty else { return nil }
             let next = buffer.removeFirst()
@@ -142,21 +142,59 @@ final class PushBuffer: AsyncSequence {
         if let next = next {
             return next
         } else {
-            return await withCheckedContinuation { cont in
-                let push: Push? = lock.locked {
-                    if _isActive, !buffer.isEmpty {
-                        let bufferedPush = buffer.removeFirst()
-                        inFlightBuffer.append(bufferedPush)
-                        return bufferedPush.push
-                    } else {
-                        precondition(awaitingNextContinuation == nil)
-                        awaitingNextContinuation = cont
-                        return nil
-                    }
-                }
+            return try await withTaskCancellationHandler(
+                operation: {
+                    try await withCheckedThrowingContinuation { cont in
+                        let push: Push? = lock.locked {
+                            if _isActive, !buffer.isEmpty {
+                                let bufferedPush = buffer.removeFirst()
+                                inFlightBuffer.append(bufferedPush)
+                                return bufferedPush.push
+                            } else {
+                                precondition(awaitingNextContinuation == nil)
+                                awaitingNextContinuation = cont
+                                return nil
+                            }
+                        }
 
-                if let push = push { cont.resume(returning: push) }
-            }
+                        if let push = push { cont.resume(returning: push) }
+                    }
+                },
+                onCancel: {
+                    let remainder = lock.locked { () -> (AwaitingNextContinuation?, [BufferedPush]) in
+                        _isActive = false
+
+                        let inFlight = inFlightBuffer
+                        inFlightBuffer.removeAll()
+
+                        if let cont = awaitingNextContinuation {
+                            awaitingNextContinuation = nil
+                            return (cont, inFlight)
+                        } else {
+                            return (nil, inFlight)
+                        }
+                    }
+
+                    let error = CancellationError()
+                    remainder.1.forEach { $0.resume(with: error) }
+                    remainder.0?.resume(throwing: error)
+                }
+            )
+//            return await withCheckedContinuation { cont in
+//                let push: Push? = lock.locked {
+//                    if _isActive, !buffer.isEmpty {
+//                        let bufferedPush = buffer.removeFirst()
+//                        inFlightBuffer.append(bufferedPush)
+//                        return bufferedPush.push
+//                    } else {
+//                        precondition(awaitingNextContinuation == nil)
+//                        awaitingNextContinuation = cont
+//                        return nil
+//                    }
+//                }
+//
+//                if let push = push { cont.resume(returning: push) }
+//            }
         }
     }
 }
@@ -167,8 +205,8 @@ extension PushBuffer {
 
         fileprivate init(_ buffer: PushBuffer) { self.buffer = buffer }
 
-        mutating func next() async -> Push? {
-            await buffer.next()
+        mutating func next() async throws -> Push? {
+            try await buffer.next()
         }
     }
 }

@@ -1,5 +1,5 @@
 import Collections
-// import AsyncAlgorithms
+import DispatchTimer
 import Foundation
 import os.log
 import Synchronized
@@ -40,15 +40,17 @@ actor PhoenixSocket {
 
     private let onConnectionStateChange: (ConnectionState) -> Void
 
-    private var shouldReconnect: Bool = true
-    private var reconnectAttempts: Int = 0
+    private(set) var shouldReconnect: Bool = true
+    private(set) var reconnectAttempts: Int = 0
 
-    private(set) var ref: Ref = .init(0)
+    nonisolated var ref: Ref { get { _ref.access { $0 } } }
+    private let _ref = Locked(Ref(0))
 
     private(set) var channels: [Topic: PhoenixChannel] = [:]
 
     private nonisolated let pushes = PushBuffer(isActive: false)
 
+    private var flushTask: Task<Void, Error>?
     private var heartbeatTask: Task<Void, Error>?
 
     init(
@@ -71,6 +73,14 @@ actor PhoenixSocket {
         self.onConnectionStateChange = onConnectionStateChange
     }
 
+    deinit {
+        shouldReconnect = false
+        cancelHeartbeat()
+        pushes.stop(PhoenixError.disconnect)
+        connectionState = .closed
+        channels.removeAll()
+    }
+
     func connect() async throws {
         guard case .closed = connectionState else { return }
         reconnectAttempts = 0
@@ -82,24 +92,29 @@ actor PhoenixSocket {
     /// connection attempt. Otherwise, a previous connection failed
     /// and this one will happen after a delay.
     private func reconnect(attempts: Int) async throws {
+        print("$$$", #function, connectionState.description)
         guard case .closed = connectionState, shouldReconnect else { return }
 
         connectionState = .waitingToReconnect
+
+        print("$$$", #function, "before timeout", connectionState.description)
 
         if let timeout = Self.retryTimeout(attempts: attempts) {
             try await Task.sleep(nanoseconds: NSEC_PER_SEC * UInt64(timeout))
         }
 
+        print("$$$", #function, "after timeout", connectionState.description)
+
         guard case .waitingToReconnect = connectionState, shouldReconnect else { return }
 
         os_log(
-            "phoenix.reconnect: oldstate=%{public}@",
+            "reconnect: oldstate=%{public}@",
             log: .phoenix,
             type: .debug,
             connectionState.description
         )
 
-        let ws = try await makeWebSocket(url, .init(), {}, { _ in })
+        let ws = try await doMakeWebSocket()
         connectionState = .connecting(ws)
 
         do {
@@ -120,33 +135,29 @@ actor PhoenixSocket {
 
     func disconnect(timeout: TimeInterval? = nil) async throws {
         os_log(
-            "phoenix.disconnect: oldstate=%{public}@",
+            "disconnect: oldstate=%{public}@",
             log: .phoenix,
             type: .debug,
             connectionState.description
         )
 
         shouldReconnect = false
-        pushes.stop(PhoenixError.disconnect)
-        cancelHeartbeat()
+        try await close(
+            error: nil,
+            timeout: timeout?.nanoseconds ?? self.timeout
+        )
+    }
 
-        switch connectionState {
-        case .waitingToReconnect, .closed, .closing:
-            return
+    func disconnectImmediately() async throws {
+        os_log(
+            "disconnect: oldstate=%{public}@",
+            log: .phoenix,
+            type: .debug,
+            connectionState.description
+        )
 
-        case let .connecting(ws):
-            // cancelHeartbeatTimer()
-            connectionState = .closing(ws)
-            try await ws.close(.normalClosure, timeout)
-            connectionState = .closed
-
-        case let .open(ws):
-            // cancelHeartbeatTimer()
-            connectionState = .closing(ws)
-            // try await flushPendingMessagesAndWait()
-            try await ws.close(.normalClosure, timeout)
-            connectionState = .closed
-        }
+        shouldReconnect = false
+        try await close(error: nil, timeout: 1)
     }
 }
 
@@ -177,7 +188,7 @@ extension PhoenixSocket {
 extension PhoenixSocket {
     func push(_ push: Push) async throws -> Message {
         os_log(
-            "phoenix.push: %@",
+            "push: %@",
             log: .phoenix,
             type: .debug,
             push.description
@@ -188,7 +199,7 @@ extension PhoenixSocket {
 
     func push(_ push: Push) async throws {
         os_log(
-            "phoenix.push: %@",
+            "push: %@",
             log: .phoenix,
             type: .debug,
             push.description
@@ -197,23 +208,27 @@ extension PhoenixSocket {
         try await pushes.append(push)
     }
 
-    func makeRef() async -> Ref {
-        let newRef = ref.next
-        ref = newRef
-        return newRef
+    func makeRef() -> Ref {
+        _ref.access { ref in
+            let newRef = ref.next
+            ref = newRef
+            return newRef
+        }
     }
 
     private func flush() {
-        Task { [weak self] in
+        precondition(flushTask == nil)
+
+        flushTask = Task { [weak self] in
             guard let self = self, !Task.isCancelled,
                   let ws = await self.webSocket
             else { return }
 
             let encoder = self.pushEncoder
 
-            for await push in self.pushes {
+            for try await push in self.pushes {
                 os_log(
-                    "phoenix.send: %@",
+                    "send: %@",
                     log: .phoenix,
                     type: .debug,
                     push.description
@@ -230,6 +245,12 @@ extension PhoenixSocket {
                 if Task.isCancelled { break }
             }
         }
+    }
+
+    private func cancelFlush() async {
+        flushTask?.cancel()
+        try? await flushTask?.value
+        flushTask = nil
     }
 
     private func listen() {
@@ -250,7 +271,7 @@ extension PhoenixSocket {
 
                 } catch {
                     os_log(
-                        "phoenix.message.error: %@",
+                        "message.error: %@",
                         log: .phoenix,
                         type: .error,
                         String(describing: error)
@@ -264,30 +285,41 @@ extension PhoenixSocket {
 
     private func handleSocketError(_ error: Error) async {
         os_log(
-            "phoenix.socket.error: %@",
+            "socket.error: %@",
             log: .phoenix,
             type: .error,
             String(describing: error)
         )
 
-        pushes.stop(error)
-        cancelHeartbeat()
+        try? await close(error: error, timeout: self.timeout)
+    }
 
-        let timeout = TimeInterval(nanoseconds: self.timeout)
+    private func close(error: Error?, timeout: UInt64) async throws {
+        print("$$$", #function, "before cancelFlush()")
+        await cancelFlush()
+        print("$$$", #function, "before cancelHeartbeat()")
+        cancelHeartbeat()
+        print("$$$", #function, "before pushes.stop()")
+        pushes.stop(error ?? PhoenixError.disconnect)
+
+        let timeout = TimeInterval(nanoseconds: timeout)
 
         switch connectionState {
         case .waitingToReconnect, .closed, .closing:
+            print("$$$", #function, connectionState.description)
             return
 
         case let .connecting(ws):
+            print("$$$", #function, connectionState.description)
             connectionState = .closing(ws)
-            try? await ws.close(.normalClosure, timeout)
+            try await ws.close(.normalClosure, timeout)
             connectionState = .closed
 
         case let .open(ws):
+            print("$$$", #function, connectionState.description)
             connectionState = .closing(ws)
             // try await flushPendingMessagesAndWait()
-            try? await ws.close(.normalClosure, timeout)
+            try await ws.close(.normalClosure, timeout)
             connectionState = .closed
         }
     }
@@ -295,10 +327,10 @@ extension PhoenixSocket {
 
 extension PhoenixSocket {
     private func scheduleHeartbeat() {
-        cancelHeartbeat()
+        guard heartbeatTask == nil else { return }
 
         let interval = heartbeatInterval
-        heartbeatTask = Task.detached { [weak self] in
+        heartbeatTask = Task { [weak self] in
             try await Task.sleep(nanoseconds: interval)
             try await self?.sendHeartbeat()
         }
@@ -310,39 +342,51 @@ extension PhoenixSocket {
     }
 
     private func sendHeartbeat() async throws {
-        guard connectionState.isOpen else { return cancelHeartbeat() }
+        guard !Task.isCancelled, connectionState.isOpen
+        else { return cancelHeartbeat() }
 
-        let timeout = self.timeout
+        let task = Task { [weak self] () -> Bool in
+            guard !Task.isCancelled, let self = self
+            else { throw CancellationError() }
 
-        let didSucceed: Bool = (try? await withThrowingTaskGroup(of: Bool.self) { group in
-            group.addTask {
-                try await Task.sleep(nanoseconds: timeout)
-                return false
-            }
+            let message: Message = try await self.push(
+                Push(
+                    joinRef: nil,
+                    ref: self.makeRef(),
+                    topic: "phoenix",
+                    event: .heartbeat
+                )
+            )
 
-            group.addTask { [weak self] in
-                guard let self = self else { return false }
-                _ = try await self.push(
-                    Push(
-                        joinRef: nil,
-                        ref: await self.makeRef(),
-                        topic: "phoenix",
-                        event: .heartbeat
-                    )
-                ) as Message
-                return true
-            }
+            return message.payload["status"] == "ok"
+        }
 
-            let didSucceed = try await group.next()
-            group.cancelAll()
-            return didSucceed ?? false
-        }) ?? false
+        let timer = DispatchTimer(
+            fireAt: .now() + .nanoseconds(Int(timeout))
+        ) { task.cancel() }
+        defer { timer.invalidate() }
 
-        if didSucceed {
+        switch await task.result {
+        case let .success(didAck) where didAck:
+            heartbeatTask = nil
             scheduleHeartbeat()
-        } else {
-            os_log("phoenix.heartbeat.timeout", log: .phoenix, type: .error)
+
+        case .success:
+            // I think `defer` will wait until handleSocketError()
+            // returns, which might be much later.
+            timer.invalidate()
             await handleSocketError(PhoenixError.heartbeatTimeout)
+            try await reconnect(attempts: reconnectAttempts)
+
+        case let .failure(error):
+            // I think `defer` will wait until handleSocketError()
+            // returns, which might be much later.
+            timer.invalidate()
+            print("$$$", #function, "before handleSocketError")
+            await handleSocketError(error)
+            print("$$$", #function, "after handleSocketError")
+            try await reconnect(attempts: reconnectAttempts)
+            print("$$$", #function, "after reconnect()")
         }
     }
 }
@@ -393,6 +437,24 @@ extension PhoenixSocket {
 }
 
 private extension PhoenixSocket {
+    func doMakeWebSocket() async throws -> WebSocket {
+        // Do we need to have `onClose` or should we just
+        // rely on receiving errors when we try to send
+        // messages?
+        try await makeWebSocket(
+            url,
+            .init(), // options
+            {}, // onOpen
+            { _ in
+                Task { [weak self] in
+                    guard let self = self else { return }
+                    try? await self.close(error: nil, timeout: self.timeout)
+                    try await self.reconnect(attempts: self.reconnectAttempts)
+                }
+            } // onClose
+        )
+    }
+
     static func retryTimeout(attempts: Int) -> TimeInterval? {
         guard attempts > 0 else { return nil }
         guard attempts < 9 else { return 5 }

@@ -22,7 +22,7 @@ final class PushBufferTests: XCTestCase {
             try await buffer.append(push2)
         }
 
-        for await push in buffer {
+        for try await push in buffer {
             XCTAssertFalse(pushes.access { $0.isEmpty })
             pushes.access { $0.removeAll(where: { $0 == push }) }
             if pushes.access({ $0.isEmpty }) { break }
@@ -41,7 +41,7 @@ final class PushBufferTests: XCTestCase {
             buffer.start()
         }
 
-        for await push in buffer {
+        for try await push in buffer {
             XCTAssertTrue(isActive.access { $0 })
             XCTAssertEqual(push1, push)
             break
@@ -59,7 +59,7 @@ final class PushBufferTests: XCTestCase {
             }
 
             group.addTask {
-                for await push in buffer {
+                for try await push in buffer {
                     XCTAssertFalse(didSend.access { $0 })
                     buffer.didSend(push)
                     break
@@ -83,7 +83,7 @@ final class PushBufferTests: XCTestCase {
             }
 
             group.addTask {
-                for await push in buffer {
+                for try await push in buffer {
                     buffer.didSend(push)
                     XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
                     break
@@ -94,6 +94,46 @@ final class PushBufferTests: XCTestCase {
         }
 
         XCTAssertEqual(makeReply(for: push1), message.access { $0 })
+    }
+
+    func testCancellationCancelsIteration() async throws {
+        struct State {
+            var pushIndex: Int = 0
+            var lastPushIndex: Int?
+        }
+
+        let state = Locked(State())
+        let buffer = PushBuffer(isActive: true)
+        let pushStream = makePushStream()
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await push in pushStream {
+                    Swift.print("$$$ PushBuffer.append()", push.id.rawValue)
+                    try await buffer.append(push)
+                }
+            }
+
+            group.addTask {
+                for try await push in buffer {
+                    state.access { $0.pushIndex = Int(push.id.rawValue) }
+                    print("$$$", push.topic, Task.isCancelled)
+                    buffer.didSend(push)
+                    do { try await Task.sleep(nanoseconds: NSEC_PER_MSEC) }
+                    catch {}
+                }
+            }
+
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+
+            group.cancelAll()
+            state.access { $0.lastPushIndex = $0.pushIndex }
+//            try await group.waitForAll()
+
+            state.access {
+                XCTAssertEqual($0.pushIndex, $0.lastPushIndex)
+            }
+        }
     }
 
     func testCancelAllInFlight() async throws {
@@ -120,7 +160,7 @@ final class PushBufferTests: XCTestCase {
 
             group.addTask {
                 var count = 0
-                for await push in buffer {
+                for try await push in buffer {
                     buffer.didSend(push)
                     if count == 0 {
                         buffer.cancelAllInFlight(CancellationError())
@@ -154,7 +194,7 @@ final class PushBufferTests: XCTestCase {
 
             group.addTask {
                 var count = 0
-                for await push in buffer {
+                for try await push in buffer {
                     count += 1
 
                     buffer.didSend(push)
@@ -199,14 +239,27 @@ private extension PushBufferTests {
     }
 
     func makePushes(_ count: Int) -> [Push] {
-        (1 ... count).map { i in
-            Push(
-                joinRef: Ref(UInt64(i)),
-                ref: Ref(UInt64(i)),
-                topic: "\(i)",
-                event: .custom("\(i)"),
-                payload: ["value": i]
-            )
+        (1 ... count).map { makePush($0) }
+    }
+
+    func makePush(_ id: Int) -> Push {
+        Push(
+            joinRef: Ref(UInt64(id)),
+            ref: Ref(UInt64(id)),
+            topic: "\(id)",
+            event: .custom("\(id)"),
+            payload: ["value": id]
+        )
+    }
+
+    func makePushStream(maxCount: Int = 1_000) -> AsyncStream<Push> {
+        AsyncStream<Push> { cont in
+            Task.detached {
+                for index in 0 ..< maxCount {
+                    cont.yield(self.makePush(index))
+                }
+                cont.finish()
+            }
         }
     }
 
