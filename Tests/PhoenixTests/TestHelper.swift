@@ -1,7 +1,7 @@
 @testable import Phoenix
 import XCTest
 
-private let defaultLocalIP = "0.0.0.0"
+private let defaultLocalIP = "127.0.0.1"
 private let defaultLocalDomain =
     "localhost.charlesproxy.com" // Allows viewing requests/responses in Charles
 

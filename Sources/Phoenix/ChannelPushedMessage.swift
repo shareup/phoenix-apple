@@ -22,7 +22,7 @@ extension Channel {
     }
 }
 
-extension Sequence where Self.Element == Channel.PushedMessage {
+extension Sequence<Channel.PushedMessage> {
     func sortedByTimeoutDate() -> [Self.Element] {
         sorted(by: { $0.timeoutDate < $1.timeoutDate })
     }

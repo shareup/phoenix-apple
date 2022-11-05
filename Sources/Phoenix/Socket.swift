@@ -299,7 +299,7 @@ extension Socket: ConnectablePublisher {
                 let deadline = DispatchTime.now()
                     .advanced(by: reconnectTimeInterval(_reconnectAttempts))
                 backgroundQueue.asyncAfter(deadline: deadline) { [weak self] in
-                    guard let self = self else { return }
+                    guard let self else { return }
                     guard self.lock.locked({ self.shouldReconnect }) else { return }
                     self.connect()
                 }
@@ -443,7 +443,7 @@ extension Socket {
             switch state {
             case let .open(ws):
                 ws.send(string) { error in
-                    if let error = error {
+                    if let error {
                         os_log(
                             "socket.send.text.error: error=%s",
                             log: .phoenix,
@@ -475,7 +475,7 @@ extension Socket {
             switch state {
             case let .open(ws):
                 ws.send(data) { error in
-                    if let error = error {
+                    if let error {
                         os_log(
                             "socket.send.data.error: error=%s",
                             log: .phoenix,
@@ -523,7 +523,7 @@ extension Socket {
         send(message) { error in
             if error != nil {
                 self.heartbeatTimeout()
-            } else if let onSuccess = onSuccess {
+            } else if let onSuccess {
                 onSuccess()
             }
         }
@@ -584,7 +584,7 @@ extension Socket {
     }
 
     private func receive(value: WebSocketOutput) {
-        let subject = self.subject
+        let subject = subject
 
         func handleBinaryOrTextMessage(_ rawMessage: RawIncomingMessage) {
             let subject = self.subject

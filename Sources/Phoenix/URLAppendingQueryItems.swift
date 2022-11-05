@@ -4,9 +4,11 @@ import Foundation
 //
 // https://hexdocs.pm/plug/Plug.Conn.html#fetch_query_params/2
 //
-// Phoenix uses Plug.Conn.fetch_query_params() to collect the query parameters in Socket.connect().
+// Phoenix uses Plug.Conn.fetch_query_params() to collect the query parameters in
+// Socket.connect().
 // Plug.Conn.fetch_query_params() decodes the parameters as `x-www-form-urlencoded`. However,
-// `URLComponents` does not encode query items according to the `x-www-form-urlencoded` standard.
+// `URLComponents` does not encode query items according to the `x-www-form-urlencoded`
+// standard.
 // So, we have to manually encode all query parameters as `x-www-form-urlencoded`.
 
 extension URL {
