@@ -26,8 +26,8 @@ jobs:
         working-directory: ./Tests/PhoenixTests/server
       - name: Test
         run: |
-           cd Tests/PhoenixTests/server
-           ( mix phx.server & )
-           cd -
-           sleep 7
-           swift test --skip-update
+          cd Tests/PhoenixTests/server
+          ( mix phx.server & )
+          cd -
+          sleep 7
+          swift test --skip-update
