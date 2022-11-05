@@ -280,7 +280,7 @@ extension Channel {
                 backgroundQueue.async {
                     self.send(message)
                     self.sync {
-                        let block: () -> Void = { [weak self] in self?.timeoutLeavePush() }
+                        let block: @Sendable () -> Void = { [weak self] in self?.timeoutLeavePush() }
                         self.leaveTimer = DispatchTimer(fireAt: timeout, block: block)
                     }
                 }
