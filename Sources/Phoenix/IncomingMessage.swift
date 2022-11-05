@@ -88,7 +88,7 @@ public struct IncomingMessage {
 }
 
 private func _ref(_ object: Any?) -> Phoenix.Ref? {
-    guard let object = object else { return nil }
+    guard let object else { return nil }
 
     if let intValue = object as? UInt64 {
         return Phoenix.Ref(intValue)

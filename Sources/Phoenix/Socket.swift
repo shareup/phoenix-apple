@@ -299,7 +299,7 @@ extension Socket: ConnectablePublisher {
                 let deadline = DispatchTime.now()
                     .advanced(by: reconnectTimeInterval(_reconnectAttempts))
                 backgroundQueue.asyncAfter(deadline: deadline) { [weak self] in
-                    guard let self = self else { return }
+                    guard let self else { return }
                     guard self.lock.locked({ self.shouldReconnect }) else { return }
                     self.connect()
                 }
@@ -366,11 +366,12 @@ public extension Socket {
         push(topic: topic, event: event, payload: payload) { _ in }
     }
 
-    func push(topic: Topic,
-              event: PhxEvent,
-              payload: Payload = [:],
-              callback: @escaping Callback)
-    {
+    func push(
+        topic: Topic,
+        event: PhxEvent,
+        payload: Payload = [:],
+        callback: @escaping Callback
+    ) {
         let thePush = Socket.Push(
             topic: topic,
             event: event,
@@ -442,7 +443,7 @@ extension Socket {
             switch state {
             case let .open(ws):
                 ws.send(string) { error in
-                    if let error = error {
+                    if let error {
                         os_log(
                             "socket.send.text.error: error=%s",
                             log: .phoenix,
@@ -474,7 +475,7 @@ extension Socket {
             switch state {
             case let .open(ws):
                 ws.send(data) { error in
-                    if let error = error {
+                    if let error {
                         os_log(
                             "socket.send.data.error: error=%s",
                             log: .phoenix,
@@ -522,7 +523,7 @@ extension Socket {
         send(message) { error in
             if error != nil {
                 self.heartbeatTimeout()
-            } else if let onSuccess = onSuccess {
+            } else if let onSuccess {
                 onSuccess()
             }
         }
@@ -583,7 +584,7 @@ extension Socket {
     }
 
     private func receive(value: WebSocketOutput) {
-        let subject = self.subject
+        let subject = subject
 
         func handleBinaryOrTextMessage(_ rawMessage: RawIncomingMessage) {
             let subject = self.subject
@@ -591,7 +592,8 @@ extension Socket {
                 let msg = try decoder(rawMessage)
                 sync {
                     switch msg.event {
-                    case .reply where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
+                    case .reply
+                        where pendingHeartbeatRef != nil && msg.ref == pendingHeartbeatRef:
                         self.pendingHeartbeatRef = nil
                     case .close:
                         removeChannel(for: msg.topic)
@@ -658,7 +660,7 @@ extension Socket {
         }
     }
 
-    private func receive(completion: Subscribers.Completion<WebSocketFailure>) {
+    private func receive(completion _: Subscribers.Completion<WebSocketFailure>) {
         sync {
             switch state {
             case .closed:
