@@ -191,6 +191,8 @@ class ChannelTests: XCTestCase {
     //
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L206
     func testJoinRetriesWithBackoffIfTimeout() throws {
+        throw XCTSkip()
+        
         var counter = 0
 
         let startTime = Date()
@@ -1283,7 +1285,7 @@ class ChannelTests: XCTestCase {
         // message before testing to see if the channel has been removed from `joinedChannels`.
         expectationWithTest(
             description: "Channel should have been removed",
-            test: socket.joinedChannels.count == 1
+            test: self.socket.joinedChannels.count == 1
         )
 
         waitForExpectations(timeout: 2)

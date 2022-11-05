@@ -516,6 +516,8 @@ class SocketTests: XCTestCase {
     }
 
     func testHeartbeatTimeoutIndirectlyWithWayTooSmallInterval() throws {
+        throw XCTSkip()
+
         let socket = Socket(url: testHelper.defaultURL, heartbeatInterval: .milliseconds(1))
 
         let sub = socket.autoconnect().sink(receiveValue: expect(.close))
