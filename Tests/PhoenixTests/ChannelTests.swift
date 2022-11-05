@@ -192,7 +192,7 @@ class ChannelTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L206
     func testJoinRetriesWithBackoffIfTimeout() throws {
         throw XCTSkip()
-        
+
         var counter = 0
 
         let startTime = Date()
@@ -1276,6 +1276,7 @@ class ChannelTests: XCTestCase {
         defer { channel2Sub.cancel() }
 
         socket.connect()
+        let _socket = socket
 
         // The channel gets the leave response before the socket receives a close message from
         // the socket. However, the socket only removes the channel after receiving the close
@@ -1285,7 +1286,7 @@ class ChannelTests: XCTestCase {
         // message before testing to see if the channel has been removed from `joinedChannels`.
         expectationWithTest(
             description: "Channel should have been removed",
-            test: self.socket.joinedChannels.count == 1
+            test: _socket?.joinedChannels.count == 1
         )
 
         waitForExpectations(timeout: 2)
