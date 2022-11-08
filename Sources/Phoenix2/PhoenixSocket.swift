@@ -19,7 +19,7 @@ actor PhoenixSocket {
         case let .connecting(ws), let .open(ws), let .closing(ws):
             return ws
 
-        case .waitingToReconnect, .closed:
+        case .waitingToReconnect, .preparingToReconnect, .closed:
             return nil
         }
     }
@@ -48,7 +48,7 @@ actor PhoenixSocket {
 
     private(set) var channels: [Topic: PhoenixChannel] = [:]
 
-    private nonisolated let pushes = PushBuffer(isActive: false)
+    private nonisolated let pushes = PushBuffer()
 
     private var flushTask: Task<Void, Error>?
     private var heartbeatTask: Task<Void, Error>?
@@ -76,7 +76,7 @@ actor PhoenixSocket {
     deinit {
         shouldReconnect = false
         cancelHeartbeat()
-        pushes.stop(PhoenixError.disconnect)
+        pushes.cancelAllAndInvalidate()
         connectionState = .closed
         channels.removeAll()
     }
@@ -106,13 +106,9 @@ actor PhoenixSocket {
         print("$$$", #function, "after timeout", connectionState.description)
 
         guard case .waitingToReconnect = connectionState, shouldReconnect else { return }
+        connectionState = .preparingToReconnect
 
-        os_log(
-            "reconnect: oldstate=%{public}@",
-            log: .phoenix,
-            type: .debug,
-            connectionState.description
-        )
+        os_log("reconnect", log: .phoenix, type: .debug)
 
         let ws = try await doMakeWebSocket()
         connectionState = .connecting(ws)
@@ -122,7 +118,7 @@ actor PhoenixSocket {
 
             connectionState = .open(ws)
             reconnectAttempts = 0
-            pushes.start()
+            pushes.resume()
             flush()
             scheduleHeartbeat()
 
@@ -300,12 +296,12 @@ extension PhoenixSocket {
         print("$$$", #function, "before cancelHeartbeat()")
         cancelHeartbeat()
         print("$$$", #function, "before pushes.stop()")
-        pushes.stop(error ?? PhoenixError.disconnect)
+        pushes.pause()
 
         let timeout = TimeInterval(nanoseconds: timeout)
 
         switch connectionState {
-        case .waitingToReconnect, .closed, .closing:
+        case .waitingToReconnect, .preparingToReconnect, .closed, .closing:
             print("$$$", #function, connectionState.description)
             return
 
@@ -395,6 +391,7 @@ extension PhoenixSocket {
     enum ConnectionState: CustomStringConvertible {
         case closed
         case waitingToReconnect
+        case preparingToReconnect
         case connecting(WebSocket)
         case open(WebSocket)
         case closing(WebSocket)
@@ -428,6 +425,7 @@ extension PhoenixSocket {
             switch self {
             case .closed: return "closed"
             case .waitingToReconnect: return "waitingToReconnect"
+            case .preparingToReconnect: return "preparingToReconnect"
             case .connecting: return "connecting"
             case .open: return "open"
             case .closing: return "closing"

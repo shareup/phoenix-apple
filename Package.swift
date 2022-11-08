@@ -15,27 +15,28 @@ let package = Package(
     ],
     dependencies: [
         .package(
-            name: "AsyncExtensions",
             url: "https://github.com/shareup/async-extensions.git",
-            from: "1.3.1"
+            from: "1.6.1"
         ),
         .package(
-            name: "DispatchTimer",
             url: "https://github.com/shareup/dispatch-timer.git",
-            from: "2.0.1"
+            from: "3.0.0"
         ),
 //        .package(
 //            url: "https://github.com/apple/swift-async-algorithms",
 //            from: "0.0.1"
 //        ),
         .package(
+                   url: "https://github.com/shareup/json-apple.git",
+                   from: "1.1.0"
+               ),
+        .package(
             url: "https://github.com/apple/swift-collections.git",
-            from: "1.0.2"
+            from: "1.0.3"
         ),
         .package(
-            name: "Synchronized",
             url: "https://github.com/shareup/synchronized.git",
-            from: "3.1.0"
+            from: "4.0.0"
         ),
         .package(
             name: "WebSocket",
@@ -50,14 +51,19 @@ let package = Package(
     targets: [
         .target(
             name: "Phoenix",
-            dependencies: ["DispatchTimer", "Synchronized", "WebSocket"]
+            dependencies: [
+                .product(name: "DispatchTimer", package: "dispatch-timer"),
+                .product(name: "Synchronized", package: "synchronized"),
+                "WebSocket"
+            ]
         ),
         .target(
             name: "Phoenix2",
             dependencies: [
-                "DispatchTimer",
+                .product(name: "DispatchTimer", package: "dispatch-timer"),
                 .product(name: "Collections", package: "swift-collections"),
-                "Synchronized",
+                .product(name: "JSON", package: "json-apple"),
+                .product(name: "Synchronized", package: "synchronized"),
                 "WebSocket",
             ]
         ),
@@ -69,7 +75,7 @@ let package = Package(
         .testTarget(
             name: "Phoenix2Tests",
             dependencies: [
-                .product(name: "AsyncTestExtensions", package: "AsyncExtensions"),
+                .product(name: "AsyncTestExtensions", package: "async-extensions"),
                 "Phoenix2",
             ],
             exclude: ["server"]

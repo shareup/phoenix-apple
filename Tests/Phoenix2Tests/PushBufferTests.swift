@@ -5,16 +5,18 @@ import XCTest
 final class PushBufferTests: XCTestCase {
     func testInitializer() throws {
         XCTAssertFalse(PushBuffer().isActive)
-        XCTAssertTrue(PushBuffer(isActive: true).isActive)
+        XCTAssertTrue(PushBuffer().isIdle)
+        XCTAssertFalse(PushBuffer().isTerminal)
     }
 
     func testIteratesOverAppendedPushes() async throws {
         let pushes = Locked([push1, push2])
-        let buffer = PushBuffer(isActive: true)
+        let buffer = PushBuffer()
+        buffer.resume()
 
         Task {
             try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 5)
-            try await buffer.append(push1)
+            try await buffer.append(push1) as Void
         }
 
         Task {
@@ -38,7 +40,7 @@ final class PushBufferTests: XCTestCase {
         Task {
             try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
             isActive.access { $0 = true }
-            buffer.start()
+            buffer.resume()
         }
 
         for try await push in buffer {
@@ -50,7 +52,8 @@ final class PushBufferTests: XCTestCase {
 
     func testWaitForSend() async throws {
         let didSend = Locked(false)
-        let buffer = PushBuffer(isActive: true)
+        let buffer = PushBuffer()
+        buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
@@ -72,9 +75,39 @@ final class PushBufferTests: XCTestCase {
         XCTAssertTrue(didSend.access { $0 })
     }
 
+    func testWaitForMultipleSends() async throws {
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let count = Locked(0)
+        let expectedCount = 1000
+        let stream = makePushStream(maxCount: expectedCount)
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await push in stream {
+                    try await buffer.append(push)
+                    count.access { $0 += 1 }
+                }
+            }
+
+            group.addTask {
+                for try await push in buffer {
+                    buffer.didSend(push)
+                }
+            }
+
+            try await group.next()
+            group.cancelAll()
+        }
+
+        XCTAssertEqual(expectedCount, count.access({ $0 }))
+    }
+
     func testWaitForReply() async throws {
         let message = Locked<Message?>(nil)
-        let buffer = PushBuffer(isActive: true)
+        let buffer = PushBuffer()
+        buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
@@ -96,6 +129,38 @@ final class PushBufferTests: XCTestCase {
         XCTAssertEqual(makeReply(for: push1), message.access { $0 })
     }
 
+    func testWaitForMultipleReplies() async throws {
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let count = Locked(0)
+        let expectedCount = 1000
+        let stream = makePushStream(maxCount: expectedCount)
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await push in stream {
+                    let msg = try await buffer.appendAndWait(push)
+                    XCTAssertEqual(self.makeReply(for: push), msg)
+                    count.access { $0 += 1 }
+                }
+            }
+
+            group.addTask {
+                for try await push in buffer {
+                    buffer.didSend(push)
+                    XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
+                }
+            }
+
+
+            try await group.next()
+            group.cancelAll()
+        }
+
+        XCTAssertEqual(expectedCount, count.access { $0 })
+    }
+
     func testCancellationCancelsIteration() async throws {
         struct State {
             var pushIndex: Int = 0
@@ -103,40 +168,47 @@ final class PushBufferTests: XCTestCase {
         }
 
         let state = Locked(State())
-        let buffer = PushBuffer(isActive: true)
+        let buffer = PushBuffer()
+        buffer.resume()
         let pushStream = makePushStream()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
-                for await push in pushStream {
-                    Swift.print("$$$ PushBuffer.append()", push.id.rawValue)
-                    try await buffer.append(push)
+                do {
+                    for await push in pushStream {
+                        try await buffer.append(push)
+                    }
+                } catch {
+                    XCTAssertTrue(error is CancellationError)
                 }
             }
 
             group.addTask {
-                for try await push in buffer {
-                    state.access { $0.pushIndex = Int(push.id.rawValue) }
-                    print("$$$", push.topic, Task.isCancelled)
-                    buffer.didSend(push)
-                    do { try await Task.sleep(nanoseconds: NSEC_PER_MSEC) }
-                    catch {}
+                do {
+                    for try await push in buffer {
+                        state.access { $0.pushIndex = Int(push.id.rawValue) }
+                        buffer.didSend(push)
+                    }
+                } catch {
+                    XCTAssertTrue(error is CancellationError)
                 }
             }
 
             try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
 
             group.cancelAll()
-            state.access { $0.lastPushIndex = $0.pushIndex }
-//            try await group.waitForAll()
 
-            state.access {
-                XCTAssertEqual($0.pushIndex, $0.lastPushIndex)
-            }
+            // Save the current push index and, after `waitForAll()`
+            // finishes, verify that nothing else has been processed.
+            state.access { $0.lastPushIndex = $0.pushIndex }
+
+            try await group.waitForAll()
+
+            state.access { XCTAssertEqual($0.pushIndex, $0.lastPushIndex) }
         }
     }
 
-    func testCancelAllInFlight() async throws {
+    func testPause() async throws {
         struct TestResult: Equatable {
             var errorCount = 0
             var processCount = 0
@@ -144,7 +216,8 @@ final class PushBufferTests: XCTestCase {
 
         let result = Locked(TestResult())
         let pushes = makePushes(3)
-        let buffer = PushBuffer(isActive: true)
+        let buffer = PushBuffer()
+        buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             pushes.forEach { push in
@@ -152,37 +225,116 @@ final class PushBufferTests: XCTestCase {
                     do {
                         _ = try await buffer.appendAndWait(push)
                         result.access { $0.processCount += 1 }
-                    } catch {
+                    } catch let error {
+                        XCTAssertTrue(error is CancellationError)
                         result.access { $0.errorCount += 1 }
                     }
                 }
             }
 
             group.addTask {
-                var count = 0
-                for try await push in buffer {
-                    buffer.didSend(push)
-                    if count == 0 {
-                        buffer.cancelAllInFlight(CancellationError())
-                    } else {
-                        XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
-                    }
-                    count += 1
-                    if count == 3 { return }
+                var iterator = buffer.makeAsyncIterator()
+
+                let first = try await iterator.next()!
+                buffer.didSend(first)
+
+                let second = try await iterator.next()!
+                buffer.didSend(second)
+
+                buffer.pause()
+
+                let didResume = Locked(false)
+                Task {
+                    try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
+                    didResume.access { $0 = true }
+                    buffer.resume()
                 }
+
+                let third = try await iterator.next()!
+                XCTAssertTrue(didResume.access({ $0 }))
+
+                buffer.didSend(third)
+                XCTAssertTrue(buffer.didReceive(self.makeReply(for: third)))
             }
 
             try await group.waitForAll()
         }
 
-        XCTAssertEqual(1, result.access { $0.errorCount })
-        XCTAssertEqual(2, result.access { $0.processCount })
+        XCTAssertEqual(2, result.access { $0.errorCount })
+        XCTAssertEqual(1, result.access { $0.processCount })
+    }
+
+    func testCancelAndInvalidate() async throws {
+        struct TestResult: Equatable {
+            var errorCount = 0
+            var processCount = 0
+        }
+
+        let result = Locked(TestResult())
+        let pushes = makePushes(4)
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            pushes.forEach { push in
+                group.addTask {
+                    do {
+                        _ = try await buffer.appendAndWait(push)
+                        result.access { $0.processCount += 1 }
+                    } catch let error {
+                        XCTAssertTrue(error is CancellationError)
+                        result.access { $0.errorCount += 1 }
+                    }
+                }
+            }
+
+            group.addTask {
+                var iterator = buffer.makeAsyncIterator()
+
+                let first = try await iterator.next()!
+                buffer.didSend(first)
+                XCTAssertTrue(buffer.didReceive(self.makeReply(for: first)))
+
+                let second = try await iterator.next()!
+                buffer.didSend(second)
+
+                let third = try await iterator.next()!
+                buffer.didSend(third)
+
+                buffer.cancelAllAndInvalidate()
+
+                XCTAssertNoThrow(buffer.resume())
+
+                do {
+                    let _ = try await iterator.next()!
+                    XCTFail("Should have thrown CancellationError")
+                } catch {
+                    XCTAssertTrue(error is CancellationError)
+                }
+
+                let didResume = Locked(false)
+                Task {
+                    try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
+                    didResume.access { $0 = true }
+                    buffer.resume()
+                }
+
+                XCTAssertNoThrow(buffer.didSend(pushes[3]))
+                XCTAssertFalse(buffer.didReceive(self.makeReply(for: pushes[3])))
+            }
+
+            try await group.waitForAll()
+        }
+
+        XCTAssertEqual(3, result.access { $0.errorCount })
+        XCTAssertEqual(1, result.access { $0.processCount })
     }
 
     func testSlowPushesDoNotDelayOtherPushes() async throws {
         let pushes = makePushes(5)
         let receivedMessages = Locked<[Message]>([])
-        let buffer = PushBuffer(isActive: true)
+        let buffer = PushBuffer()
+        buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             pushes.forEach { push in
@@ -210,6 +362,10 @@ final class PushBufferTests: XCTestCase {
 
                     if count == 5 { return }
                 }
+
+                // Assert that the buffer has been emptied even though the
+                // the messages haven't all been processed yet.
+                XCTAssertTrue(count == 5 && receivedMessages.access({ $0.count }) < 5)
             }
 
             try await group.waitForAll()
@@ -254,12 +410,10 @@ private extension PushBufferTests {
 
     func makePushStream(maxCount: Int = 1_000) -> AsyncStream<Push> {
         AsyncStream<Push> { cont in
-            Task.detached {
-                for index in 0 ..< maxCount {
-                    cont.yield(self.makePush(index))
-                }
-                cont.finish()
+            for index in 0 ..< maxCount {
+                cont.yield(self.makePush(index))
             }
+            cont.finish()
         }
     }
 

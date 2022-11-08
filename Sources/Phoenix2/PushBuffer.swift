@@ -1,201 +1,124 @@
 import Foundation
 import Synchronized
+import Collections
 
-enum PushResultContinuation: Sendable {
-    case onSend(CheckedContinuation<Void, Error>)
-    case onReply(CheckedContinuation<Message, Error>)
-}
-
-private typealias AwaitingNextContinuation = CheckedContinuation<Push, Error>
-
-final class PushBuffer: AsyncSequence {
+final class PushBuffer: AsyncSequence, @unchecked Sendable {
     typealias Element = Push
 
-    var isActive: Bool { lock.locked { _isActive } }
+    private let state = Locked<State>(.init())
 
-    private var _isActive: Bool
-    private var awaitingNextContinuation: AwaitingNextContinuation?
-    private var inFlightBuffer: [BufferedPush] = []
-    private var buffer: [BufferedPush] = []
-    private let lock = Lock()
+    var isActive: Bool { state.access { $0.isActive } }
+    var isIdle: Bool { state.access { $0.isIdle } }
+    var isTerminal: Bool { state.access { $0.isTerminal } }
 
-    init(isActive: Bool = false) { _isActive = isActive }
+    func makeAsyncIterator() -> PushBuffer.Iterator { PushBuffer.Iterator(self) }
 
-    func makeAsyncIterator() -> PushBuffer.Iterator { Iterator(self) }
-
-    func start() {
-        let nextAndCont = lock.locked { () -> (Push, AwaitingNextContinuation)? in
-            _isActive = true
-
-            if !buffer.isEmpty, let awaitingNextContinuation = awaitingNextContinuation {
-                self.awaitingNextContinuation = nil
-                let next = buffer.removeFirst()
-                inFlightBuffer.append(next)
-                return (next.push, awaitingNextContinuation)
-            } else {
-                return nil
-            }
-        }
-
-        guard let (next, cont) = nextAndCont else { return }
-        cont.resume(returning: next)
+    /// Allows buffered pushes to be iterated over and processed.
+    func resume() {
+        guard let result = state.access({ $0.resume() })
+        else { return }
+        result.0.resume(returning: result.1)
     }
 
-    func stop(_ error: Error) {
-        lock.locked { _isActive = false }
-        cancelAllInFlight(error)
+    /// Cancels all in-flight pushes while keeping buffered pushes
+    /// untouched.
+    func pause() {
+        let inFlight = state.access { $0.pause() }
+        inFlight?.forEach { $0.value.resume(throwing: CancellationError()) }
     }
 
     func append(_ push: Push) async throws {
         try await withTaskCancellationHandler(
-            operation: {
-                try await withCheckedThrowingContinuation {
-                    append(push, .onSend($0))
+            operation: { () async throws -> Void in
+                try await withCheckedThrowingContinuation { (cont: SendContinuation) in
+                    let result = self.state.access { $0.appendForSend(push, cont) }
+                    switch result {
+                    case let .cancel(cont):
+                        cont.resume(throwing: CancellationError())
+                    case let .resume(cont):
+                        cont.resume(returning: push)
+                    case .wait:
+                        break
+                    }
                 }
             },
             onCancel: { [weak self] in
-                self?.cancelAllInFlight(CancellationError())
+                let cont = self?.state.access { $0.cancel(push) }
+                cont?.resume(throwing: CancellationError())
             }
         )
     }
 
     func appendAndWait(_ push: Push) async throws -> Message {
         try await withTaskCancellationHandler(
-            operation: {
-                try await withCheckedThrowingContinuation {
-                    append(push, .onReply($0))
+            operation: { () async throws -> Message in
+                try await withCheckedThrowingContinuation { (cont: ReplyContinuation) in
+                    let result = self.state.access { $0.appendForReply(push, cont) }
+                    switch result {
+                    case let .cancel(cont):
+                        cont.resume(throwing: CancellationError())
+                    case let .resume(cont):
+                        cont.resume(returning: push)
+                    case .wait:
+                        break
+                    }
                 }
             },
             onCancel: { [weak self] in
-                self?.cancelAllInFlight(CancellationError())
+                let cont = self?.state.access { $0.cancel(push) }
+                cont?.resume(throwing: CancellationError())
             }
         )
     }
 
-    private func append(
-        _ push: Push,
-        _ continuation: PushResultContinuation
-    ) {
-        let pushAndCont: (Push, AwaitingNextContinuation)? = lock.locked {
-            let bufferedPush = BufferedPush(
-                push: push,
-                continuation: continuation
-            )
-
-            if _isActive, let awaitingNextContinuation = awaitingNextContinuation {
-                self.awaitingNextContinuation = nil
-                inFlightBuffer.append(bufferedPush)
-                return (push, awaitingNextContinuation)
-            } else {
-                buffer.append(bufferedPush)
-                return nil
-            }
-        }
-
-        guard let (push, cont) = pushAndCont else { return }
-        cont.resume(returning: push)
-    }
-
     func didSend(_ push: Push) {
-        let bufferedPush: BufferedPush? = lock.locked {
-            let index = inFlightBuffer.firstIndex(where: { $0.push == push })
-            guard let index = index else { return nil }
-            return inFlightBuffer[index].waitForReply
-                ? nil
-                : inFlightBuffer.remove(at: index)
-        }
-
-        guard let bufferedPush = bufferedPush else { return }
-        bufferedPush.resume()
+        let cont = state.access { $0.removeSendContinuation(for: push) }
+        cont?.resume()
     }
 
     func didReceive(_ message: Message) -> Bool {
-        let bufferedPush: BufferedPush? = lock.locked {
-            let index = inFlightBuffer.firstIndex(where: message.matches)
-            guard let index = index else { return nil }
-            return inFlightBuffer.remove(at: index)
-        }
-
-        guard let bufferedPush = bufferedPush else { return false }
-        bufferedPush.resume(with: message)
+        let cont = state.access { $0.removeReplyContinuation(for: message) }
+        guard let cont else { return false }
+        cont.resume(returning: message)
         return true
     }
 
-    func cancelAllInFlight(_ error: Error) {
-        let inFlight: [BufferedPush] = lock.locked {
-            let copy = inFlightBuffer
-            inFlightBuffer.removeAll()
-            return copy
-        }
-
-        inFlight.forEach { $0.resume(with: error) }
+    /// Cancels all in-flight and buffered pushes and invalidates the
+    /// buffer.
+    func cancelAllAndInvalidate() {
+        let result = state.access { $0.finish() }
+        result.1?.forEach { $0.value.resume(throwing: CancellationError()) }
+        result.0?.resume(throwing: CancellationError())
     }
 
     fileprivate func next() async throws -> Push {
-        let next: Push? = lock.locked {
-            guard _isActive, !buffer.isEmpty else { return nil }
-            let next = buffer.removeFirst()
-            inFlightBuffer.append(next)
-            return next.push
-        }
-
-        if let next = next {
-            return next
-        } else {
-            return try await withTaskCancellationHandler(
-                operation: {
-                    try await withCheckedThrowingContinuation { cont in
-                        let push: Push? = lock.locked {
-                            if _isActive, !buffer.isEmpty {
-                                let bufferedPush = buffer.removeFirst()
-                                inFlightBuffer.append(bufferedPush)
-                                return bufferedPush.push
-                            } else {
-                                precondition(awaitingNextContinuation == nil)
-                                awaitingNextContinuation = cont
-                                return nil
-                            }
-                        }
-
-                        if let push = push { cont.resume(returning: push) }
-                    }
-                },
-                onCancel: {
-                    let remainder = lock.locked { () -> (AwaitingNextContinuation?, [BufferedPush]) in
-                        _isActive = false
-
-                        let inFlight = inFlightBuffer
-                        inFlightBuffer.removeAll()
-
-                        if let cont = awaitingNextContinuation {
-                            awaitingNextContinuation = nil
-                            return (cont, inFlight)
-                        } else {
-                            return (nil, inFlight)
+        try await withTaskCancellationHandler(
+            operation: { () async throws -> Push in
+                try await withCheckedThrowingContinuation
+                    { (cont: AwaitingPushContinuation) -> Void in
+                        do {
+                            let push = try state.access { try $0.next(cont) }
+                            guard let push else { return }
+                            cont.resume(returning: push)
+                        } catch {
+                            cont.resume(throwing: error)
                         }
                     }
+            },
+            onCancel: { [weak self] in
+                let result = self?.state.access
+                    { (state: inout State) -> (AwaitingPushContinuation?, Pushes?) in
+                        let cont = state.awaitingPushContinuation
+                        state.awaitingPushContinuation = nil
+                        let pushes = state.pause()
+                        return (cont: cont, pushes: pushes)
+                    }
 
-                    let error = CancellationError()
-                    remainder.1.forEach { $0.resume(with: error) }
-                    remainder.0?.resume(throwing: error)
-                }
-            )
-//            return await withCheckedContinuation { cont in
-//                let push: Push? = lock.locked {
-//                    if _isActive, !buffer.isEmpty {
-//                        let bufferedPush = buffer.removeFirst()
-//                        inFlightBuffer.append(bufferedPush)
-//                        return bufferedPush.push
-//                    } else {
-//                        precondition(awaitingNextContinuation == nil)
-//                        awaitingNextContinuation = cont
-//                        return nil
-//                    }
-//                }
-//
-//                if let push = push { cont.resume(returning: push) }
-//            }
-        }
+                guard let result else { return }
+                result.1?.forEach { $0.value.resume(throwing: CancellationError()) }
+                result.0?.resume(throwing: CancellationError())
+            }
+        )
     }
 }
 
@@ -211,47 +134,414 @@ extension PushBuffer {
     }
 }
 
-private struct BufferedPush: Sendable {
-    let push: Push
-    let continuation: PushResultContinuation
+private enum Continuation {
+    case reply(ReplyContinuation)
+    case send(SendContinuation)
 
-    var waitForReply: Bool {
-        switch continuation {
-        case .onSend: return false
-        case .onReply: return true
+    func resume(throwing error: Error) {
+        switch self {
+        case let .reply(cont): cont.resume(throwing: error)
+        case let .send(cont): cont.resume(throwing: error)
         }
     }
 
-    init(push: Push, continuation: PushResultContinuation) {
-        self.push = push
-        self.continuation = continuation
-    }
+    init(_ cont: ReplyContinuation) { self = .reply(cont) }
+    init(_ cont: SendContinuation) { self = .send(cont) }
+}
 
-    func resume() {
-        guard case let .onSend(cont) = continuation
-        else { preconditionFailure() }
-        cont.resume()
-    }
+/// A continuation stored in `State` while its waiting for new
+/// pushes to be appended.
+private typealias AwaitingPushContinuation = CheckedContinuation<Push, Error>
 
-    func resume(with message: Message) {
-        guard case let .onReply(cont) = continuation
-        else { preconditionFailure() }
-        cont.resume(returning: message)
-    }
+/// A continuation resolved when a Push receives a reply.
+private typealias ReplyContinuation = CheckedContinuation<Message, Error>
 
-    func resume(with error: Error) {
-        switch continuation {
-        case let .onSend(cont):
-            cont.resume(throwing: error)
+/// A continuation resolved when a Push is sent. Replies are ignored.
+private typealias SendContinuation = CheckedContinuation<Void, Error>
 
-        case let .onReply(cont):
-            cont.resume(throwing: error)
+private typealias Pushes = OrderedDictionary<Push, Continuation>
+
+private enum AppendResult {
+    case cancel(Continuation)
+    case resume(AwaitingPushContinuation)
+    case wait
+}
+
+private extension PushBuffer {
+    struct State {
+        var awaitingPushContinuation: AwaitingPushContinuation?
+
+        private(set) var queue = Queue()
+
+        /// Holds cancelled pushes that haven't yet been added
+        /// to queue. This can happen when the cancellation block
+        /// is called before the operation block of
+        /// `withTaskCancellationHandler()`
+        private var cancelled = Set<Push>()
+
+        var isActive: Bool {
+            guard case .active = queue else { return false }
+            return true
+        }
+
+        var isIdle: Bool {
+            guard case .idle = queue else { return false }
+            return true
+        }
+
+        var isTerminal: Bool {
+            guard case .terminal = queue else { return false }
+            return true
+        }
+
+        mutating func next(_ continuation: AwaitingPushContinuation) throws -> Push? {
+            guard !queue.isTerminal else { throw CancellationError() }
+            if let next = queue.next() {
+                return next
+            } else {
+                precondition(awaitingPushContinuation == nil)
+                awaitingPushContinuation = continuation
+                return nil
+            }
+        }
+
+        mutating func pause() -> Pushes? { queue.pause() }
+
+        mutating func cancel(_ push: Push) -> Continuation? {
+            guard let cont = queue.cancel(push) else {
+                cancelled.insert(push)
+                return nil
+            }
+            return cont
+        }
+
+        mutating func resume() -> (AwaitingPushContinuation, Push)? {
+            if let awaitingPushContinuation {
+                guard let push = queue.resumeAndPopFirst() else
+                { return nil }
+                self.awaitingPushContinuation = nil
+                return (awaitingPushContinuation, push)
+            } else {
+                queue.resume()
+                return nil
+            }
+        }
+
+        mutating func finish() -> (AwaitingPushContinuation?, Pushes?) {
+            let pushes = queue.finish()
+            let cont = awaitingPushContinuation
+            awaitingPushContinuation = nil
+            return (cont, pushes)
+        }
+
+        mutating func appendForReply(
+            _ push: Push,
+            _ continuation: ReplyContinuation
+        ) -> AppendResult {
+            guard !cancelled.contains(push) else {
+                cancelled.remove(push)
+                return .cancel(.reply(continuation))
+            }
+
+            if let awaitingPushContinuation,
+               queue.addToInFlightForReply(push, continuation) {
+                self.awaitingPushContinuation = nil
+                return .resume(awaitingPushContinuation)
+            } else {
+                if let cont = queue.appendForReply(push, continuation) {
+                    return .cancel(cont)
+                } else {
+                    return .wait
+                }
+            }
+        }
+
+        mutating func appendForSend(
+            _ push: Push,
+            _ continuation: SendContinuation
+        ) -> AppendResult {
+            guard !cancelled.contains(push) else {
+                cancelled.remove(push)
+                return .cancel(.send(continuation))
+            }
+
+            if let awaitingPushContinuation,
+               queue.addToInFlightForSend(push, continuation) {
+                self.awaitingPushContinuation = nil
+                return .resume(awaitingPushContinuation)
+            } else {
+                if let cont = queue.appendForSend(push, continuation) {
+                    return .cancel(cont)
+                } else {
+                    return .wait
+                }
+            }
+        }
+
+        mutating func removeReplyContinuation(for message: Message) -> ReplyContinuation? {
+            queue.removeReplyContinuation(for: message)
+        }
+
+        mutating func removeSendContinuation(for push: Push) -> SendContinuation? {
+            queue.removeSendContinuation(for: push)
         }
     }
 }
 
-private extension Message {
-    func matches(_ bufferedPush: BufferedPush) -> Bool {
-        ref == bufferedPush.push.ref
+private enum Queue {
+    case active(inFlight: Pushes, buffer: Pushes)
+    case idle(buffer: Pushes)
+    case terminal
+
+    var isTerminal: Bool {
+        guard case .terminal = self else { return false }
+        return true
+    }
+
+    init() { self = .idle(buffer: .init()) }
+
+    mutating func resume() {
+        switch self {
+        case .active:
+            break
+
+        case let .idle(buffer):
+            self = .active(inFlight: .init(), buffer: buffer)
+
+        case .terminal:
+            break
+        }
+    }
+
+    mutating func resumeAndPopFirst() -> Push? {
+        switch self {
+        case .active, .terminal:
+            return nil
+
+        case let .idle(buffer) where buffer.isEmpty:
+            self = .active(inFlight: .init(), buffer: buffer)
+            return nil
+
+        case var .idle(buffer):
+            let first = buffer.removeFirst()
+            self = .active(
+                inFlight: .init(dictionaryLiteral: first),
+                buffer: buffer
+            )
+            return first.key
+        }
+    }
+
+    mutating func pause() -> Pushes? {
+        switch self {
+        case let .active(inFlight, buffer):
+            self = .idle(buffer: buffer)
+            return inFlight
+
+        case .idle, .terminal:
+            return nil
+        }
+    }
+
+    mutating func finish() -> Pushes? {
+        switch self {
+        case let .active(inFlight, buffer):
+            self = .terminal
+            return inFlight.merging(buffer) { _, _ in preconditionFailure() }
+
+        case let .idle(buffer):
+            self = .terminal
+            return buffer
+
+        case .terminal:
+            return nil
+        }
+    }
+
+    mutating func cancel(_ push: Push) -> Continuation? {
+        switch self {
+        case var .active(inFlight, buffer):
+            if let cont = inFlight.removeValue(forKey: push) {
+                self = .active(inFlight: inFlight, buffer: buffer)
+                return .init(cont)
+            } else if let cont = buffer.removeValue(forKey: push) {
+                self = .active(inFlight: inFlight, buffer: buffer)
+                return .init(cont)
+            } else {
+                return nil
+            }
+
+        case var .idle(buffer):
+            if let cont = buffer.removeValue(forKey: push) {
+                self = .idle(buffer: buffer)
+                return .init(cont)
+            } else {
+                return nil
+            }
+
+        case .terminal:
+            return nil
+        }
+    }
+
+    /// Adds the push to in-flight pushes if active. If idle, this
+    /// method does nothing. Calling this method when terminal is
+    /// user error and undefined. Returns `true` if the push was
+    /// added to in-flight pushes, otherwise `false`.
+    mutating func addToInFlightForReply(
+    _ push: Push,
+    _ continuation: ReplyContinuation
+    ) -> Bool {
+        addToInFlight(push, .reply(continuation))
+    }
+
+    /// Adds the push to in-flight pushes if active. If idle, this
+    /// method does nothing. Calling this method when terminal is
+    /// user error and undefined. Returns `true` if the push was
+    /// added to in-flight pushes, otherwise `false`.
+    mutating func addToInFlightForSend(
+    _ push: Push,
+    _ continuation: SendContinuation
+    ) -> Bool {
+        addToInFlight(push, .send(continuation))
+    }
+
+    private mutating func addToInFlight(
+        _ push: Push,
+        _ continuation: Continuation
+    ) -> Bool {
+        guard case .active(var inFlight, let buffer) = self
+        else { return false }
+
+        precondition(buffer.isEmpty)
+
+        inFlight[push] = continuation
+        self = .active(inFlight: inFlight, buffer: buffer)
+        return true
+    }
+
+    /// Adds the Push and continuation to the buffer. If the buffer
+    /// has finished, this method directly returns the continuation
+    /// to the caller so that it may be cancelled.
+    mutating func appendForReply(
+        _ push: Push,
+        _ continuation: ReplyContinuation
+    ) -> Continuation? {
+        append(push, .init(continuation))
+    }
+
+    /// Adds the Push and continuation to the buffer. If the buffer
+    /// has finished, this method directly returns the continuation
+    /// to the caller so that it may be cancelled.
+    mutating func appendForSend(
+        _ push: Push,
+        _ continuation: SendContinuation
+    ) -> Continuation? {
+        append(push, .init(continuation))
+    }
+
+    private mutating func append(
+        _ push: Push,
+        _ continuation: Continuation
+    ) -> Continuation? {
+        switch self {
+        case .active(let inFlight, var buffer):
+            buffer[push] = continuation
+            self = .active(inFlight: inFlight, buffer: buffer)
+            return nil
+
+        case .idle(var buffer):
+            buffer[push] = continuation
+            self = .idle(buffer: buffer)
+            return nil
+
+        case .terminal:
+            return continuation
+        }
+    }
+
+    /// Removes the `ReplyContinuation` from in-flight pushes, if it
+    /// exists. Trying to remove a `SendContinuation` is user error
+    /// and undefined behavior. Also, trying to remove a continuation
+    /// from the buffer is user error and undefined behavior.
+    mutating func removeReplyContinuation(for message: Message) -> ReplyContinuation? {
+        switch self {
+        case .active(var inFlight, let buffer):
+            precondition(buffer.findPush(matching: message.ref) == nil)
+            guard let cont = inFlight.remove(matching: message)
+            else { return nil }
+            self = .active(inFlight: inFlight, buffer: buffer)
+            return cont
+
+        case .idle(let buffer):
+            precondition(buffer.findPush(matching: message.ref) == nil)
+            return nil
+
+        case .terminal:
+            return nil
+        }
+    }
+
+    /// Removes the `SendContinuation` from in-flight pushes, if it
+    /// exists. If the push's continuation is a `ReplyContinuation`,
+    /// this method returns `nil`. Trying to remove a continuation
+    /// from the buffer is user error and undefined behavior.
+    mutating func removeSendContinuation(for push: Push) -> SendContinuation? {
+        switch self {
+        case .active(var inFlight, let buffer):
+            precondition(buffer[push] == nil)
+            guard case let .send(cont) = inFlight[push] else { return nil }
+            inFlight.removeValue(forKey: push)
+            self = .active(inFlight: inFlight, buffer: buffer)
+            return cont
+
+        case .idle(let buffer):
+            precondition(buffer[push] == nil)
+            return nil
+
+        case .terminal:
+            return nil
+        }
+    }
+
+    /// Returns the first buffered `Push`, if active. If idle, returns
+    /// nil. Calling this method when terminal is a user error and
+    /// undefined behavior.
+    mutating func next() -> Push? {
+        switch self {
+        case var .active(inFlight, buffer):
+            guard !buffer.isEmpty else { return nil }
+            let next = buffer.removeFirst()
+            inFlight[next.key] = next.value
+            self = .active(inFlight: inFlight, buffer: buffer)
+            return next.key
+
+        case .idle:
+            return nil
+
+        case .terminal:
+            preconditionFailure()
+        }
+    }
+}
+
+private extension Pushes {
+    func findPush(matching ref: Ref?) -> Push? {
+        guard let ref else { return nil }
+        let match = first(where: { (key: Push, value: Continuation) -> Bool in
+            return key.ref == ref
+        })
+        guard let match else { return nil }
+        return match.key
+    }
+
+    mutating func remove(matching message: Message) -> ReplyContinuation? {
+        guard let push = self.findPush(matching: message.ref),
+              case let .reply(cont) = self[push]
+        else { return nil }
+
+        removeValue(forKey: push)
+
+        return cont
     }
 }
