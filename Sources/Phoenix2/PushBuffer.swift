@@ -27,6 +27,8 @@ final class PushBuffer: AsyncSequence, @unchecked Sendable {
         inFlight?.forEach { $0.value.resume(throwing: CancellationError()) }
     }
 
+    /// Appends the push to the internal buffer and waits
+    /// for it to be sent before returning.
     func append(_ push: Push) async throws {
         try await withTaskCancellationHandler(
             operation: { () async throws -> Void in
@@ -49,6 +51,8 @@ final class PushBuffer: AsyncSequence, @unchecked Sendable {
         )
     }
 
+    /// Appends the push to the internal buffer and waits for
+    /// a reply before returning.
     func appendAndWait(_ push: Push) async throws -> Message {
         try await withTaskCancellationHandler(
             operation: { () async throws -> Message in
@@ -71,11 +75,17 @@ final class PushBuffer: AsyncSequence, @unchecked Sendable {
         )
     }
 
+    /// Notifies `PushBuffer` that the push has been sent. The
+    /// corresponding call to `append()` will be allowed to
+    /// return.
     func didSend(_ push: Push) {
         let cont = state.access { $0.removeSendContinuation(for: push) }
         cont?.resume()
     }
 
+    /// Notifies `PushBuffer` that the push has received a reply. The
+    /// corresponding call to `appendAndWait()` will be allowed to
+    /// return.
     func didReceive(_ message: Message) -> Bool {
         let cont = state.access { $0.removeReplyContinuation(for: message) }
         guard let cont else { return false }
@@ -84,7 +94,9 @@ final class PushBuffer: AsyncSequence, @unchecked Sendable {
     }
 
     /// Cancels all in-flight and buffered pushes and invalidates the
-    /// buffer.
+    /// buffer. Any subsequent calls to `append()`, `appendAndWait()`,
+    /// or `next()` with return with a `CancellationError`. Calls
+    /// to `didSend()` or `didReceive()` will be no-ops.
     func cancelAllAndInvalidate() {
         let result = state.access { $0.finish() }
         result.1?.forEach { $0.value.resume(throwing: CancellationError()) }
