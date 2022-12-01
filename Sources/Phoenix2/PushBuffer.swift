@@ -1,8 +1,9 @@
+import Collections
 import Foundation
 import Synchronized
-import Collections
 
-final class PushBuffer: AsyncSequence, @unchecked Sendable {
+final class PushBuffer: AsyncSequence, @unchecked
+Sendable {
     typealias Element = Push
 
     private let state = Locked<State>(.init())
@@ -31,7 +32,7 @@ final class PushBuffer: AsyncSequence, @unchecked Sendable {
     /// for it to be sent before returning.
     func append(_ push: Push) async throws {
         try await withTaskCancellationHandler(
-            operation: { () async throws -> Void in
+            operation: { () async throws in
                 try await withCheckedThrowingContinuation { (cont: SendContinuation) in
                     let result = self.state.access { $0.appendForSend(push, cont) }
                     switch result {
@@ -106,16 +107,15 @@ final class PushBuffer: AsyncSequence, @unchecked Sendable {
     fileprivate func next() async throws -> Push {
         try await withTaskCancellationHandler(
             operation: { () async throws -> Push in
-                try await withCheckedThrowingContinuation
-                    { (cont: AwaitingPushContinuation) -> Void in
-                        do {
-                            let push = try state.access { try $0.next(cont) }
-                            guard let push else { return }
-                            cont.resume(returning: push)
-                        } catch {
-                            cont.resume(throwing: error)
-                        }
+                try await withCheckedThrowingContinuation { (cont: AwaitingPushContinuation) in
+                    do {
+                        let push = try state.access { try $0.next(cont) }
+                        guard let push else { return }
+                        cont.resume(returning: push)
+                    } catch {
+                        cont.resume(throwing: error)
                     }
+                }
             },
             onCancel: { [weak self] in
                 let result = self?.state.access
@@ -229,8 +229,8 @@ private extension PushBuffer {
 
         mutating func resume() -> (AwaitingPushContinuation, Push)? {
             if let awaitingPushContinuation {
-                guard let push = queue.resumeAndPopFirst() else
-                { return nil }
+                guard let push = queue.resumeAndPopFirst()
+                else { return nil }
                 self.awaitingPushContinuation = nil
                 return (awaitingPushContinuation, push)
             } else {
@@ -256,7 +256,8 @@ private extension PushBuffer {
             }
 
             if let awaitingPushContinuation,
-               queue.addToInFlightForReply(push, continuation) {
+               queue.addToInFlightForReply(push, continuation)
+            {
                 self.awaitingPushContinuation = nil
                 return .resume(awaitingPushContinuation)
             } else {
@@ -278,7 +279,8 @@ private extension PushBuffer {
             }
 
             if let awaitingPushContinuation,
-               queue.addToInFlightForSend(push, continuation) {
+               queue.addToInFlightForSend(push, continuation)
+            {
                 self.awaitingPushContinuation = nil
                 return .resume(awaitingPushContinuation)
             } else {
@@ -401,8 +403,8 @@ private enum Queue {
     /// user error and undefined. Returns `true` if the push was
     /// added to in-flight pushes, otherwise `false`.
     mutating func addToInFlightForReply(
-    _ push: Push,
-    _ continuation: ReplyContinuation
+        _ push: Push,
+        _ continuation: ReplyContinuation
     ) -> Bool {
         addToInFlight(push, .reply(continuation))
     }
@@ -412,8 +414,8 @@ private enum Queue {
     /// user error and undefined. Returns `true` if the push was
     /// added to in-flight pushes, otherwise `false`.
     mutating func addToInFlightForSend(
-    _ push: Push,
-    _ continuation: SendContinuation
+        _ push: Push,
+        _ continuation: SendContinuation
     ) -> Bool {
         addToInFlight(push, .send(continuation))
     }
@@ -462,7 +464,7 @@ private enum Queue {
             self = .active(inFlight: inFlight, buffer: buffer)
             return nil
 
-        case .idle(var buffer):
+        case var .idle(buffer):
             buffer[push] = continuation
             self = .idle(buffer: buffer)
             return nil
@@ -485,7 +487,7 @@ private enum Queue {
             self = .active(inFlight: inFlight, buffer: buffer)
             return cont
 
-        case .idle(let buffer):
+        case let .idle(buffer):
             precondition(buffer.findPush(matching: message.ref) == nil)
             return nil
 
@@ -507,7 +509,7 @@ private enum Queue {
             self = .active(inFlight: inFlight, buffer: buffer)
             return cont
 
-        case .idle(let buffer):
+        case let .idle(buffer):
             precondition(buffer[push] == nil)
             return nil
 
@@ -540,15 +542,15 @@ private enum Queue {
 private extension Pushes {
     func findPush(matching ref: Ref?) -> Push? {
         guard let ref else { return nil }
-        let match = first(where: { (key: Push, value: Continuation) -> Bool in
-            return key.ref == ref
+        let match = first(where: { (key: Push, _: Continuation) -> Bool in
+            key.ref == ref
         })
         guard let match else { return nil }
         return match.key
     }
 
     mutating func remove(matching message: Message) -> ReplyContinuation? {
-        guard let push = self.findPush(matching: message.ref),
+        guard let push = findPush(matching: message.ref),
               case let .reply(cont) = self[push]
         else { return nil }
 

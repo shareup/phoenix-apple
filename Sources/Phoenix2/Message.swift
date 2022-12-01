@@ -88,7 +88,7 @@ public extension Message {
 }
 
 private func _ref(_ object: Any?) -> Ref? {
-    guard let object = object else { return nil }
+    guard let object else { return nil }
 
     if let intValue = object as? UInt64 {
         return Ref(intValue)

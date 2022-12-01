@@ -51,21 +51,21 @@ final class PayloadTests: XCTestCase {
             "one": 1,
             "bool": true,
             "dict": [
-                "key": "value"
-            ]
+                "key": "value",
+            ],
         ]
-        XCTAssertTrue(1 == object["one"])
-        XCTAssertFalse("one" == object["one"])
-        XCTAssertTrue(true == object["bool"])
-        XCTAssertFalse(2.0 == object["bool"])
+        XCTAssertTrue(object["one"] == 1)
+        XCTAssertFalse(object["one"] == "one")
+        XCTAssertTrue(object["bool"] == true)
+        XCTAssertFalse(object["bool"] == 2.0)
         XCTAssertTrue(Payload(["key": "value"]) == object["dict"])
         XCTAssertFalse(Payload.array([.string("one"), .boolean(false)]) == object["dict"])
         XCTAssertNil(object["doesNotExist"])
 
         let array: Payload = .array([.string("one"), .number(2), .boolean(false)])
-        XCTAssertTrue("one" == array[0])
-        XCTAssertTrue(2 == array[1])
-        XCTAssertTrue(false == array[2])
+        XCTAssertTrue(array[0] == "one")
+        XCTAssertTrue(array[1] == 2)
+        XCTAssertTrue(array[2] == false)
         XCTAssertNil(array[3])
 
         let string: Payload = .string("text")

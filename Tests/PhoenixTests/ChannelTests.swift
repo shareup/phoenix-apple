@@ -59,7 +59,8 @@ class ChannelTests: XCTestCase {
 
         counter += 1
 
-        // We've made the explicit decision to realize the joinPush.payload when we construct the joinPush struct
+        // We've made the explicit decision to realize the joinPush.payload when we construct
+        // the joinPush struct
 
         XCTAssertEqual(channel.joinPush.payload as? [String: Int], ["number": 2])
     }
@@ -172,8 +173,10 @@ class ChannelTests: XCTestCase {
         waitForExpectations(timeout: 2)
 
         XCTAssertTrue(channel.isJoined)
-        // The joinPush is generated once and sent to the Socket which isn't open, so it's not written.
-        // Then a second time after the Socket publishes its open message and the Channel tries to reconnect.
+        // The joinPush is generated once and sent to the Socket which isn't open, so it's not
+        // written.
+        // Then a second time after the Socket publishes its open message and the Channel tries
+        // to reconnect.
         XCTAssertEqual(2, counter)
     }
 
@@ -257,7 +260,8 @@ class ChannelTests: XCTestCase {
             receiveValue:
             onResults([
                 .error: {
-                    // This isn't exactly the same as the JavaScript test. In the JavaScript test,
+                    // This isn't exactly the same as the JavaScript test. In the JavaScript
+                    // test,
                     // there is a delay after sending 'connect' before receiving the response.
                     didReceiveError = true
                     usleep(50000)
@@ -1245,7 +1249,7 @@ class ChannelTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1034
     func testClosesChannelAfterReceivingOkResponseFromServer() throws {
         throw XCTSkip()
-        
+
         let channel1 = makeChannel(topic: "room:lobby")
         let channel2 = makeChannel(topic: "room:lobby2")
 
@@ -1274,8 +1278,10 @@ class ChannelTests: XCTestCase {
         socket.connect()
 
         // The channel gets the leave response before the socket receives a close message from
-        // the socket. However, the socket only removes the channel after receiving the close message.
-        // So, we need to wait a while longer here to make sure the socket has received the close
+        // the socket. However, the socket only removes the channel after receiving the close
+        // message.
+        // So, we need to wait a while longer here to make sure the socket has received the
+        // close
         // message before testing to see if the channel has been removed from `joinedChannels`.
         expectationWithTest(
             description: "Channel should have been removed",
@@ -1447,7 +1453,7 @@ class ChannelTests: XCTestCase {
         let socketSub = socket.sink(receiveValue: onResult(.open, channel.join()))
         defer { socketSub.cancel() }
 
-        let expectFailure = self.expectFailure(Channel.Error.pushTimeout)
+        let expectFailure = expectFailure(Channel.Error.pushTimeout)
         let channelSub = channel.sink(
             receiveValue:
             expectAndThen([

@@ -13,7 +13,7 @@ if [[ "${1-}" =~ ^-*h(elp)?$ ]]; then
     exit
 fi
 
-DIR=`dirname "$0"`
+DIR=$(dirname "$0")
 pushd "$DIR/.." &>/dev/null
 
 if command -v swiftformat >/dev/null 2>&1; then

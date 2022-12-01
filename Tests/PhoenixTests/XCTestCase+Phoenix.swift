@@ -4,7 +4,7 @@ import XCTest
 
 extension XCTestCase {
     func expectFinished<E: Error>() -> (Subscribers.Completion<E>) -> Void {
-        let expectation = self.expectation(description: "Should have finished successfully")
+        let expectation = expectation(description: "Should have finished successfully")
         return { completion in
             guard case Subscribers.Completion.finished = completion else { return }
             expectation.fulfill()
@@ -14,7 +14,7 @@ extension XCTestCase {
     func expectFailure<E>(_ error: E) -> (Subscribers.Completion<E>) -> Void where E: Error,
         E: Equatable
     {
-        let expectation = self.expectation(description: "Should have failed")
+        let expectation = expectation(description: "Should have failed")
         return { completion in
             guard case Subscribers.Completion.failure(error) = completion else { return }
             expectation.fulfill()
@@ -91,10 +91,10 @@ extension XCTestCase {
     }
 
     func expectFailure(_ error: Channel.Error? = nil) -> Channel.Callback {
-        let expectation = self.expectation(description: "Should have received failure")
+        let expectation = expectation(description: "Should have received failure")
         return { (result: Result<Channel.Reply, Swift.Error>) in
             guard case .failure = result else { return }
-            if let error = error {
+            if let error {
                 guard case let .failure(channelError as Channel.Error) = result else { return }
                 switch (error, channelError) {
                 case (.invalidJoinReply, .invalidJoinReply): expectation.fulfill()
@@ -115,8 +115,8 @@ extension XCTestCase {
         .Callback
     {
         let replyDescription = isSuccess ? "successful" : "error"
-        let expectation = self
-            .expectation(description: "Should have received \(replyDescription) response")
+        let expectation =
+            expectation(description: "Should have received \(replyDescription) response")
         return { (result: Result<Channel.Reply, Swift.Error>) in
             if case let .success(reply) = result {
                 guard reply.isOk == isSuccess else { return }
@@ -144,7 +144,7 @@ extension XCTestCase {
         description: String,
         test: @escaping @autoclosure () -> Bool
     ) -> XCTestExpectation {
-        let expectation = self.expectation(description: description)
+        let expectation = expectation(description: description)
         evaluateTest(test, for: expectation)
         return expectation
     }

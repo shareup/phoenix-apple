@@ -43,7 +43,7 @@ actor PhoenixSocket {
     private(set) var shouldReconnect: Bool = true
     private(set) var reconnectAttempts: Int = 0
 
-    nonisolated var ref: Ref { get { _ref.access { $0 } } }
+    nonisolated var ref: Ref { _ref.access { $0 } }
     private let _ref = Locked(Ref(0))
 
     private(set) var channels: [Topic: PhoenixChannel] = [:]
@@ -216,7 +216,7 @@ extension PhoenixSocket {
         precondition(flushTask == nil)
 
         flushTask = Task { [weak self] in
-            guard let self = self, !Task.isCancelled,
+            guard let self, !Task.isCancelled,
                   let ws = await self.webSocket
             else { return }
 
@@ -251,7 +251,7 @@ extension PhoenixSocket {
 
     private func listen() {
         Task { [weak self] in
-            guard let self = self, !Task.isCancelled,
+            guard let self, !Task.isCancelled,
                   let ws = await self.webSocket
             else { return }
 
@@ -287,10 +287,10 @@ extension PhoenixSocket {
             String(describing: error)
         )
 
-        try? await close(error: error, timeout: self.timeout)
+        try? await close(error: error, timeout: timeout)
     }
 
-    private func close(error: Error?, timeout: UInt64) async throws {
+    private func close(error _: Error?, timeout: UInt64) async throws {
         print("$$$", #function, "before cancelFlush()")
         await cancelFlush()
         print("$$$", #function, "before cancelHeartbeat()")
@@ -342,7 +342,7 @@ extension PhoenixSocket {
         else { return cancelHeartbeat() }
 
         let task = Task { [weak self] () -> Bool in
-            guard !Task.isCancelled, let self = self
+            guard !Task.isCancelled, let self
             else { throw CancellationError() }
 
             let message: Message = try await self.push(
@@ -445,7 +445,7 @@ private extension PhoenixSocket {
             {}, // onOpen
             { _ in
                 Task { [weak self] in
-                    guard let self = self else { return }
+                    guard let self else { return }
                     try? await self.close(error: nil, timeout: self.timeout)
                     try await self.reconnect(attempts: self.reconnectAttempts)
                 }

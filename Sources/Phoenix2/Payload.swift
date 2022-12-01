@@ -103,73 +103,73 @@ extension Payload: Equatable {
     }
 }
 
-public extension Optional where Wrapped == Payload {
+public extension Payload? {
     static func == (_ arg1: Payload, _ arg2: Payload?) -> Bool {
-        guard let arg2 = arg2 else { return false }
+        guard let arg2 else { return false }
         return arg1 == arg2
     }
 
     static func == (_ arg1: Payload?, _ arg2: Payload) -> Bool {
-        guard let arg1 = arg1 else { return false }
+        guard let arg1 else { return false }
         return arg1 == arg2
     }
 
     static func == (_ arg1: String, _ arg2: Payload?) -> Bool {
-        guard let arg2 = arg2, case let .string(unwrapped) = arg2
+        guard let arg2, case let .string(unwrapped) = arg2
         else { return false }
         return arg1 == unwrapped
     }
 
     static func == (_ arg1: Payload?, _ arg2: String) -> Bool {
-        guard let arg1 = arg1, case let .string(unwrapped) = arg1
+        guard let arg1, case let .string(unwrapped) = arg1
         else { return false }
         return arg2 == unwrapped
     }
 
     static func == (_ arg1: Int, _ arg2: Payload?) -> Bool {
-        guard let arg2 = arg2, case let .number(unwrapped) = arg2
+        guard let arg2, case let .number(unwrapped) = arg2
         else { return false }
         return arg1 == Int(unwrapped)
     }
 
     static func == (_ arg1: Payload?, _ arg2: Int) -> Bool {
-        guard let arg1 = arg1, case let .number(unwrapped) = arg1
+        guard let arg1, case let .number(unwrapped) = arg1
         else { return false }
         return arg2 == Int(unwrapped)
     }
 
     static func == (_ arg1: Double, _ arg2: Payload?) -> Bool {
-        guard let arg2 = arg2, case let .number(unwrapped) = arg2
+        guard let arg2, case let .number(unwrapped) = arg2
         else { return false }
         return arg1 == unwrapped
     }
 
     static func == (_ arg1: Payload?, _ arg2: Double) -> Bool {
-        guard let arg1 = arg1, case let .number(unwrapped) = arg1
+        guard let arg1, case let .number(unwrapped) = arg1
         else { return false }
         return arg2 == unwrapped
     }
 
     static func == (_ arg1: Bool, _ arg2: Payload?) -> Bool {
-        guard let arg2 = arg2, case let .boolean(unwrapped) = arg2
+        guard let arg2, case let .boolean(unwrapped) = arg2
         else { return false }
         return arg1 == unwrapped
     }
 
     static func == (_ arg1: Payload?, _ arg2: Bool) -> Bool {
-        guard let arg1 = arg1, case let .boolean(unwrapped) = arg1
+        guard let arg1, case let .boolean(unwrapped) = arg1
         else { return false }
         return arg2 == unwrapped
     }
 }
 
-extension Array where Element == Any? {
+extension [Any?] {
     var payload: Payload {
         .array(compactMap(\.payload))
     }
 }
 
-public extension Dictionary where Key == String, Value == Any? {
+public extension [String: Any?] {
     var payload: Payload {
         var dictionary = [String: Payload]()
         for (key, value) in self {
@@ -180,7 +180,7 @@ public extension Dictionary where Key == String, Value == Any? {
     }
 }
 
-private extension Optional where Wrapped == Any {
+private extension Any? {
     var payload: Payload? {
         guard case let .some(element) = self else { return .null }
 

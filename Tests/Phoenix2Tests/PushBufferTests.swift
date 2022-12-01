@@ -75,6 +75,32 @@ final class PushBufferTests: XCTestCase {
         XCTAssertTrue(didSend.access { $0 })
     }
 
+    func testCancelNext() async throws {
+        let didCancel = Locked(false)
+
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let nextTask = Task {
+            do {
+                for try await _ in buffer {
+                    XCTFail("Should not have produced push")
+                }
+            } catch {
+                didCancel.access { $0 = true }
+            }
+        }
+
+        Task {
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+            nextTask.cancel()
+        }
+
+        await nextTask.value
+
+        XCTAssertTrue(didCancel.access { $0 })
+    }
+
     func testWaitForMultipleSends() async throws {
         let buffer = PushBuffer()
         buffer.resume()
@@ -101,7 +127,7 @@ final class PushBufferTests: XCTestCase {
             group.cancelAll()
         }
 
-        XCTAssertEqual(expectedCount, count.access({ $0 }))
+        XCTAssertEqual(expectedCount, count.access { $0 })
     }
 
     func testWaitForReply() async throws {
@@ -152,7 +178,6 @@ final class PushBufferTests: XCTestCase {
                     XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
                 }
             }
-
 
             try await group.next()
             group.cancelAll()
@@ -225,7 +250,7 @@ final class PushBufferTests: XCTestCase {
                     do {
                         _ = try await buffer.appendAndWait(push)
                         result.access { $0.processCount += 1 }
-                    } catch let error {
+                    } catch {
                         XCTAssertTrue(error is CancellationError)
                         result.access { $0.errorCount += 1 }
                     }
@@ -251,7 +276,7 @@ final class PushBufferTests: XCTestCase {
                 }
 
                 let third = try await iterator.next()!
-                XCTAssertTrue(didResume.access({ $0 }))
+                XCTAssertTrue(didResume.access { $0 })
 
                 buffer.didSend(third)
                 XCTAssertTrue(buffer.didReceive(self.makeReply(for: third)))
@@ -281,7 +306,7 @@ final class PushBufferTests: XCTestCase {
                     do {
                         _ = try await buffer.appendAndWait(push)
                         result.access { $0.processCount += 1 }
-                    } catch let error {
+                    } catch {
                         XCTAssertTrue(error is CancellationError)
                         result.access { $0.errorCount += 1 }
                     }
@@ -306,7 +331,7 @@ final class PushBufferTests: XCTestCase {
                 XCTAssertNoThrow(buffer.resume())
 
                 do {
-                    let _ = try await iterator.next()!
+                    _ = try await iterator.next()!
                     XCTFail("Should have thrown CancellationError")
                 } catch {
                     XCTAssertTrue(error is CancellationError)
@@ -365,7 +390,7 @@ final class PushBufferTests: XCTestCase {
 
                 // Assert that the buffer has been emptied even though the
                 // the messages haven't all been processed yet.
-                XCTAssertTrue(count == 5 && receivedMessages.access({ $0.count }) < 5)
+                XCTAssertTrue(count == 5 && receivedMessages.access { $0.count } < 5)
             }
 
             try await group.waitForAll()
@@ -408,7 +433,7 @@ private extension PushBufferTests {
         )
     }
 
-    func makePushStream(maxCount: Int = 1_000) -> AsyncStream<Push> {
+    func makePushStream(maxCount: Int = 1000) -> AsyncStream<Push> {
         AsyncStream<Push> { cont in
             for index in 0 ..< maxCount {
                 cont.yield(self.makePush(index))

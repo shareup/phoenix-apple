@@ -42,9 +42,9 @@ public final class Channel: Publisher {
     private var customTimeout: DispatchTimeInterval?
 
     public var timeout: DispatchTimeInterval {
-        if let customTimeout = customTimeout {
+        if let customTimeout {
             return customTimeout
-        } else if let socket = socket {
+        } else if let socket {
             return socket.timeout
         } else {
             return Socket.defaultTimeout
@@ -200,7 +200,7 @@ extension Channel {
     }
 
     private func rejoin() {
-        guard let socket = socket else {
+        guard let socket else {
             os_log("channel.rejoin with nil socket", log: .phoenix, type: .debug)
             return
         }
@@ -255,7 +255,7 @@ extension Channel {
 
 extension Channel {
     public func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
-        guard let socket = socket else { return }
+        guard let socket else { return }
 
         sync {
             self.shouldRejoin = false
@@ -291,7 +291,7 @@ extension Channel {
     }
 
     private func sendLeaveAndCompletionToSubjectAsync() {
-        let subject = self.subject
+        let subject = subject
         notifySubjectQueue.async {
             subject.send(.leave)
             subject.send(completion: .finished)
@@ -347,7 +347,7 @@ extension Channel {
         _ message: OutgoingMessage,
         completionHandler: @escaping Socket.Callback
     ) {
-        guard let socket = socket else {
+        guard let socket else {
             os_log("channel.send with nil socket: topic=%s", log: .phoenix, type: .debug, topic)
             errored(Channel.Error.lostSocket)
             completionHandler(Channel.Error.lostSocket)
@@ -355,7 +355,7 @@ extension Channel {
         }
 
         socket.send(message) { error in
-            if let error = error {
+            if let error {
                 switch error {
                 case WebSocketError.notOpen, Socket.Error.notOpen:
                     // Expected error
@@ -510,7 +510,7 @@ extension Channel {
 
 private extension DispatchTime {
     static func < (lhs: DispatchTime, rhs: DispatchTime?) -> Bool {
-        guard let rhs = rhs else { return true }
+        guard let rhs else { return true }
         return lhs < rhs
     }
 }
@@ -584,7 +584,7 @@ extension Channel {
 
 extension Channel {
     private func handleSocketOpen() {
-        guard let socket = socket else { return assertionFailure("No socket") }
+        guard let socket else { return assertionFailure("No socket") }
 
         sync {
             switch state {
@@ -615,7 +615,8 @@ extension Channel {
                 if let error = error as? Channel.Error,
                    case .socketIsClosed = error
                 {
-                    // No need to error again if this is the reason we are already errored – although this shouldn't happen
+                    // No need to error again if this is the reason we are already errored –
+                    // although this shouldn't happen
                     return
                 }
                 errored(Error.socketIsClosed)

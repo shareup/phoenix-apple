@@ -27,9 +27,9 @@ let package = Package(
 //            from: "0.0.1"
 //        ),
         .package(
-                   url: "https://github.com/shareup/json-apple.git",
-                   from: "1.1.0"
-               ),
+            url: "https://github.com/shareup/json-apple.git",
+            from: "1.1.0"
+        ),
         .package(
             url: "https://github.com/apple/swift-collections.git",
             from: "1.0.3"
@@ -54,7 +54,7 @@ let package = Package(
             dependencies: [
                 .product(name: "DispatchTimer", package: "dispatch-timer"),
                 .product(name: "Synchronized", package: "synchronized"),
-                "WebSocket"
+                "WebSocket",
             ]
         ),
         .target(
