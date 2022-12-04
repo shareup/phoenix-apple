@@ -289,6 +289,64 @@ final class PushBufferTests: XCTestCase {
         XCTAssertEqual(1, result.access { $0.processCount })
     }
 
+    func testPauseWithCustomError() async throws {
+        struct TestResult: Equatable {
+            var errorCount = 0
+            var processCount = 0
+        }
+
+        struct TestError: Error {}
+
+        let result = Locked(TestResult())
+        let pushes = makePushes(3)
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            pushes.forEach { push in
+                group.addTask {
+                    do {
+                        _ = try await buffer.appendAndWait(push)
+                        result.access { $0.processCount += 1 }
+                    } catch {
+                        XCTAssertTrue(error is TestError)
+                        result.access { $0.errorCount += 1 }
+                    }
+                }
+            }
+
+            group.addTask {
+                var iterator = buffer.makeAsyncIterator()
+
+                let first = try await iterator.next()!
+                buffer.didSend(first)
+
+                let second = try await iterator.next()!
+                buffer.didSend(second)
+
+                buffer.pause(error: TestError())
+
+                let didResume = Locked(false)
+                Task {
+                    try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
+                    didResume.access { $0 = true }
+                    buffer.resume()
+                }
+
+                let third = try await iterator.next()!
+                XCTAssertTrue(didResume.access { $0 })
+
+                buffer.didSend(third)
+                XCTAssertTrue(buffer.didReceive(self.makeReply(for: third)))
+            }
+
+            try await group.waitForAll()
+        }
+
+        XCTAssertEqual(2, result.access { $0.errorCount })
+        XCTAssertEqual(1, result.access { $0.processCount })
+    }
+
     func testCancelAndInvalidate() async throws {
         struct TestResult: Equatable {
             var errorCount = 0
@@ -337,11 +395,65 @@ final class PushBufferTests: XCTestCase {
                     XCTAssertTrue(error is CancellationError)
                 }
 
-                let didResume = Locked(false)
-                Task {
-                    try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
-                    didResume.access { $0 = true }
-                    buffer.resume()
+                XCTAssertNoThrow(buffer.didSend(pushes[3]))
+                XCTAssertFalse(buffer.didReceive(self.makeReply(for: pushes[3])))
+            }
+
+            try await group.waitForAll()
+        }
+
+        XCTAssertEqual(3, result.access { $0.errorCount })
+        XCTAssertEqual(1, result.access { $0.processCount })
+    }
+
+    func testCancelAndInvalidateWithCustomError() async throws {
+        struct TestResult: Equatable {
+            var errorCount = 0
+            var processCount = 0
+        }
+
+        struct TestError: Error {}
+
+        let result = Locked(TestResult())
+        let pushes = makePushes(4)
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            pushes.forEach { push in
+                group.addTask {
+                    do {
+                        _ = try await buffer.appendAndWait(push)
+                        result.access { $0.processCount += 1 }
+                    } catch {
+                        XCTAssertTrue(error is TestError)
+                        result.access { $0.errorCount += 1 }
+                    }
+                }
+            }
+
+            group.addTask {
+                var iterator = buffer.makeAsyncIterator()
+
+                let first = try await iterator.next()!
+                buffer.didSend(first)
+                XCTAssertTrue(buffer.didReceive(self.makeReply(for: first)))
+
+                let second = try await iterator.next()!
+                buffer.didSend(second)
+
+                let third = try await iterator.next()!
+                buffer.didSend(third)
+
+                buffer.cancelAllAndInvalidate(error: TestError())
+
+                XCTAssertNoThrow(buffer.resume())
+
+                do {
+                    _ = try await iterator.next()!
+                    XCTFail("Should have thrown TestError")
+                } catch {
+                    XCTAssertTrue(error is TestError)
                 }
 
                 XCTAssertNoThrow(buffer.didSend(pushes[3]))

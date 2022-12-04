@@ -21,11 +21,12 @@ Sendable {
         result.0.resume(returning: result.1)
     }
 
-    /// Cancels all in-flight pushes while keeping buffered pushes
-    /// untouched.
-    func pause() {
+    /// Cancels all in-flight pushes with the specified error or
+    /// `CancellationError`. Buffered pushes are untouched.
+    func pause(error: Error? = nil) {
         let inFlight = state.access { $0.pause() }
-        inFlight?.forEach { $0.value.resume(throwing: CancellationError()) }
+        let error = error ?? CancellationError()
+        inFlight?.forEach { $0.value.resume(throwing: error) }
     }
 
     /// Appends the push to the internal buffer and waits
@@ -36,8 +37,8 @@ Sendable {
                 try await withCheckedThrowingContinuation { (cont: SendContinuation) in
                     let result = self.state.access { $0.appendForSend(push, cont) }
                     switch result {
-                    case let .cancel(cont):
-                        cont.resume(throwing: CancellationError())
+                    case let .cancel(cont, error):
+                        cont.resume(throwing: error)
                     case let .resume(cont):
                         cont.resume(returning: push)
                     case .wait:
@@ -60,8 +61,8 @@ Sendable {
                 try await withCheckedThrowingContinuation { (cont: ReplyContinuation) in
                     let result = self.state.access { $0.appendForReply(push, cont) }
                     switch result {
-                    case let .cancel(cont):
-                        cont.resume(throwing: CancellationError())
+                    case let .cancel(cont, error):
+                        cont.resume(throwing: error)
                     case let .resume(cont):
                         cont.resume(returning: push)
                     case .wait:
@@ -95,13 +96,15 @@ Sendable {
     }
 
     /// Cancels all in-flight and buffered pushes and invalidates the
-    /// buffer. Any subsequent calls to `append()`, `appendAndWait()`,
-    /// or `next()` with return with a `CancellationError`. Calls
-    /// to `didSend()` or `didReceive()` will be no-ops.
-    func cancelAllAndInvalidate() {
-        let result = state.access { $0.finish() }
-        result.1?.forEach { $0.value.resume(throwing: CancellationError()) }
-        result.0?.resume(throwing: CancellationError())
+    /// buffer with the specified error or `CancellationError`. Any
+    /// subsequent calls to `append()`, `appendAndWait()`, or `next()`
+    /// with return with a `CancellationError`. Calls to `didSend()`
+    /// or `didReceive()` will be no-ops.
+    func cancelAllAndInvalidate(error: Error? = nil) {
+        let error = error ?? CancellationError()
+        let result = state.access { $0.finish(error: error) }
+        result.1?.forEach { $0.value.resume(throwing: error) }
+        result.0?.resume(throwing: error)
     }
 
     fileprivate func next() async throws -> Push {
@@ -174,7 +177,7 @@ private typealias SendContinuation = CheckedContinuation<Void, Error>
 private typealias Pushes = OrderedDictionary<Push, Continuation>
 
 private enum AppendResult {
-    case cancel(Continuation)
+    case cancel(Continuation, Error)
     case resume(AwaitingPushContinuation)
     case wait
 }
@@ -207,7 +210,10 @@ private extension PushBuffer {
         }
 
         mutating func next(_ continuation: AwaitingPushContinuation) throws -> Push? {
-            guard !queue.isTerminal else { throw CancellationError() }
+            if case let .terminal(error) = queue {
+                throw error
+            }
+
             if let next = queue.next() {
                 return next
             } else {
@@ -239,8 +245,8 @@ private extension PushBuffer {
             }
         }
 
-        mutating func finish() -> (AwaitingPushContinuation?, Pushes?) {
-            let pushes = queue.finish()
+        mutating func finish(error: Error) -> (AwaitingPushContinuation?, Pushes?) {
+            let pushes = queue.finish(error: error)
             let cont = awaitingPushContinuation
             awaitingPushContinuation = nil
             return (cont, pushes)
@@ -252,7 +258,7 @@ private extension PushBuffer {
         ) -> AppendResult {
             guard !cancelled.contains(push) else {
                 cancelled.remove(push)
-                return .cancel(.reply(continuation))
+                return .cancel(.reply(continuation), CancellationError())
             }
 
             if let awaitingPushContinuation,
@@ -261,8 +267,8 @@ private extension PushBuffer {
                 self.awaitingPushContinuation = nil
                 return .resume(awaitingPushContinuation)
             } else {
-                if let cont = queue.appendForReply(push, continuation) {
-                    return .cancel(cont)
+                if let contAndError = queue.appendForReply(push, continuation) {
+                    return .cancel(contAndError.0, contAndError.1)
                 } else {
                     return .wait
                 }
@@ -275,7 +281,7 @@ private extension PushBuffer {
         ) -> AppendResult {
             guard !cancelled.contains(push) else {
                 cancelled.remove(push)
-                return .cancel(.send(continuation))
+                return .cancel(.send(continuation), CancellationError())
             }
 
             if let awaitingPushContinuation,
@@ -284,8 +290,8 @@ private extension PushBuffer {
                 self.awaitingPushContinuation = nil
                 return .resume(awaitingPushContinuation)
             } else {
-                if let cont = queue.appendForSend(push, continuation) {
-                    return .cancel(cont)
+                if let contAndError = queue.appendForSend(push, continuation) {
+                    return .cancel(contAndError.0, contAndError.1)
                 } else {
                     return .wait
                 }
@@ -305,7 +311,7 @@ private extension PushBuffer {
 private enum Queue {
     case active(inFlight: Pushes, buffer: Pushes)
     case idle(buffer: Pushes)
-    case terminal
+    case terminal(Error)
 
     var isTerminal: Bool {
         guard case .terminal = self else { return false }
@@ -357,14 +363,14 @@ private enum Queue {
         }
     }
 
-    mutating func finish() -> Pushes? {
+    mutating func finish(error: Error) -> Pushes? {
         switch self {
         case let .active(inFlight, buffer):
-            self = .terminal
+            self = .terminal(error)
             return inFlight.merging(buffer) { _, _ in preconditionFailure() }
 
         case let .idle(buffer):
-            self = .terminal
+            self = .terminal(error)
             return buffer
 
         case .terminal:
@@ -440,7 +446,7 @@ private enum Queue {
     mutating func appendForReply(
         _ push: Push,
         _ continuation: ReplyContinuation
-    ) -> Continuation? {
+    ) -> (Continuation, Error)? {
         append(push, .init(continuation))
     }
 
@@ -450,14 +456,14 @@ private enum Queue {
     mutating func appendForSend(
         _ push: Push,
         _ continuation: SendContinuation
-    ) -> Continuation? {
+    ) -> (Continuation, Error)? {
         append(push, .init(continuation))
     }
 
     private mutating func append(
         _ push: Push,
         _ continuation: Continuation
-    ) -> Continuation? {
+    ) -> (Continuation, Error)? {
         switch self {
         case .active(let inFlight, var buffer):
             buffer[push] = continuation
@@ -469,8 +475,8 @@ private enum Queue {
             self = .idle(buffer: buffer)
             return nil
 
-        case .terminal:
-            return continuation
+        case let .terminal(error):
+            return (continuation, error)
         }
     }
 
