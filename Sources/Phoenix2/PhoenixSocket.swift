@@ -7,13 +7,14 @@ import WebSocket
 
 typealias MakeWebSocket =
     (
+        Int,
         URL,
         WebSocketOptions,
         @escaping WebSocketOnOpen,
         @escaping WebSocketOnClose
     ) async throws -> WebSocket
 
-actor PhoenixSocket {
+final actor PhoenixSocket {
     var webSocket: WebSocket? {
         switch connectionState {
         case let .connecting(ws), let .open(ws), let .closing(ws):
@@ -32,16 +33,16 @@ actor PhoenixSocket {
     nonisolated let pushEncoder: PushEncoder
     nonisolated let messageDecoder: MessageDecoder
 
+    nonisolated private let currentWebSocketID = Locked(0)
     private let makeWebSocket: MakeWebSocket
 
-    private(set) var connectionState: ConnectionState = .closed {
+    private(set) var connectionState: ConnectionState = .closed(connectionAttempts: 0) {
         didSet { onConnectionStateChange(connectionState) }
     }
 
     private let onConnectionStateChange: (ConnectionState) -> Void
 
     private(set) var shouldReconnect: Bool = true
-    private(set) var reconnectAttempts: Int = 0
 
     nonisolated var ref: Ref { _ref.access { $0 } }
     private let _ref = Locked(Ref(0))
@@ -51,6 +52,7 @@ actor PhoenixSocket {
     private nonisolated let pushes = PushBuffer()
 
     private var flushTask: Task<Void, Error>?
+    private var listenTask: Task<Void, Error>?
     private var heartbeatTask: Task<Void, Error>?
 
     init(
@@ -75,85 +77,31 @@ actor PhoenixSocket {
 
     deinit {
         shouldReconnect = false
-        cancelHeartbeat()
+
+        flushTask?.cancel()
+        flushTask = nil
+        listenTask?.cancel()
+        listenTask = nil
+        heartbeatTask?.cancel()
+        heartbeatTask = nil
+
         pushes.cancelAllAndInvalidate()
-        connectionState = .closed
+        connectionState = .closed(connectionAttempts: 0)
         channels.removeAll()
     }
 
     func connect() async throws {
         guard case .closed = connectionState else { return }
-        reconnectAttempts = 0
         shouldReconnect = true
-        try await reconnect(attempts: reconnectAttempts)
+        try await doConnect()
     }
 
-    /// Connects to the socket. If `attempt` is 0, this is the first
-    /// connection attempt. Otherwise, a previous connection failed
-    /// and this one will happen after a delay.
-    private func reconnect(attempts: Int) async throws {
-        print("$$$", #function, connectionState.description)
-        guard case .closed = connectionState, shouldReconnect else { return }
-
-        connectionState = .waitingToReconnect
-
-        print("$$$", #function, "before timeout", connectionState.description)
-
-        if let timeout = Self.retryTimeout(attempts: attempts) {
-            try await Task.sleep(nanoseconds: NSEC_PER_SEC * UInt64(timeout))
-        }
-
-        print("$$$", #function, "after timeout", connectionState.description)
-
-        guard case .waitingToReconnect = connectionState, shouldReconnect else { return }
-        connectionState = .preparingToReconnect
-
-        os_log("reconnect", log: .phoenix, type: .debug)
-
-        let ws = try await doMakeWebSocket()
-        connectionState = .connecting(ws)
-
-        do {
-            try await ws.open(TimeInterval(timeout / NSEC_PER_SEC))
-
-            connectionState = .open(ws)
-            reconnectAttempts = 0
-            pushes.resume()
-            flush()
-            scheduleHeartbeat()
-
-        } catch {
-            connectionState = .closed
-            reconnectAttempts += 1
-            try await reconnect(attempts: reconnectAttempts)
-        }
-    }
-
-    func disconnect(timeout: TimeInterval? = nil) async throws {
-        os_log(
-            "disconnect: oldstate=%{public}@",
-            log: .phoenix,
-            type: .debug,
-            connectionState.description
-        )
-
-        shouldReconnect = false
-        try await close(
-            error: nil,
+    func disconnect(timeout: TimeInterval? = nil) async {
+        guard let ws = webSocket else { return }
+        await doCloseFromClient(
+            id: ws.id,
             timeout: timeout?.nanoseconds ?? self.timeout
         )
-    }
-
-    func disconnectImmediately() async throws {
-        os_log(
-            "disconnect: oldstate=%{public}@",
-            log: .phoenix,
-            type: .debug,
-            connectionState.description
-        )
-
-        shouldReconnect = false
-        try await close(error: nil, timeout: 1)
     }
 }
 
@@ -213,12 +161,10 @@ extension PhoenixSocket {
     }
 
     private func flush() {
-        precondition(flushTask == nil)
+        assert(flushTask == nil)
 
         flushTask = Task { [weak self] in
-            guard let self, !Task.isCancelled,
-                  let ws = await self.webSocket
-            else { return }
+            guard let self, !Task.isCancelled else { return }
 
             let encoder = self.pushEncoder
 
@@ -230,27 +176,36 @@ extension PhoenixSocket {
                     push.description
                 )
 
+                guard let ws = await self.webSocket,
+                      !Task.isCancelled
+                else { return }
+
                 do {
                     try await ws.send(encoder(push))
+
+                    if Task.isCancelled { return }
+
                     self.pushes.didSend(push)
                 } catch {
-                    await handleSocketError(error)
+                    if Task.isCancelled { return }
+                    await doCloseFromServer(id: ws.id, error: error)
                     return // Break out of `Task`
                 }
 
-                if Task.isCancelled { break }
+                if Task.isCancelled { return }
             }
         }
     }
 
-    private func cancelFlush() async {
+    private func cancelFlush() {
         flushTask?.cancel()
-        try? await flushTask?.value
         flushTask = nil
     }
 
     private func listen() {
-        Task { [weak self] in
+        assert(listenTask == nil)
+
+        listenTask = Task { [weak self] in
             guard let self, !Task.isCancelled,
                   let ws = await self.webSocket
             else { return }
@@ -263,7 +218,7 @@ extension PhoenixSocket {
                     guard !self.pushes.didReceive(message)
                     else { continue }
 
-                    // Forward non-reply to correct channel
+                    // TODO: Forward non-reply to correct channel
 
                 } catch {
                     os_log(
@@ -279,45 +234,9 @@ extension PhoenixSocket {
         }
     }
 
-    private func handleSocketError(_ error: Error) async {
-        os_log(
-            "socket.error: %@",
-            log: .phoenix,
-            type: .error,
-            String(describing: error)
-        )
-
-        try? await close(error: error, timeout: timeout)
-    }
-
-    private func close(error _: Error?, timeout: UInt64) async throws {
-        print("$$$", #function, "before cancelFlush()")
-        await cancelFlush()
-        print("$$$", #function, "before cancelHeartbeat()")
-        cancelHeartbeat()
-        print("$$$", #function, "before pushes.stop()")
-        pushes.pause()
-
-        let timeout = TimeInterval(nanoseconds: timeout)
-
-        switch connectionState {
-        case .waitingToReconnect, .preparingToReconnect, .closed, .closing:
-            print("$$$", #function, connectionState.description)
-            return
-
-        case let .connecting(ws):
-            print("$$$", #function, connectionState.description)
-            connectionState = .closing(ws)
-            try await ws.close(.normalClosure, timeout)
-            connectionState = .closed
-
-        case let .open(ws):
-            print("$$$", #function, connectionState.description)
-            connectionState = .closing(ws)
-            // try await flushPendingMessagesAndWait()
-            try await ws.close(.normalClosure, timeout)
-            connectionState = .closed
-        }
+    private func cancelListen() {
+        listenTask?.cancel()
+        listenTask = nil
     }
 }
 
@@ -343,7 +262,7 @@ extension PhoenixSocket {
 
         let task = Task { [weak self] () -> Bool in
             guard !Task.isCancelled, let self
-            else { throw CancellationError() }
+            else { throw PhoenixError.heartbeatTimeout }
 
             let message: Message = try await self.push(
                 Push(
@@ -354,42 +273,43 @@ extension PhoenixSocket {
                 )
             )
 
+            guard !Task.isCancelled
+            else { throw PhoenixError.heartbeatTimeout }
+
             return message.payload["status"] == "ok"
         }
 
         let timer = DispatchTimer(
             fireAt: .now() + .nanoseconds(Int(timeout))
         ) { task.cancel() }
-        defer { timer.invalidate() }
 
         switch await task.result {
         case let .success(didAck) where didAck:
+            timer.invalidate()
             heartbeatTask = nil
             scheduleHeartbeat()
 
         case .success:
-            // I think `defer` will wait until handleSocketError()
-            // returns, which might be much later.
             timer.invalidate()
-            await handleSocketError(PhoenixError.heartbeatTimeout)
-            try await reconnect(attempts: reconnectAttempts)
+            guard let ws = self.webSocket else { return }
+            await doCloseFromServer(
+                id: ws.id,
+                error: PhoenixError.heartbeatTimeout
+            )
+            try await doConnect()
 
         case let .failure(error):
-            // I think `defer` will wait until handleSocketError()
-            // returns, which might be much later.
             timer.invalidate()
-            print("$$$", #function, "before handleSocketError")
-            await handleSocketError(error)
-            print("$$$", #function, "after handleSocketError")
-            try await reconnect(attempts: reconnectAttempts)
-            print("$$$", #function, "after reconnect()")
+            guard let ws = self.webSocket else { return }
+            await doCloseFromServer(id: ws.id, error: error)
+            try await doConnect()
         }
     }
 }
 
 extension PhoenixSocket {
     enum ConnectionState: CustomStringConvertible {
-        case closed
+        case closed(connectionAttempts: Int)
         case waitingToReconnect
         case preparingToReconnect
         case connecting(WebSocket)
@@ -432,31 +352,154 @@ extension PhoenixSocket {
             }
         }
     }
+
+    /// Connects to the socket. If `attempt` is 0, this is the first
+    /// connection attempt. Otherwise, a previous connection failed
+    /// and this one will happen after a delay.
+    func doConnect() async throws {
+        guard case let .closed(attempts) = connectionState,
+              shouldReconnect
+        else { return }
+
+        connectionState = .waitingToReconnect
+
+        if let timeout = Self.retryDelay(attempts: attempts) {
+            try await Task.sleep(nanoseconds: NSEC_PER_SEC * UInt64(timeout))
+        }
+
+        guard case .waitingToReconnect = connectionState, shouldReconnect
+        else { return }
+
+        connectionState = .preparingToReconnect
+
+        os_log("reconnect", log: .phoenix, type: .debug)
+
+        let ws = try await doMakeWebSocket()
+        connectionState = .connecting(ws)
+
+        do {
+            try await ws.open(TimeInterval(timeout / NSEC_PER_SEC))
+
+            connectionState = .open(ws)
+            pushes.resume()
+            flush()
+            scheduleHeartbeat()
+
+        } catch {
+            connectionState = .closed(connectionAttempts: attempts + 1)
+            try await doConnect()
+        }
+    }
+
+    /// Closes the WebSocket and disables all reconnect logic in
+    /// response to the client calling `PhoenixSocket.disconnect()`.
+    private func doCloseFromClient(id: WebSocket.ID, timeout: UInt64) async {
+        guard let ws = webSocket, ws.id == id else { return }
+
+        let timeout = TimeInterval(nanoseconds: timeout)
+
+        shouldReconnect = false
+        pushes.pause()
+        cancelFlush()
+        cancelListen()
+        cancelHeartbeat()
+
+        os_log(
+            "disconnect: oldstate=%{public}@",
+            log: .phoenix,
+            type: .debug,
+            connectionState.description
+        )
+
+        connectionState = .closing(ws)
+        try? await ws.close(timeout: timeout)
+        connectionState = .closed(connectionAttempts: 0)
+    }
+
+    /// Closes the WebSocket and attempts to reconnect in response
+    /// to an error.
+    private func doCloseFromServer(
+        id: WebSocket.ID,
+        error: Error,
+        timeout: UInt64? = nil
+    ) async {
+        let timeout = TimeInterval(nanoseconds: timeout ?? self.timeout)
+
+        func cancelAllInputOutput() {
+            pushes.pause(error: error)
+            cancelFlush()
+            cancelListen()
+            cancelHeartbeat()
+        }
+
+        switch connectionState {
+        case let .connecting(ws) where ws.id == id,
+             let .open(ws) where ws.id == id:
+
+            os_log(
+                "close: %@",
+                log: .phoenix,
+                type: .error,
+                String(describing: error)
+            )
+
+            connectionState = .closing(ws)
+            cancelAllInputOutput()
+            try? await ws.close(closeCode(from: error), timeout)
+            connectionState = .closed(connectionAttempts: 0)
+            // TODO: Start reconnection timer
+
+        default:
+            break
+        }
+    }
 }
 
 private extension PhoenixSocket {
     func doMakeWebSocket() async throws -> WebSocket {
-        // Do we need to have `onClose` or should we just
-        // rely on receiving errors when we try to send
-        // messages?
-        try await makeWebSocket(
-            url,
+        let id = currentWebSocketID.access { (id: inout Int) -> Int in
+            id += 1
+            return id
+        }
+
+        return try await makeWebSocket(
+            id, // id
+            url, // url
             .init(), // options
             {}, // onOpen
-            { _ in
+            { [id] close in
                 Task { [weak self] in
                     guard let self else { return }
-                    try? await self.close(error: nil, timeout: self.timeout)
-                    try await self.reconnect(attempts: self.reconnectAttempts)
+                    await self.doCloseFromServer(
+                        id: id,
+                        error: WebSocketError.closeCodeAndReason(close.code, close.reason)
+                    )
                 }
             } // onClose
         )
     }
 
-    static func retryTimeout(attempts: Int) -> TimeInterval? {
+    // Serves the same purpose as `reconnectTimer` in PhoenixJS
+    static func retryDelay(attempts: Int) -> TimeInterval? {
         guard attempts > 0 else { return nil }
         guard attempts < 9 else { return 5 }
         return [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 1, 2][attempts]
+    }
+}
+
+private func closeCode(from error: Error?) -> WebSocketCloseCode {
+    guard let error, let wsError = error as? WebSocketError
+    else { return .normalClosure }
+
+    switch wsError {
+    case let .closeCodeAndReason(closeCode, _):
+        return closeCode
+
+    case .invalidURL:
+        return .unknown
+
+    case .sendMessageWhileConnecting:
+        return .normalClosure
     }
 }
 
