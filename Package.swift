@@ -16,7 +16,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/shareup/async-extensions.git",
-            from: "1.6.1"
+            from: "2.1.0"
         ),
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",
@@ -75,6 +75,7 @@ let package = Package(
         .testTarget(
             name: "Phoenix2Tests",
             dependencies: [
+                .product(name: "AsyncExtensions", package: "async-extensions"),
                 .product(name: "AsyncTestExtensions", package: "async-extensions"),
                 "Phoenix2",
             ],

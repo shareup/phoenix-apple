@@ -1,4 +1,5 @@
 import AsyncTestExtensions
+import AsyncExtensions
 import Combine
 @testable import Phoenix2
 import Synchronized
@@ -58,7 +59,7 @@ final class PhoenixSocketTests: XCTestCase {
         }
 
         let socket = PhoenixSocket(url: url, makeWebSocket: makeWS)
-        try await socket.connect()
+        await socket.connect()
 
         XCTAssertTrue(createdWebSocket)
     }
@@ -68,7 +69,7 @@ final class PhoenixSocketTests: XCTestCase {
         let onOpen: () -> Void = { opens += 1 }
 
         try await withWebSocket(fake(), onOpen: onOpen) { socket in
-            try await socket.connect()
+            await socket.connect()
         }
 
         XCTAssertEqual(1, opens)
@@ -77,11 +78,11 @@ final class PhoenixSocketTests: XCTestCase {
     func testCallingConnectWhileConnectedIsNoop() async throws {
         let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket)
 
-        try await socket.connect()
+        await socket.connect()
         let id1 = await socket.webSocket?.id
         XCTAssertNotNil(id1)
 
-        try await socket.connect()
+        await socket.connect()
         let id2 = await socket.webSocket?.id
         XCTAssertEqual(id1, id2)
     }
@@ -91,7 +92,7 @@ final class PhoenixSocketTests: XCTestCase {
     func testDisconnectDestroysWebSocket() async throws {
         let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket)
 
-        try await socket.connect()
+        await socket.connect()
         await AssertNotNil(await socket.webSocket?.id)
 
         await socket.disconnect()
@@ -112,7 +113,7 @@ final class PhoenixSocketTests: XCTestCase {
             fake(onOpen: {}, onClose: onClose),
             onClose: onPhoenixClose
         ) { socket in
-            try await socket.connect()
+            await socket.connect()
             await socket.disconnect()
         }
 
@@ -144,29 +145,22 @@ final class PhoenixSocketTests: XCTestCase {
         }
     }
 
-    // TODO: This test periodically breaks (n = 10_000) and
-    // it seems to be because the heartbeat is triggering a reconnect
-    // which means the heartbeat isn't working properly, I think. I think
-    // the heartbeat is starting too quickly after the connection opens
-    // and the timeout might also be too short for slow computers or CI.
-    // After fixing the heartbeat, doublecheck this test passes reliably.
     func testConnectionStateIsConnectingWhenConnecting() async throws {
-        let didChangeToConnecting = Locked(false)
-        let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket) { state in
+        let didChangeToConnecting = future(timeout: 2)
+        let socket = PhoenixSocket(
+            url: url,
+            makeWebSocket: makeFakeWebSocket
+        ) { state in
             guard state.isConnecting else { return }
-            didChangeToConnecting.access { didChangeToConnecting in
-                guard !didChangeToConnecting
-                else { return XCTFail("Should have only changed to connecting once") }
-                didChangeToConnecting = true
-            }
+            didChangeToConnecting.resolve()
         }
-        try await socket.connect()
-        XCTAssertTrue(didChangeToConnecting.access { $0 })
+        await socket.connect()
+        try await didChangeToConnecting.value
     }
 
     func testConnectionStateIsOpenAfterConnecting() async throws {
         try await withWebSocket(fake()) { socket in
-            try await socket.connect()
+            await socket.connect()
             await AssertTrue(await socket.connectionState.isOpen)
         }
     }
@@ -179,14 +173,14 @@ final class PhoenixSocketTests: XCTestCase {
             else { return XCTFail("Should have only changed to closing once") }
             didChangeToClosing = true
         }
-        try await socket.connect()
+        await socket.connect()
         await socket.disconnect()
         XCTAssertTrue(didChangeToClosing)
     }
 
     func testConnectionStateIsClosedAfterDisconnecting() async throws {
         try await withWebSocket(fake()) { socket in
-            try await socket.connect()
+            await socket.connect()
             await AssertTrue(await socket.connectionState.isOpen)
 
             await socket.disconnect()
@@ -244,7 +238,7 @@ final class PhoenixSocketTests: XCTestCase {
 
         let ws: WebSocket = fake(onSend: { sent.append($0) })
         try await withWebSocket(ws) { socket in
-            try await socket.connect()
+            await socket.connect()
             try await socket.push(self.push1) as Void
             await AssertEqualEventually(self.encodedPush1, sent.first)
         }
@@ -273,7 +267,7 @@ final class PhoenixSocketTests: XCTestCase {
             }
             try await sleep.value
 
-            try await socket.connect()
+            await socket.connect()
             await AssertEqualEventually(true, didSend.access { $0 })
         }
     }
@@ -314,7 +308,7 @@ final class PhoenixSocketTests: XCTestCase {
         )
 
         try await withWebSocket(ws, timeout: 0.05, heartbeatInterval: 0.05) { socket in
-            try await socket.connect()
+            await socket.connect()
             await AssertTrueEventually((didClose.access { $0 }))
         }
     }
@@ -330,8 +324,8 @@ final class PhoenixSocketTests: XCTestCase {
 
                 case let .text(text):
                     let expected = """
-                    [null,1,"phoenix","heartbeat",{}]
-                    """
+                        [null,1,"phoenix","heartbeat",{}]
+                        """
                     XCTAssertEqual(expected, text)
                 }
                 didSendHeartbeat.access { $0 = true }
@@ -339,7 +333,7 @@ final class PhoenixSocketTests: XCTestCase {
         )
 
         try await withWebSocket(ws, heartbeatInterval: 0.1) { socket in
-            try await socket.connect()
+            await socket.connect()
             await AssertTrueEventually((didSendHeartbeat.access { $0 }))
         }
     }
@@ -349,6 +343,33 @@ final class PhoenixSocketTests: XCTestCase {
 
         try await withWebSocket(ws, heartbeatInterval: 0.05) { _ in
             try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 150)
+        }
+    }
+
+    // This test is not in Phoenix JavaScript
+    func testSendsHeartbeatAgainAfterReceivingReply() async throws {
+        let subject = PassthroughSubject<WebSocketMessage, Never>()
+        let heartbeat1 = future(timeout: 2)
+        let heartbeat2 = future(timeout: 2)
+
+        let ws: WebSocket = fake(
+            onSend: { message in
+                if message == self.heartbeat(ref: 1) {
+                    heartbeat1.resolve()
+                } else if message == self.heartbeat(ref: 2) {
+                    heartbeat2.resolve()
+                }
+            },
+            messagesPublisher: { subject.eraseToAnyPublisher() }
+        )
+
+        try await withWebSocket(ws, heartbeatInterval: 0.05) { socket in
+            await socket.connect()
+
+            try await heartbeat1.value
+            subject.send(self.heartbeatReply(ref: 1))
+
+            try await heartbeat2.value
         }
     }
 
@@ -365,7 +386,7 @@ final class PhoenixSocketTests: XCTestCase {
             Task {
                 // Wait until all of the pushes have been added
                 try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
-                try await socket.connect()
+                await socket.connect()
             }
 
             try await withThrowingTaskGroup(of: Void.self) { group in
@@ -394,7 +415,7 @@ final class PhoenixSocketTests: XCTestCase {
             Task {
                 // Wait until all of the pushes have been added
                 try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
-                try await socket.connect()
+                await socket.connect()
             }
 
             try await withThrowingTaskGroup(of: Void.self) { group in
@@ -425,7 +446,7 @@ final class PhoenixSocketTests: XCTestCase {
         )
 
         try await withWebSocket(ws) { socket in
-            try await socket.connect()
+            await socket.connect()
             // `reconnectAttempts` only lives on the `.closed`
             // connection state. So, if the socket is open, the
             // `reconnectAttempts` must be zero.
@@ -440,7 +461,7 @@ final class PhoenixSocketTests: XCTestCase {
             fake(),
             onOpen: { didCall.access { $0 = true } }
         ) { socket in
-            try await socket.connect()
+            await socket.connect()
             XCTAssertTrue(didCall.access { $0 })
         }
     }
@@ -459,7 +480,7 @@ final class PhoenixSocketTests: XCTestCase {
             onClose: { _ in closes.access { $0 += 1 }}
         )
         try await withWebSocket(ws) { socket in
-            try await socket.connect()
+            await socket.connect()
             XCTAssertEqual(1, opens.access { $0 })
             XCTAssertEqual(0, closes.access { $0 })
 
@@ -482,7 +503,7 @@ final class PhoenixSocketTests: XCTestCase {
             onClose: { _ in closes.access { $0 += 1 }}
         )
         try await withWebSocket(ws, timeout: 0.01, heartbeatInterval: 0.01) { socket in
-            try await socket.connect()
+            await socket.connect()
             XCTAssertEqual(1, opens.access { $0 })
             XCTAssertEqual(0, closes.access { $0 })
 
@@ -519,6 +540,24 @@ private extension PhoenixSocketTests {
             )
         }
     }
+
+    func heartbeat(ref: Int) -> WebSocketMessage {
+        .text("""
+            [null,\(ref),"phoenix","heartbeat",{}]
+            """)
+    }
+
+    func heartbeatReply(ref: Int) -> WebSocketMessage {
+        .text("""
+            [null,\(ref),"phoenix","phx_reply",{"response":{},"status":"ok"}]
+            """)
+    }
+}
+
+private func future(
+    timeout: TimeInterval
+) -> AsyncExtensions.Future<Void> {
+    .init(timeout: timeout)
 }
 
 private extension PhoenixSocketTests {
@@ -534,7 +573,8 @@ private extension PhoenixSocketTests {
         onClose: @escaping WebSocketOnClose = { _ in },
         onSend: @escaping (WebSocketMessage) -> Void = { _ in },
         open: (@Sendable (TimeInterval?) async throws -> Void)? = nil,
-        close: (@Sendable (WebSocketCloseCode, TimeInterval?) async throws -> Void)? = nil
+        close: (@Sendable (WebSocketCloseCode, TimeInterval?) async throws -> Void)? = nil,
+        messagesPublisher: (@Sendable () -> AnyPublisher<WebSocketMessage, Never>)? = nil
     ) -> WebSocket {
         let _open = open ?? { @Sendable (_: TimeInterval?) async throws in
             onOpen()
@@ -549,7 +589,8 @@ private extension PhoenixSocketTests {
             onClose: onClose,
             open: _open,
             close: _close,
-            send: { onSend($0) }
+            send: { onSend($0) },
+            messagesPublisher: messagesPublisher ?? { Empty<WebSocketMessage, Never>(completeImmediately: false).eraseToAnyPublisher() }
         )
     }
 
