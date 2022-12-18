@@ -1,3 +1,4 @@
+import AsyncExtensions
 import Combine
 import DispatchTimer
 import Foundation
@@ -5,6 +6,8 @@ import os.log
 import Synchronized
 import WebSocket
 import WebSocketProtocol
+
+private typealias ConnectFuture = AsyncExtensions.Future<Void>
 
 public final class Socket {
     public typealias Output = Socket.Message
@@ -22,6 +25,8 @@ public final class Socket {
     private var shouldReconnect = true
     private var webSocketSubscriber: AnyCancellable?
     private var channels = [Topic: WeakChannel]()
+
+    private var connectFuture: ConnectFuture?
 
     #if DEBUG
         private var state: State = .closed { didSet { onStateChange?(state) } }
@@ -226,6 +231,55 @@ extension Socket: ConnectablePublisher {
         }
     }
 
+    public func connect() async throws {
+        let next = sync { () -> () -> ConnectFuture? in
+            self.shouldReconnect = true
+
+            switch state {
+            case .closed:
+                precondition(connectFuture == nil)
+                let fut = ConnectFuture()
+                connectFuture = fut
+
+                let ws = WebSocket(url: url, timeoutIntervalForRequest: 2)
+                ws.maximumMessageSize = maximumMessageSize
+                self.state = .connecting(ws)
+
+                notifySubjectQueue.async { [subject] in
+                    subject.send(.connecting)
+                }
+
+                self.webSocketSubscriber = makeWebSocketSubscriber(with: ws)
+                cancelHeartbeatTimer()
+                createHeartbeatTimer()
+
+                return {
+                    ws.connect()
+                    return fut
+                }
+
+            case .connecting, .open:
+                let fut = connectFuture
+                return { fut }
+
+            case .closing:
+                let fut = connectFuture
+                return { fut }
+            }
+        }
+
+        guard let fut = next() else { return }
+
+        do {
+            try await fut.value
+        } catch let error where error is CancellationError {
+            // This is what the `Canceller` does in the original
+            // implementation of `connect()`.
+            disconnect()
+            throw error
+        }
+    }
+
     public func disconnect() {
         os_log(
             "socket.disconnect: oldstate=%{public}@",
@@ -245,6 +299,10 @@ extension Socket: ConnectablePublisher {
         sync {
             shouldReconnect = false
             cancelHeartbeatTimer()
+
+            let fut = connectFuture
+            connectFuture = nil
+            fut?.fail(CancellationError())
 
             switch state {
             case .closed, .closing:
@@ -642,13 +700,18 @@ extension Socket {
                             state.description
                         )
 
+                        connectFuture?.resolve()
+                        connectFuture = nil
                         return
                     case .open:
-                        // NOOP
+                        connectFuture?.resolve()
+                        connectFuture = nil
                         return
                     case let .connecting(ws):
                         self.state = .open(ws)
                         notifySubjectQueue.async { subject.send(.open) }
+                        connectFuture?.resolve()
+                        connectFuture = nil
                         flushAsync()
                     }
                 }
@@ -664,13 +727,18 @@ extension Socket {
         sync {
             switch state {
             case .closed:
-                return
+                connectFuture?.resolve()
+                connectFuture = nil
+
             case .open, .connecting, .closing:
                 self.state = .closed
                 self.webSocketSubscriber = nil
 
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.close) }
+
+                connectFuture?.resolve()
+                connectFuture = nil
 
                 reconnectIfPossible()
             }

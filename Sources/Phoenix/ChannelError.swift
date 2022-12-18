@@ -6,5 +6,7 @@ public extension Channel {
         case noLongerJoining
         case pushTimeout
         case joinTimeout
+        case unableToJoin
+        case leftChannel
     }
 }

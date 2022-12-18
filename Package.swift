@@ -14,6 +14,10 @@ let package = Package(
     ],
     dependencies: [
         .package(
+            url: "https://github.com/shareup/async-extensions.git",
+            from: "2.2.0"
+        ),
+        .package(
             url: "https://github.com/shareup/dispatch-timer.git",
             from: "3.0.0"
         ),
@@ -30,6 +34,7 @@ let package = Package(
         .target(
             name: "Phoenix",
             dependencies: [
+                .product(name: "AsyncExtensions", package: "async-extensions"),
                 .product(name: "DispatchTimer", package: "dispatch-timer"),
                 .product(name: "Synchronized", package: "synchronized"),
                 .product(name: "WebSocket", package: "websocket-apple"),

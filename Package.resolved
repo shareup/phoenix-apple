@@ -1,43 +1,50 @@
 {
-  "object": {
-    "pins": [
-      {
-        "package": "DispatchTimer",
-        "repositoryURL": "https://github.com/shareup/dispatch-timer.git",
-        "state": {
-          "branch": null,
-          "revision": "7c233b28f54d3797a6e66d54aa342f1cfc05d8db",
-          "version": "3.0.0"
-        }
-      },
-      {
-        "package": "Synchronized",
-        "repositoryURL": "https://github.com/shareup/synchronized.git",
-        "state": {
-          "branch": null,
-          "revision": "3a07451bbd0933933804c7d9a92ef2fa57b6766f",
-          "version": "4.0.0"
-        }
-      },
-      {
-        "package": "WebSocket",
-        "repositoryURL": "https://github.com/shareup/websocket-apple.git",
-        "state": {
-          "branch": null,
-          "revision": "7a6f5724811c88600f9869b13b83e604ebaa6049",
-          "version": "2.5.2"
-        }
-      },
-      {
-        "package": "WebSocketProtocol",
-        "repositoryURL": "https://github.com/shareup/websocket-protocol.git",
-        "state": {
-          "branch": null,
-          "revision": "9e672ab6bc44046be316428b838946390652e12f",
-          "version": "2.3.2"
-        }
+  "pins" : [
+    {
+      "identity" : "async-extensions",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/async-extensions.git",
+      "state" : {
+        "revision" : "32b664c49c30356f76d04f9df4893f0b477686b5",
+        "version" : "2.2.0"
       }
-    ]
-  },
-  "version": 1
+    },
+    {
+      "identity" : "dispatch-timer",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/dispatch-timer.git",
+      "state" : {
+        "revision" : "7c233b28f54d3797a6e66d54aa342f1cfc05d8db",
+        "version" : "3.0.0"
+      }
+    },
+    {
+      "identity" : "synchronized",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/synchronized.git",
+      "state" : {
+        "revision" : "3a07451bbd0933933804c7d9a92ef2fa57b6766f",
+        "version" : "4.0.0"
+      }
+    },
+    {
+      "identity" : "websocket-apple",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/websocket-apple.git",
+      "state" : {
+        "revision" : "7a6f5724811c88600f9869b13b83e604ebaa6049",
+        "version" : "2.5.2"
+      }
+    },
+    {
+      "identity" : "websocket-protocol",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/websocket-protocol.git",
+      "state" : {
+        "revision" : "9e672ab6bc44046be316428b838946390652e12f",
+        "version" : "2.3.2"
+      }
+    }
+  ],
+  "version" : 2
 }
