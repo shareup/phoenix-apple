@@ -7,6 +7,7 @@ import Synchronized
 import WebSocket
 
 private typealias JoinFuture = AsyncExtensions.Future<Payload>
+private typealias LeaveFuture = AsyncExtensions.Future<Void>
 
 public final class Channel: Publisher {
     public typealias Output = Channel.Event
@@ -24,6 +25,7 @@ public final class Channel: Publisher {
     private var subject = PassthroughSubject<Output, Failure>()
 
     private var joinFuture: JoinFuture?
+    private var leaveFuture: LeaveFuture?
 
     var pending: [Push] { sync { _pending } }
     private var _pending: [Push] = []
@@ -170,9 +172,13 @@ public final class Channel: Publisher {
             let subject = self.subject
             notifySubjectQueue.async { subject.send(.error(error)) }
 
-            let fut = joinFuture
+            let joinFut = joinFuture
             joinFuture = nil
-            fut?.fail(Channel.Error.socketIsClosed)
+            joinFut?.fail(error)
+
+            let leaveFut = leaveFuture
+            leaveFuture = nil
+            leaveFut?.resolve()
         }
     }
 
@@ -255,7 +261,7 @@ extension Channel {
         do {
             return try await fut.value
         } catch let error where error is CancellationError {
-            leave()
+            self.leave(timeout: customTimeout)
             throw error
         }
     }
@@ -320,6 +326,62 @@ extension Channel {
 // MARK: leave
 
 extension Channel {
+    public func leave() async throws {
+        guard let socket else { return }
+
+        let fut = sync { () -> LeaveFuture? in
+            self.shouldRejoin = false
+            self._joinTimer = .off
+
+            let fut = joinFuture
+            joinFuture = nil
+            fut?.fail(CancellationError())
+
+            os_log(
+                "channel.leave: topic=%s oldstate=%{public}@",
+                log: .phoenix,
+                type: .debug,
+                topic,
+                state.description
+            )
+
+            switch state {
+            case let .joining(joinRef), let .joined(joinRef):
+                let ref = socket.advanceRef()
+                let message = OutgoingMessage(leavePush, ref: ref, joinRef: joinRef)
+                self.state = .leaving(joinRef: joinRef, leavingRef: ref)
+
+                let fut: LeaveFuture
+                if let leaveFuture {
+                    fut = leaveFuture
+                } else {
+                    fut = LeaveFuture()
+                    leaveFuture = fut
+                }
+
+                let timeout = DispatchTime.now().advanced(by: customTimeout ?? self.timeout)
+
+                backgroundQueue.async {
+                    self.send(message)
+                    self.sync {
+                        let block: @Sendable () -> Void = { [weak self] in
+                            self?.timeoutLeavePush()
+                        }
+                        self.leaveTimer = DispatchTimer(fireAt: timeout, block: block)
+                    }
+                }
+
+                return fut
+            case .leaving, .errored, .closed:
+                return leaveFuture
+            }
+        }
+
+        guard let fut else { return }
+
+        try await fut.value
+    }
+
     public func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
         guard let socket else { return }
 
@@ -719,9 +781,13 @@ extension Channel {
                 state = .closed
                 self.sendLeaveAndCompletionToSubjectAsync()
 
-                let fut = joinFuture
+                let joinFut = joinFuture
                 joinFuture = nil
-                fut?.fail(Channel.Error.socketIsClosed)
+                joinFut?.fail(Channel.Error.socketIsClosed)
+
+                let leaveFut = leaveFuture
+                leaveFuture = nil
+                leaveFut?.resolve()
             }
 
         default:
@@ -751,6 +817,7 @@ extension Channel {
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.join(reply.message)) }
 
+                leaveFuture?.resolve()
                 joinFuture?.resolve(reply.message.payload)
 
                 self._joinTimer = .off
@@ -771,9 +838,13 @@ extension Channel {
                 self.state = .closed
                 self.sendLeaveAndCompletionToSubjectAsync()
 
-                let fut = joinFuture
+                let joinFut = joinFuture
                 joinFuture = nil
-                fut?.fail(Channel.Error.leftChannel)
+                joinFut?.fail(Channel.Error.leftChannel)
+
+                let leaveFut = leaveFuture
+                leaveFuture = nil
+                leaveFut?.resolve()
 
             case .closed:
                 break

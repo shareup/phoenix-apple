@@ -192,7 +192,7 @@ class ChannelTests: XCTestCase {
         try await socket.connect()
         let payload = try await channel.join()
 
-        channel.leave()
+        try await channel.leave()
 
         XCTAssertEqual("ok", payload["status"] as? String)
         XCTAssertEqual(
@@ -207,7 +207,7 @@ class ChannelTests: XCTestCase {
         try await socket.connect()
         try await channel.join()
 
-        channel.leave()
+        try await channel.leave()
 
         do {
             try await channel.join()
