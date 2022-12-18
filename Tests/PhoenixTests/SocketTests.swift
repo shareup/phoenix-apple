@@ -140,6 +140,66 @@ class SocketTests: XCTestCase {
         }
     }
 
+    func testSocketConnectWithAwait() async throws {
+        try await withSocket { socket in
+            do {
+                try await socket.connect()
+            } catch {
+                XCTFail("Should not have thrown \(error)")
+            }
+        }
+    }
+
+    func testSocketAwaitConnectAfterAlreadyConnecting() async throws {
+        try await withSocket { socket in
+            do {
+                try await socket.connect()
+                try await socket.connect()
+            } catch {
+                XCTFail("Should not have thrown \(error)")
+            }
+        }
+    }
+
+    func testSocketConnectWithMultipleAwaits() async throws {
+        try await withSocket { socket in
+            do {
+                try await withThrowingTaskGroup(of: Void.self) { group in
+                    group.addTask { try await socket.connect() }
+                    group.addTask { try await socket.connect() }
+                    group.addTask { try await socket.connect() }
+
+                    try await group.waitForAll()
+                }
+            } catch {
+                XCTFail("Should not have thrown \(error)")
+            }
+        }
+    }
+
+    func testSocketDisconnectAfterConnect() async throws {
+        try await withSocket { socket in
+            do {
+                try await socket.connect()
+                socket.disconnectAndWait()
+            } catch {
+                XCTFail("Should not have thrown \(error)")
+            }
+        }
+    }
+
+    func testSocketAwaitConnectAfterDisconnect() async throws {
+        try await withSocket { socket in
+            do {
+                try await socket.connect()
+                socket.disconnectAndWait()
+                try await socket.connect()
+            } catch {
+                XCTFail("Should not have thrown \(error)")
+            }
+        }
+    }
+
     // MARK: connection state
 
     // https://github.com/phoenixframework/phoenix/blob/14f177a7918d1bc04e867051c4fd011505b22c00/assets/test/socket_test.js#L309
@@ -961,6 +1021,27 @@ class SocketTests: XCTestCase {
 }
 
 private extension SocketTests {
+    func withSocket(
+        timeout: DispatchTimeInterval = Socket.defaultTimeout,
+        heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,
+        encoder: OutgoingMessageEncoder? = nil,
+        decoder: IncomingMessageDecoder? = nil,
+        block: (Socket) async throws -> Void
+    ) async throws {
+        let socket = Socket(
+            url: testHelper.defaultURL,
+            timeout: timeout,
+            heartbeatInterval: heartbeatInterval,
+            customEncoder: encoder,
+            customDecoder: decoder
+        )
+        // We don't want the socket to reconnect unless the test requires it to.
+        socket.reconnectTimeInterval = { _ in .seconds(30) }
+
+        try await block(socket)
+        socket.disconnectAndWait()
+    }
+
     func withSocket(
         timeout: DispatchTimeInterval = Socket.defaultTimeout,
         heartbeatInterval: DispatchTimeInterval = Socket.defaultHeartbeatInterval,

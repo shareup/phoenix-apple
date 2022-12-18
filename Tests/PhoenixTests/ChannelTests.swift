@@ -154,6 +154,71 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(channel.joinRef, newChannel.joinRef)
     }
 
+    func testAwaitJoin() async throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        let payload = try await channel.join()
+
+        XCTAssertEqual("ok", payload["status"] as? String)
+        XCTAssertEqual(
+            ["message": "You're absolutely wonderful!"],
+            payload["response"] as? [String: String]
+        )
+    }
+
+    func testMultipleAwaitJoinsReturnSamePayload() async throws {
+        func testPayload(_ payload: Payload) {
+            XCTAssertEqual("ok", payload["status"] as? String)
+            XCTAssertEqual(
+                ["message": "You're absolutely wonderful!"],
+                payload["response"] as? [String: String]
+            )
+        }
+
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        let payload1 = try await channel.join()
+        let payload2 = try await channel.join()
+
+        testPayload(payload1)
+        testPayload(payload2)
+    }
+
+    func testAwaitJoinAndThenLeave() async throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        let payload = try await channel.join()
+
+        channel.leave()
+
+        XCTAssertEqual("ok", payload["status"] as? String)
+        XCTAssertEqual(
+            ["message": "You're absolutely wonderful!"],
+            payload["response"] as? [String: String]
+        )
+    }
+
+    func testJoinLeaveAndThenAwaitJoin() async throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        try await channel.join()
+
+        channel.leave()
+
+        do {
+            try await channel.join()
+            XCTFail("Should have failed")
+        } catch {
+            guard let e = error as? Channel.Error,
+                  case .unableToJoin = e
+            else { return XCTFail("Should have failed with .unableToJoin") }
+        }
+    }
+
     // MARK: timeout behavior
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L184
@@ -1251,7 +1316,7 @@ class ChannelTests: XCTestCase {
     // https://github.com/phoenixframework/phoenix/blob/118999e0fd8e8192155b787b4b71e3eb3719e7e5/assets/test/channel_test.js#L1034
     func testClosesChannelAfterReceivingOkResponseFromServer() throws {
         throw XCTSkip()
-        
+
         let channel1 = makeChannel(topic: "room:lobby")
         let channel2 = makeChannel(topic: "room:lobby2")
 
