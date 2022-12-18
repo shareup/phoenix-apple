@@ -373,6 +373,10 @@ public extension Socket {
         channel.join()
     }
 
+    func join(_ channel: Channel) async throws -> Payload {
+        try await channel.join()
+    }
+
     func join(_ topic: Topic, payload: Payload = [:]) -> Channel {
         sync {
             let _channel = channel(topic, payload: payload)
@@ -403,6 +407,15 @@ public extension Socket {
 
     func leave(_ channel: Channel) {
         channel.leave()
+    }
+
+    func leave(_ topic: Topic) async throws {
+        let channel = self.channel(topic)
+        try await leave(channel)
+    }
+
+    func leave(_ channel: Channel) async throws {
+        try await channel.leave()
     }
 
     @discardableResult
