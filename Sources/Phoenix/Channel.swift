@@ -261,7 +261,7 @@ extension Channel {
         do {
             return try await fut.value
         } catch let error where error is CancellationError {
-            self.leave(timeout: customTimeout)
+            leave(timeout: customTimeout)
             throw error
         }
     }
@@ -325,8 +325,8 @@ extension Channel {
 
 // MARK: leave
 
-extension Channel {
-    public func leave() async throws {
+public extension Channel {
+    func leave() async throws {
         guard let socket else { return }
 
         let fut = sync { () -> LeaveFuture? in
@@ -382,7 +382,7 @@ extension Channel {
         try await fut.value
     }
 
-    public func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
+    func leave(timeout customTimeout: DispatchTimeInterval? = nil) {
         guard let socket else { return }
 
         sync {
