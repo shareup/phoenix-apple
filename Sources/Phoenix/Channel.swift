@@ -292,6 +292,10 @@ extension Channel {
             case .joining, .joined:
                 return
             case .closed, .errored, .leaving:
+                if joinFuture == nil {
+                    joinFuture = JoinFuture()
+                }
+
                 let ref = socket.advanceRef()
                 self.state = .joining(ref)
                 self.writeJoinPushAsync()
@@ -303,7 +307,13 @@ extension Channel {
         sync {
             switch self.state {
             case let .joining(joinRef):
-                let message = OutgoingMessage(joinPush, ref: joinRef, joinRef: joinRef)
+                precondition(joinFuture != nil)
+
+                let message = OutgoingMessage(
+                    joinPush,
+                    ref: joinRef,
+                    joinRef: joinRef
+                )
 
                 createJoinTimer()
 
@@ -536,7 +546,7 @@ extension Channel {
                     self.sync {
                         // put it back to try again later
                         self._inFlight[ref] = nil
-                        self._pending.append(push)
+                        self._pending.insert(push, at: 0)
                     }
                 } else {
                     self.flushAsync()
@@ -599,15 +609,17 @@ extension Channel {
     private func timeoutInFlightMessages() {
         sync {
             // invalidate a previous timer if it's there
+            self.inFlightMessagesTimer?.invalidate()
             self.inFlightMessagesTimer = nil
 
             guard !_inFlight.isEmpty else { return }
 
             let now = DispatchTime.now()
 
-            let messages = _inFlight.values.sortedByTimeoutDate().filter {
-                $0.timeoutDate < now
-            }
+            let messages = _inFlight
+                .values
+                .sortedByTimeoutDate()
+                .filter { $0.timeoutDate < now }
 
             for message in messages {
                 _inFlight[message.ref] = nil
@@ -626,18 +638,20 @@ extension Channel {
         sync {
             guard _inFlight.isNotEmpty else { return }
 
-            let possibleNext = _inFlight.values.sortedByTimeoutDate().first
+            let possibleNext = _inFlight
+                .values
+                .sortedByTimeoutDate()
+                .first
 
             guard let next = possibleNext else { return }
-            guard next.timeoutDate < inFlightMessagesTimer?.nextDeadline else { return }
+            guard next.timeoutDate < inFlightMessagesTimer?.nextDeadline
+            else { return }
 
-            self
-                .inFlightMessagesTimer = DispatchTimer(
-                    fireAt: next
-                        .timeoutDate
-                ) { [weak self] in
-                    self?.timeoutInFlightMessagesAsync()
-                }
+            self.inFlightMessagesTimer = DispatchTimer(
+                fireAt: next.timeoutDate
+            ) { [weak self] in
+                self?.timeoutInFlightMessagesAsync()
+            }
         }
     }
 }
@@ -700,6 +714,9 @@ extension Channel {
         let receiveValue = { [weak self] (input: SocketOutput) in
             switch input {
             case let .channelMessage(message):
+                guard message.joinRef == nil ||
+                        message.joinRef == self?.joinRef
+                else { return }
                 self?.handle(message)
             case .socketOpen:
                 self?.handleSocketOpen()
@@ -725,6 +742,9 @@ extension Channel {
             case .joining:
                 writeJoinPushAsync()
             case .errored where shouldRejoin:
+                if joinFuture == nil {
+                    joinFuture = JoinFuture()
+                }
                 let ref = socket.advanceRef()
                 self.state = .joining(ref)
                 writeJoinPushAsync()
@@ -797,25 +817,47 @@ extension Channel {
 
     private func handle(_ reply: Channel.Reply) {
         sync {
-            switch state {
-            case let .joining(joinRef):
-                guard reply.ref == joinRef,
-                      reply.joinRef == joinRef,
-                      reply.isOk
-                else {
-                    let fut = joinFuture
-                    joinFuture = nil
-                    fut?.fail(Channel.Error.invalidJoinReply(reply))
+            func putInFlightBackIntoQueue(_ pushed: PushedMessage) {
+                guard pushed.push.event.isCustom else { return }
 
+                self._inFlight[reply.ref] = nil
+                self._pending.append(pushed.push)
+            }
+
+            if case let .joined(joinRef) = state {
+                guard let pushed = _inFlight.removeValue(forKey: reply.ref)
+                else { return }
+
+                if reply.joinRef == joinRef {
+                    pushed.callback(reply: reply)
+                } else {
+                    putInFlightBackIntoQueue(pushed)
+                }
+
+                return
+            }
+
+            if case let .joining(joinRef) = state {
+                guard reply.ref == joinRef, reply.joinRef == joinRef
+                else {
+                    if let pushed = _inFlight.removeValue(forKey: reply.ref) {
+                        putInFlightBackIntoQueue(pushed)
+                    }
+                    return
+                }
+
+                guard reply.isOk else {
                     self.errored(Channel.Error.invalidJoinReply(reply))
                     self.createRejoinTimer()
-                    break
+                    return
                 }
 
                 self.state = .joined(joinRef)
 
                 let subject = self.subject
-                notifySubjectQueue.async { subject.send(.join(reply.message)) }
+                notifySubjectQueue.async {
+                    subject.send(.join(reply.message))
+                }
 
                 leaveFuture?.resolve()
                 joinFuture?.resolve(reply.message.payload)
@@ -823,17 +865,17 @@ extension Channel {
                 self._joinTimer = .off
 
                 flushAsync()
+            }
 
-            case let .joined(joinRef):
-                guard let pushed = _inFlight.removeValue(forKey: reply.ref),
+            if case let .leaving(joinRef, leavingRef) = state {
+                guard reply.ref == leavingRef,
                       reply.joinRef == joinRef
                 else {
+                    if let pushed = _inFlight.removeValue(forKey: reply.ref) {
+                        putInFlightBackIntoQueue(pushed)
+                    }
                     return
                 }
-                pushed.callback(reply: reply)
-
-            case let .leaving(joinRef, leavingRef):
-                guard reply.ref == leavingRef, reply.joinRef == joinRef else { break }
 
                 self.state = .closed
                 self.sendLeaveAndCompletionToSubjectAsync()
@@ -845,12 +887,6 @@ extension Channel {
                 let leaveFut = leaveFuture
                 leaveFuture = nil
                 leaveFut?.resolve()
-
-            case .closed:
-                break
-
-            default:
-                break
             }
         }
     }

@@ -52,4 +52,9 @@ public enum PhxEvent: Equatable, ExpressibleByStringLiteral {
     public static func == (lhs: PhxEvent, rhs: PhxEvent) -> Bool {
         lhs.stringValue == rhs.stringValue
     }
+
+    var isCustom: Bool {
+        guard case .custom = self else { return false }
+        return true
+    }
 }
