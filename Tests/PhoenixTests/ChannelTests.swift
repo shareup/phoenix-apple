@@ -211,11 +211,8 @@ class ChannelTests: XCTestCase {
 
         do {
             try await channel.join()
-            XCTFail("Should have failed")
         } catch {
-            guard let e = error as? Channel.Error,
-                  case .unableToJoin = e
-            else { return XCTFail("Should have failed with .unableToJoin") }
+            XCTFail("Join should have succeeded but received error: \(error)")
         }
     }
 
