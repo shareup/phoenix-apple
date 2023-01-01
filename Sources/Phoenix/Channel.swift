@@ -219,11 +219,6 @@ extension Channel {
         }
 
         let fut = sync { () -> JoinFuture? in
-            guard shouldRejoin else {
-                precondition(joinFuture == nil)
-                return nil
-            }
-
             self.customTimeout = customTimeout
 
             os_log(
