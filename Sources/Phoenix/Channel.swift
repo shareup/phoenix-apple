@@ -169,6 +169,12 @@ public final class Channel: Publisher {
             )
 
             self.state = .errored(error)
+
+            _inFlight.forEach { (_, pushed) in
+                pushed.callback(error: error)
+            }
+            _inFlight.removeAll()
+
             let subject = self.subject
             notifySubjectQueue.async { subject.send(.error(error)) }
 
@@ -789,6 +795,9 @@ extension Channel {
             } else {
                 assertionFailure("Got an unreadable reply")
             }
+
+        case .error:
+            errored(Channel.Error.unknown)
 
         case .close:
             sync {

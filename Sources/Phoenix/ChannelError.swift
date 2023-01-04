@@ -8,5 +8,6 @@ public extension Channel {
         case joinTimeout
         case unableToJoin
         case leftChannel
+        case unknown
     }
 }
