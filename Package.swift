@@ -78,8 +78,7 @@ let package = Package(
                 .product(name: "AsyncExtensions", package: "async-extensions"),
                 .product(name: "AsyncTestExtensions", package: "async-extensions"),
                 "Phoenix2",
-            ],
-            exclude: ["server"]
-        ),
+            ]
+        )
     ]
 )
