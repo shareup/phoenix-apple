@@ -154,6 +154,68 @@ class ChannelTests: XCTestCase {
         XCTAssertEqual(channel.joinRef, newChannel.joinRef)
     }
 
+    func testAwaitJoin() async throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        let payload = try await channel.join()
+
+        XCTAssertEqual("ok", payload["status"] as? String)
+        XCTAssertEqual(
+            ["message": "You're absolutely wonderful!"],
+            payload["response"] as? [String: String]
+        )
+    }
+
+    func testMultipleAwaitJoinsReturnSamePayload() async throws {
+        func testPayload(_ payload: Payload) {
+            XCTAssertEqual("ok", payload["status"] as? String)
+            XCTAssertEqual(
+                ["message": "You're absolutely wonderful!"],
+                payload["response"] as? [String: String]
+            )
+        }
+
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        let payload1 = try await channel.join()
+        let payload2 = try await channel.join()
+
+        testPayload(payload1)
+        testPayload(payload2)
+    }
+
+    func testAwaitJoinAndThenLeave() async throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        let payload = try await channel.join()
+
+        try await channel.leave()
+
+        XCTAssertEqual("ok", payload["status"] as? String)
+        XCTAssertEqual(
+            ["message": "You're absolutely wonderful!"],
+            payload["response"] as? [String: String]
+        )
+    }
+
+    func testJoinLeaveAndThenAwaitJoin() async throws {
+        let channel = makeChannel(topic: "room:lobby")
+
+        try await socket.connect()
+        try await channel.join()
+
+        try await channel.leave()
+
+        do {
+            try await channel.join()
+        } catch {
+            XCTFail("Join should have succeeded but received error: \(error)")
+        }
+    }
+
     // MARK: timeout behavior
 
     // https://github.com/phoenixframework/phoenix/blob/ce8ec7eac3f1966926fd9d121d5a7d73ee35f897/assets/test/channel_test.js#L184

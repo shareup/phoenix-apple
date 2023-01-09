@@ -1,3 +1,4 @@
+import AsyncExtensions
 import Combine
 import DispatchTimer
 import Foundation
@@ -5,6 +6,8 @@ import os.log
 import Synchronized
 import WebSocket
 import WebSocketProtocol
+
+private typealias ConnectFuture = AsyncExtensions.Future<Void>
 
 public final class Socket {
     public typealias Output = Socket.Message
@@ -21,7 +24,9 @@ public final class Socket {
     private let subject = PassthroughSubject<Output, Failure>()
     private var shouldReconnect = true
     private var webSocketSubscriber: AnyCancellable?
-    private var channels = [Topic: WeakChannel]()
+    private var channels = [Topic: Channel]()
+
+    private var connectFuture: ConnectFuture?
 
     #if DEBUG
         private var state: State = .closed { didSet { onStateChange?(state) } }
@@ -31,8 +36,7 @@ public final class Socket {
     #endif
 
     public var joinedChannels: [Channel] {
-        let channels = sync { self.channels }
-        return channels.compactMap(\.value.channel)
+        sync { Array(self.channels.values) }
     }
 
     private var pending: [Push] = []
@@ -226,6 +230,58 @@ extension Socket: ConnectablePublisher {
         }
     }
 
+    public func connect() async throws {
+        let next = sync { () -> () -> ConnectFuture? in
+            self.shouldReconnect = true
+
+            switch state {
+            case .closed:
+                connectFuture?.fail(CancellationError())
+                let fut = ConnectFuture()
+                connectFuture = fut
+
+                let ws = WebSocket(url: url, timeoutIntervalForRequest: 2)
+                ws.maximumMessageSize = maximumMessageSize
+                self.state = .connecting(ws)
+
+                notifySubjectQueue.async { [subject] in
+                    subject.send(.connecting)
+                }
+
+                self.webSocketSubscriber = makeWebSocketSubscriber(with: ws)
+                cancelHeartbeatTimer()
+                createHeartbeatTimer()
+
+                return {
+                    ws.connect()
+                    return fut
+                }
+
+            case .connecting:
+                let fut = connectFuture
+                return { fut }
+
+            case .open:
+                return { nil }
+
+            case .closing:
+                let fut = connectFuture
+                return { fut }
+            }
+        }
+
+        guard let fut = next() else { return }
+
+        do {
+            try await fut.value
+        } catch let error where error is CancellationError {
+            // This is what the `Canceller` does in the original
+            // implementation of `connect()`.
+            disconnect()
+            throw error
+        }
+    }
+
     public func disconnect() {
         os_log(
             "socket.disconnect: oldstate=%{public}@",
@@ -236,7 +292,7 @@ extension Socket: ConnectablePublisher {
 
         // Calling `Channel.leave()` inside `sync` can cause a deadlock.
         let channels: [Channel] = sync {
-            let channels = self.channels.compactMap(\.value.channel)
+            let channels = Array(self.channels.values)
             self.channels.removeAll()
             return channels
         }
@@ -245,6 +301,10 @@ extension Socket: ConnectablePublisher {
         sync {
             shouldReconnect = false
             cancelHeartbeatTimer()
+
+            let fut = connectFuture
+            connectFuture = nil
+            fut?.fail(CancellationError())
 
             switch state {
             case .closed, .closing:
@@ -292,7 +352,8 @@ extension Socket: ConnectablePublisher {
         return result
     }
 
-    private func reconnectIfPossible() {
+    @discardableResult
+    private func reconnectIfPossible() -> Bool {
         sync {
             if shouldReconnect {
                 _reconnectAttempts += 1
@@ -303,6 +364,9 @@ extension Socket: ConnectablePublisher {
                     guard self.lock.locked({ self.shouldReconnect }) else { return }
                     self.connect()
                 }
+                return true
+            } else {
+                return false
             }
         }
     }
@@ -315,6 +379,10 @@ public extension Socket {
         channel.join()
     }
 
+    func join(_ channel: Channel) async throws -> Payload {
+        try await channel.join()
+    }
+
     func join(_ topic: Topic, payload: Payload = [:]) -> Channel {
         sync {
             let _channel = channel(topic, payload: payload)
@@ -325,17 +393,19 @@ public extension Socket {
 
     func channel(_ topic: Topic, payload: Payload = [:]) -> Channel {
         sync {
-            if let weakChannel = channels[topic],
-               let _channel = weakChannel.channel
-            {
-                return _channel
+            if let channel = channels[topic] {
+                return channel
             }
 
-            let _channel = Channel(topic: topic, joinPayload: payload, socket: self)
+            let channel = Channel(
+                topic: topic,
+                joinPayload: payload,
+                socket: self
+            )
 
-            channels[topic] = WeakChannel(_channel)
+            channels[topic] = channel
 
-            return _channel
+            return channel
         }
     }
 
@@ -347,11 +417,18 @@ public extension Socket {
         channel.leave()
     }
 
+    func leave(_ topic: Topic) async throws {
+        let channel = self.channel(topic)
+        try await leave(channel)
+    }
+
+    func leave(_ channel: Channel) async throws {
+        try await channel.leave()
+    }
+
     @discardableResult
     private func removeChannel(for topic: Topic) -> Channel? {
-        let weakChannel = sync { channels.removeValue(forKey: topic) }
-        guard let channel = weakChannel?.channel else { return nil }
-        return channel
+        sync { channels.removeValue(forKey: topic) }
     }
 }
 
@@ -642,13 +719,18 @@ extension Socket {
                             state.description
                         )
 
+                        connectFuture?.resolve()
+                        connectFuture = nil
                         return
                     case .open:
-                        // NOOP
+                        connectFuture?.resolve()
+                        connectFuture = nil
                         return
                     case let .connecting(ws):
                         self.state = .open(ws)
                         notifySubjectQueue.async { subject.send(.open) }
+                        connectFuture?.resolve()
+                        connectFuture = nil
                         flushAsync()
                     }
                 }
@@ -664,7 +746,9 @@ extension Socket {
         sync {
             switch state {
             case .closed:
-                return
+                connectFuture?.resolve()
+                connectFuture = nil
+
             case .open, .connecting, .closing:
                 self.state = .closed
                 self.webSocketSubscriber = nil
@@ -672,7 +756,10 @@ extension Socket {
                 let subject = self.subject
                 notifySubjectQueue.async { subject.send(.close) }
 
-                reconnectIfPossible()
+                if !reconnectIfPossible() {
+                    connectFuture?.resolve()
+                    connectFuture = nil
+                }
             }
         }
     }
