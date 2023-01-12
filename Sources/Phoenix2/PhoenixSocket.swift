@@ -32,6 +32,11 @@ final actor PhoenixSocket {
     nonisolated let pushEncoder: PushEncoder
     nonisolated let messageDecoder: MessageDecoder
 
+    nonisolated var messages: AsyncStream<Message> {
+        messagesStream.access { $0!.stream }
+    }
+    private nonisolated let messagesStream = Locked<MessagesStream?>(nil)
+
     private nonisolated let currentWebSocketID = Locked(0)
     private let makeWebSocket: MakeWebSocket
 
@@ -72,6 +77,10 @@ final actor PhoenixSocket {
         self.messageDecoder = messageDecoder
         self.makeWebSocket = makeWebSocket
         self.onConnectionStateChange = onConnectionStateChange
+
+        var continuation: AsyncStream<Message>.Continuation!
+        let stream = AsyncStream<Message> { continuation = $0 }
+        self.messagesStream.access { $0 = .init(stream, continuation) }
     }
 
     deinit {
@@ -223,11 +232,16 @@ extension PhoenixSocket {
             for await msg in ws.messages {
                 do {
                     let message = try decoder(msg)
-                    guard !self.pushes.didReceive(message)
-                    else { continue }
 
-                    // TODO: Forward non-reply to correct channel
+                    if !self.pushes.didReceive(message) {
+                        channels.values.forEach { channel in
+                            if channel.isMember(message) {
+                                // TODO: Send to Channel
+                            }
+                        }
+                    }
 
+                    streamToMessages(message)
                 } catch {
                     os_log(
                         "message.error: %@",
@@ -245,6 +259,29 @@ extension PhoenixSocket {
     private func cancelListen() {
         listenTask?.cancel()
         listenTask = nil
+    }
+}
+
+private struct MessagesStream {
+    let stream: AsyncStream<Message>
+    let continuation: AsyncStream<Message>.Continuation
+
+    init(
+        _ stream: AsyncStream<Message>,
+        _ continuation: AsyncStream<Message>.Continuation
+    ) {
+        self.stream = stream
+        self.continuation = continuation
+    }
+
+    func yield(_ message: Message) {
+        continuation.yield(message)
+    }
+}
+
+private extension PhoenixSocket {
+    func streamToMessages(_ message: Message) {
+        messagesStream.access { $0?.yield(message) }
     }
 }
 

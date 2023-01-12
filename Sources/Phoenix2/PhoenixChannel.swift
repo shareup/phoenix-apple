@@ -29,6 +29,30 @@ final class PhoenixChannel {
         push.prepareToSend(ref: await socket.makeRef(), joinRef: joinRef)
         return true
     }
+
+    func isMember(_ message: Message) -> Bool {
+        guard topic == message.topic else { return false }
+        return state.access { state in
+            switch state {
+            case let .joined(joinRef, _):
+                if message.joinRef == joinRef {
+                    return true
+                } else {
+                    os_log(
+                        "channel outdated message: joinRef=%d message=%d",
+                        log: .phoenix,
+                        type: .debug,
+                        Int(joinRef.rawValue),
+                        Int(message.joinRef?.rawValue ?? 0)
+                    )
+                    return false
+                }
+
+            case .closed, .errored, .joining, .leaving:
+                return true
+            }
+        }
+    }
 }
 
 private enum State {
@@ -47,9 +71,4 @@ private enum State {
             return ref
         }
     }
-}
-
-private struct Join {
-    let ref: Ref
-    let reply: Payload?
 }
