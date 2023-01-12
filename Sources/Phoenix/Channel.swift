@@ -708,7 +708,7 @@ extension Channel {
             switch input {
             case let .channelMessage(message):
                 guard message.joinRef == nil ||
-                        message.joinRef == self?.joinRef
+                    message.joinRef == self?.joinRef
                 else { return }
                 self?.handle(message)
             case .socketOpen:

@@ -418,7 +418,7 @@ public extension Socket {
     }
 
     func leave(_ topic: Topic) async throws {
-        let channel = self.channel(topic)
+        let channel = channel(topic)
         try await leave(channel)
     }
 

@@ -1,38 +1,58 @@
 import Foundation
+import Synchronized
 import WebSocket
 
-public struct Push: Identifiable, Hashable, CustomStringConvertible, Sendable {
-    public var id: Ref { ref }
+public final class Push: Hashable, CustomStringConvertible, Sendable {
+    public var joinRef: Ref? { state.access { $0.joinRef } }
+    public var ref: Ref? { state.access { $0.ref } }
 
-    public let joinRef: Ref?
-    public let ref: Ref
     public let topic: Topic
     public let event: Event
     public let payload: Payload
+    public let timeout: Date
 
-    init(
-        joinRef: Ref?,
-        ref: Ref,
+    private let state = Locked(State())
+
+    public init(
         topic: Topic,
         event: Event,
-        payload: Payload = [:]
+        payload: Payload = [:],
+        timeout: Date = Date(timeIntervalSinceNow: 5)
     ) {
-        self.joinRef = joinRef
-        self.ref = ref
         self.topic = topic
         self.event = event
         self.payload = payload
+        self.timeout = timeout
     }
 
     public var description: String {
+        let (joinRef, ref) = state.access { ($0.joinRef, $0.ref) }
         let _joinRef = joinRef != nil ? "\(joinRef!.rawValue)" : "nil"
-        return "\(topic) \(event) \(_joinRef) \(ref.rawValue)"
+        let _ref = ref != nil ? "\(ref!.rawValue)" : "nil"
+        return "\(topic) \(event) \(_joinRef) \(_ref)"
+    }
+
+    func prepareToSend(ref: Ref, joinRef: Ref? = nil) {
+        state.access { $0.prepareToSend(ref: ref, joinRef: joinRef) }
+    }
+
+    func reset() {
+        state.access { $0.reset() }
     }
 
     public static func encode(_ push: Push) throws -> WebSocketMessage {
+        let (joinRef, ref) = push.state.access { state in
+            precondition(
+                state.ref != nil,
+                "Call preapreToSend() before encoding"
+            )
+
+            return (state.joinRef, state.ref!)
+        }
+
         let array: [Any?] = [
-            push.joinRef?.rawValue,
-            push.ref.rawValue,
+            joinRef?.rawValue,
+            ref.rawValue,
             push.topic,
             push.event.stringValue,
             push.payload.jsonDictionary,
@@ -46,5 +66,28 @@ public struct Push: Identifiable, Hashable, CustomStringConvertible, Sendable {
         guard let encoded = String(data: data, encoding: .utf8)
         else { throw PhoenixError.couldNotEncodePush }
         return .text(encoded)
+    }
+
+    public static func == (lhs: Push, rhs: Push) -> Bool {
+        ObjectIdentifier(lhs) == ObjectIdentifier(rhs)
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(ObjectIdentifier(self))
+    }
+}
+
+private struct State: Hashable {
+    private(set) var joinRef: Ref?
+    private(set) var ref: Ref?
+
+    mutating func prepareToSend(ref: Ref, joinRef: Ref?) {
+        self.ref = ref
+        self.joinRef = joinRef
+    }
+
+    mutating func reset() {
+        ref = nil
+        joinRef = nil
     }
 }

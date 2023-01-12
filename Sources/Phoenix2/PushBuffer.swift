@@ -1,3 +1,4 @@
+import AsyncExtensions
 import Collections
 import Foundation
 import Synchronized
@@ -11,6 +12,10 @@ Sendable {
     var isActive: Bool { state.access { $0.isActive } }
     var isIdle: Bool { state.access { $0.isIdle } }
     var isTerminal: Bool { state.access { $0.isTerminal } }
+
+    deinit {
+        self.cancelAllAndInvalidate()
+    }
 
     func makeAsyncIterator() -> PushBuffer.Iterator { PushBuffer.Iterator(self) }
 
@@ -32,6 +37,8 @@ Sendable {
     /// Appends the push to the internal buffer and waits
     /// for it to be sent before returning.
     func append(_ push: Push) async throws {
+        setTimeout(push.timeout)
+
         try await withTaskCancellationHandler(
             operation: { () async throws in
                 try await withCheckedThrowingContinuation { (cont: SendContinuation) in
@@ -56,7 +63,9 @@ Sendable {
     /// Appends the push to the internal buffer and waits for
     /// a reply before returning.
     func appendAndWait(_ push: Push) async throws -> Message {
-        try await withTaskCancellationHandler(
+        setTimeout(push.timeout)
+
+        return try await withTaskCancellationHandler(
             operation: { () async throws -> Message in
                 try await withCheckedThrowingContinuation { (cont: ReplyContinuation) in
                     let result = self.state.access { $0.appendForReply(push, cont) }
@@ -77,7 +86,7 @@ Sendable {
         )
     }
 
-    /// Notifies `PushBuffer` that the push has been sent. The
+    /// Notifies `PushBuffer` the push has been sent. The
     /// corresponding call to `append()` will be allowed to
     /// return.
     func didSend(_ push: Push) {
@@ -85,7 +94,7 @@ Sendable {
         cont?.resume()
     }
 
-    /// Notifies `PushBuffer` that the push has received a reply. The
+    /// Notifies `PushBuffer` the push has received a reply. The
     /// corresponding call to `appendAndWait()` will be allowed to
     /// return.
     func didReceive(_ message: Message) -> Bool {
@@ -95,11 +104,30 @@ Sendable {
         return true
     }
 
+    /// Notifies `PushBuffer` the push has failed. The corresponding
+    /// call to `append()` or `appendAndWait()` will throw the
+    /// specified error.
+    @discardableResult
+    func didFail(_ push: Push, error: Error) -> Bool {
+        let cont = state.access { $0.fail(push, error: error) }
+        guard let cont else { return false }
+        cont.resume(throwing: error)
+        return true
+    }
+
+    /// Moves the in-flight `Push` back into buffer. Returns `true` if
+    /// the `Push` was put back into the buffer or if it was already in
+    /// the buffer, otherwise `false`.
+    @discardableResult
+    func putBack(_ push: Push) -> Bool {
+        state.access { $0.putBack(push) }
+    }
+
     /// Cancels all in-flight and buffered pushes and invalidates the
     /// buffer with the specified error or `CancellationError`. Any
     /// subsequent calls to `append()`, `appendAndWait()`, or `next()`
-    /// with return with a `CancellationError`. Calls to `didSend()`
-    /// or `didReceive()` will be no-ops.
+    /// with return with a `CancellationError`. Calls to `didSend()`,
+    /// `didReceive()`, or `putBack()` will be no-ops.
     func cancelAllAndInvalidate(error: Error? = nil) {
         let error = error ?? CancellationError()
         let result = state.access { $0.finish(error: error) }
@@ -134,6 +162,25 @@ Sendable {
                 result.0?.resume(throwing: CancellationError())
             }
         )
+    }
+
+    private func setTimeout(_ date: Date) {
+        let timeoutNs = date.timeIntervalSinceNow.nanoseconds
+        assert(timeoutNs > 0)
+
+        state.access { state in
+            state.setTimeout(date) {
+                Task.detached { [weak self] in
+                    try await Task.sleep(nanoseconds: timeoutNs)
+                    self?.timeout()
+                }
+            }
+        }
+    }
+
+    private func timeout() {
+        let result = state.access { $0.timeout(at: Date()) }
+        result.forEach { $0.resume(throwing: TimeoutError()) }
     }
 }
 
@@ -188,11 +235,13 @@ private extension PushBuffer {
 
         private(set) var queue = Queue()
 
-        /// Holds cancelled pushes that haven't yet been added
-        /// to queue. This can happen when the cancellation block
-        /// is called before the operation block of
-        /// `withTaskCancellationHandler()`
-        private var cancelled = Set<Push>()
+        /// Holds pushes that have received an error before they
+        /// were added to the queue. For example, this could happen
+        /// when the cancellation block is called before the operation
+        /// block of `withTaskCancellationHandler()`.
+        private var errored = [Push: Error]()
+
+        private var timeout: Timeout?
 
         var isActive: Bool {
             guard case .active = queue else { return false }
@@ -223,11 +272,23 @@ private extension PushBuffer {
             }
         }
 
+        mutating func putBack(_ push: Push) -> Bool { queue.putBack(push) }
+
         mutating func pause() -> Pushes? { queue.pause() }
 
         mutating func cancel(_ push: Push) -> Continuation? {
-            guard let cont = queue.cancel(push) else {
-                cancelled.insert(push)
+            fail(push, error: CancellationError())
+        }
+
+        mutating func timeout(at date: Date) -> [Continuation] {
+            let timedOut = queue.timeout(at: date)
+            timedOut.keys.forEach { errored[$0] = TimeoutError() }
+            return Array(timedOut.values)
+        }
+
+        mutating func fail(_ push: Push, error: Error) -> Continuation? {
+            guard let cont = queue.fail(push) else {
+                errored[push] = error
                 return nil
             }
             return cont
@@ -249,16 +310,25 @@ private extension PushBuffer {
             let pushes = queue.finish(error: error)
             let cont = awaitingPushContinuation
             awaitingPushContinuation = nil
+            timeout?.cancel()
             return (cont, pushes)
+        }
+
+        mutating func setTimeout(_ date: Date, makeTask: () -> Task<Void, Error>) {
+            if let timeout {
+                guard date < timeout.date else { return }
+                self.timeout = Timeout(date: date, task: makeTask())
+            } else {
+                timeout = Timeout(date: date, task: makeTask())
+            }
         }
 
         mutating func appendForReply(
             _ push: Push,
             _ continuation: ReplyContinuation
         ) -> AppendResult {
-            guard !cancelled.contains(push) else {
-                cancelled.remove(push)
-                return .cancel(.reply(continuation), CancellationError())
+            if let error = errored.removeValue(forKey: push) {
+                return .cancel(.reply(continuation), error)
             }
 
             if let awaitingPushContinuation,
@@ -279,9 +349,8 @@ private extension PushBuffer {
             _ push: Push,
             _ continuation: SendContinuation
         ) -> AppendResult {
-            guard !cancelled.contains(push) else {
-                cancelled.remove(push)
-                return .cancel(.send(continuation), CancellationError())
+            if let error = errored.removeValue(forKey: push) {
+                return .cancel(.send(continuation), error)
             }
 
             if let awaitingPushContinuation,
@@ -305,6 +374,15 @@ private extension PushBuffer {
         mutating func removeSendContinuation(for push: Push) -> SendContinuation? {
             queue.removeSendContinuation(for: push)
         }
+    }
+}
+
+private struct Timeout {
+    let date: Date
+    let task: Task<Void, Error>
+
+    func cancel() {
+        task.cancel()
     }
 }
 
@@ -378,15 +456,15 @@ private enum Queue {
         }
     }
 
-    mutating func cancel(_ push: Push) -> Continuation? {
+    mutating func fail(_ push: Push) -> Continuation? {
         switch self {
         case var .active(inFlight, buffer):
             if let cont = inFlight.removeValue(forKey: push) {
                 self = .active(inFlight: inFlight, buffer: buffer)
-                return .init(cont)
+                return cont
             } else if let cont = buffer.removeValue(forKey: push) {
                 self = .active(inFlight: inFlight, buffer: buffer)
-                return .init(cont)
+                return cont
             } else {
                 return nil
             }
@@ -394,13 +472,42 @@ private enum Queue {
         case var .idle(buffer):
             if let cont = buffer.removeValue(forKey: push) {
                 self = .idle(buffer: buffer)
-                return .init(cont)
+                return cont
             } else {
                 return nil
             }
 
         case .terminal:
             return nil
+        }
+    }
+
+    mutating func timeout(at date: Date) -> Pushes {
+        func isTimedOut(_ element: (Push, Continuation)) -> Bool {
+            element.0.timeout <= date
+        }
+
+        switch self {
+        case var .active(inFlight, buffer):
+            let timedOutInFlight = inFlight.filter(isTimedOut)
+            timedOutInFlight.forEach { inFlight.removeValue(forKey: $0.key) }
+
+            let timedOutBuffered = buffer.filter(isTimedOut)
+            timedOutBuffered.forEach { buffer.removeValue(forKey: $0.key) }
+
+            self = .active(inFlight: inFlight, buffer: buffer)
+            return timedOutInFlight.merging(timedOutBuffered) { _, _ in
+                preconditionFailure("Pushes can either be in-flight or buffered")
+            }
+
+        case var .idle(buffer):
+            let timedOut = buffer.filter(isTimedOut)
+            timedOut.forEach { buffer.removeValue(forKey: $0.key) }
+            self = .idle(buffer: buffer)
+            return timedOut
+
+        case .terminal:
+            return [:]
         }
     }
 
@@ -541,6 +648,23 @@ private enum Queue {
 
         case .terminal:
             preconditionFailure()
+        }
+    }
+
+    mutating func putBack(_ push: Push) -> Bool {
+        switch self {
+        case var .active(inFlight, buffer):
+            guard let cont = inFlight.removeValue(forKey: push)
+            else { return buffer[push] != nil }
+            buffer[push] = cont
+            self = .active(inFlight: inFlight, buffer: buffer)
+            return true
+
+        case let .idle(buffer):
+            return buffer[push] != nil
+
+        case .terminal:
+            return false
         }
     }
 }

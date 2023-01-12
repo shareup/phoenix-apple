@@ -1,5 +1,5 @@
-import AsyncTestExtensions
 import AsyncExtensions
+import AsyncTestExtensions
 import Combine
 @testable import Phoenix2
 import Synchronized
@@ -324,8 +324,8 @@ final class PhoenixSocketTests: XCTestCase {
 
                 case let .text(text):
                     let expected = """
-                        [null,1,"phoenix","heartbeat",{}]
-                        """
+                    [null,1,"phoenix","heartbeat",{}]
+                    """
                     XCTAssertEqual(expected, text)
                 }
                 didSendHeartbeat.access { $0 = true }
@@ -437,10 +437,10 @@ final class PhoenixSocketTests: XCTestCase {
         let attempts = Locked(0)
 
         let ws: WebSocket = fake(
-            open: { _ in
+            open: {
                 defer { attempts.access { $0 += 1 } }
                 if attempts.access({ $0 < 3 }) {
-                    throw  NoInternet()
+                    throw NoInternet()
                 }
             }
         )
@@ -517,8 +517,6 @@ final class PhoenixSocketTests: XCTestCase {
 private extension PhoenixSocketTests {
     var push1: Push {
         Push(
-            joinRef: .init(1),
-            ref: .init(2),
             topic: "topic",
             event: "event",
             payload: ["one": 1] as Payload
@@ -526,14 +524,14 @@ private extension PhoenixSocketTests {
     }
 
     var encodedPush1: WebSocketMessage {
-        try! Push.encode(push1)
+        let push = push1
+        push.prepareToSend(ref: 1)
+        return try! Push.encode(push)
     }
 
     func makePushes(_ count: Int) -> [Push] {
         (1 ... count).map { i in
             Push(
-                joinRef: 1,
-                ref: Ref(UInt64(i)),
                 topic: "test",
                 event: .custom(String(i)),
                 payload: ["index": i]
@@ -543,14 +541,14 @@ private extension PhoenixSocketTests {
 
     func heartbeat(ref: Int) -> WebSocketMessage {
         .text("""
-            [null,\(ref),"phoenix","heartbeat",{}]
-            """)
+        [null,\(ref),"phoenix","heartbeat",{}]
+        """)
     }
 
     func heartbeatReply(ref: Int) -> WebSocketMessage {
         .text("""
-            [null,\(ref),"phoenix","phx_reply",{"response":{},"status":"ok"}]
-            """)
+        [null,\(ref),"phoenix","phx_reply",{"response":{},"status":"ok"}]
+        """)
     }
 }
 
@@ -572,11 +570,11 @@ private extension PhoenixSocketTests {
         onOpen: @escaping WebSocketOnOpen = {},
         onClose: @escaping WebSocketOnClose = { _ in },
         onSend: @escaping (WebSocketMessage) -> Void = { _ in },
-        open: (@Sendable (TimeInterval?) async throws -> Void)? = nil,
+        open: (@Sendable () async throws -> Void)? = nil,
         close: (@Sendable (WebSocketCloseCode, TimeInterval?) async throws -> Void)? = nil,
         messagesPublisher: (@Sendable () -> AnyPublisher<WebSocketMessage, Never>)? = nil
     ) -> WebSocket {
-        let _open = open ?? { @Sendable (_: TimeInterval?) async throws in
+        let _open = open ?? { @Sendable () async throws in
             onOpen()
         }
         let _close = close ??
@@ -590,7 +588,10 @@ private extension PhoenixSocketTests {
             open: _open,
             close: _close,
             send: { onSend($0) },
-            messagesPublisher: messagesPublisher ?? { Empty<WebSocketMessage, Never>(completeImmediately: false).eraseToAnyPublisher() }
+            messagesPublisher: messagesPublisher ?? {
+                Empty<WebSocketMessage, Never>(completeImmediately: false)
+                    .eraseToAnyPublisher()
+            }
         )
     }
 

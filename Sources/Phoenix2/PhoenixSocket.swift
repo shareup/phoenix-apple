@@ -32,7 +32,7 @@ final actor PhoenixSocket {
     nonisolated let pushEncoder: PushEncoder
     nonisolated let messageDecoder: MessageDecoder
 
-    nonisolated private let currentWebSocketID = Locked(0)
+    private nonisolated let currentWebSocketID = Locked(0)
     private let makeWebSocket: MakeWebSocket
 
     private(set) var connectionState: ConnectionState = .closed(connectionAttempts: 0) {
@@ -180,6 +180,15 @@ extension PhoenixSocket {
                 else { return }
 
                 do {
+                    if let channel = channels[push.topic] {
+                        guard await channel.prepareToSend(push) else {
+                            self.pushes.putBack(push)
+                            continue
+                        }
+                    } else {
+                        push.prepareToSend(ref: makeRef())
+                    }
+
                     try await ws.send(encoder(push))
 
                     if Task.isCancelled { return }
@@ -267,14 +276,8 @@ extension PhoenixSocket {
                 guard !Task.isCancelled, let self
                 else { throw PhoenixError.heartbeatTimeout }
 
-                let message: Message = try await self.push(
-                    Push(
-                        joinRef: nil,
-                        ref: self.makeRef(),
-                        topic: "phoenix",
-                        event: .heartbeat
-                    )
-                )
+                let push = Push(topic: "phoenix", event: .heartbeat)
+                let message: Message = try await self.push(push)
 
                 guard !Task.isCancelled
                 else { throw PhoenixError.heartbeatTimeout }
@@ -385,7 +388,7 @@ extension PhoenixSocket {
             let ws = try await doMakeWebSocket()
             connectionState = .connecting(ws)
 
-            try await ws.open(TimeInterval(timeout / NSEC_PER_SEC))
+            try await ws.open()
 
             connectionState = .open(ws)
             pushes.resume()
