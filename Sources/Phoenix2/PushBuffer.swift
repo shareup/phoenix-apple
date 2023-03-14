@@ -136,9 +136,15 @@ Sendable {
     }
 
     fileprivate func next() async throws -> Push {
-        try await withTaskCancellationHandler(
+        let isCancelled = Locked(false)
+
+        return try await withTaskCancellationHandler(
             operation: { () async throws -> Push in
                 try await withCheckedThrowingContinuation { (cont: AwaitingPushContinuation) in
+                    guard !isCancelled.access({ $0 }) else {
+                        return cont.resume(throwing: CancellationError())
+                    }
+
                     do {
                         let push = try state.access { try $0.next(cont) }
                         guard let push else { return }
@@ -149,6 +155,8 @@ Sendable {
                 }
             },
             onCancel: { [weak self] in
+                isCancelled.access { $0 = true }
+
                 let result = self?.state.access
                     { (state: inout State) -> (AwaitingPushContinuation?, Pushes?) in
                         let cont = state.awaitingPushContinuation

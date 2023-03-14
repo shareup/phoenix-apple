@@ -1,3 +1,4 @@
+import AsyncExtensions
 import Collections
 import Foundation
 import os.log
@@ -35,6 +36,7 @@ final actor PhoenixSocket {
     nonisolated var messages: AsyncStream<Message> {
         messagesStream.access { $0!.stream }
     }
+
     private nonisolated let messagesStream = Locked<MessagesStream?>(nil)
 
     private nonisolated let currentWebSocketID = Locked(0)
@@ -54,10 +56,7 @@ final actor PhoenixSocket {
     private(set) var channels: [Topic: PhoenixChannel] = [:]
 
     private nonisolated let pushes = PushBuffer()
-
-    private var flushTask: Task<Void, Error>?
-    private var listenTask: Task<Void, Error>?
-    private var heartbeatTask: Task<Void, Error>?
+    private nonisolated let tasks = TaskStore()
 
     init(
         url: URL,
@@ -80,19 +79,13 @@ final actor PhoenixSocket {
 
         var continuation: AsyncStream<Message>.Continuation!
         let stream = AsyncStream<Message> { continuation = $0 }
-        self.messagesStream.access { $0 = .init(stream, continuation) }
+        messagesStream.access { $0 = .init(stream, continuation) }
     }
 
     deinit {
         shouldReconnect = false
 
-        flushTask?.cancel()
-        flushTask = nil
-        listenTask?.cancel()
-        listenTask = nil
-        heartbeatTask?.cancel()
-        heartbeatTask = nil
-
+        tasks.cancelAll()
         pushes.cancelAllAndInvalidate()
         connectionState = .closed(connectionAttempts: 0)
         channels.removeAll()
@@ -169,9 +162,7 @@ extension PhoenixSocket {
     }
 
     private func flush() {
-        assert(flushTask == nil)
-
-        flushTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
 
             let encoder = self.pushEncoder
@@ -189,13 +180,13 @@ extension PhoenixSocket {
                 else { return }
 
                 do {
-                    if let channel = channels[push.topic] {
+                    if let channel = await channels[push.topic] {
                         guard await channel.prepareToSend(push) else {
                             self.pushes.putBack(push)
                             continue
                         }
                     } else {
-                        push.prepareToSend(ref: makeRef())
+                        await push.prepareToSend(ref: makeRef())
                     }
 
                     try await ws.send(encoder(push))
@@ -212,17 +203,12 @@ extension PhoenixSocket {
                 if Task.isCancelled { return }
             }
         }
-    }
 
-    private func cancelFlush() {
-        flushTask?.cancel()
-        flushTask = nil
+        tasks.insert(task, forKey: "flush")
     }
 
     private func listen() {
-        assert(listenTask == nil)
-
-        listenTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self, !Task.isCancelled,
                   let ws = await self.webSocket
             else { return }
@@ -234,14 +220,14 @@ extension PhoenixSocket {
                     let message = try decoder(msg)
 
                     if !self.pushes.didReceive(message) {
-                        channels.values.forEach { channel in
+                        await channels.values.forEach { channel in
                             if channel.isMember(message) {
                                 // TODO: Send to Channel
                             }
                         }
                     }
 
-                    streamToMessages(message)
+                    await streamToMessages(message)
                 } catch {
                     os_log(
                         "message.error: %@",
@@ -254,11 +240,8 @@ extension PhoenixSocket {
                 if Task.isCancelled { break }
             }
         }
-    }
 
-    private func cancelListen() {
-        listenTask?.cancel()
-        listenTask = nil
+        tasks.insert(task, forKey: "listen")
     }
 }
 
@@ -287,24 +270,18 @@ private extension PhoenixSocket {
 
 extension PhoenixSocket {
     private func scheduleHeartbeat() {
-        assert(heartbeatTask == nil)
-        guard heartbeatTask == nil else { return }
-
         let interval = heartbeatInterval
-        heartbeatTask = Task { [weak self] in
+        let task = Task { [weak self] in
             try await Task.sleep(nanoseconds: interval)
             try await self?.sendHeartbeat()
         }
-    }
 
-    private func cancelHeartbeat() {
-        heartbeatTask?.cancel()
-        heartbeatTask = nil
+        tasks.insert(task, forKey: "heartbeat")
     }
 
     private func sendHeartbeat() async throws {
         guard case let .open(_ws) = connectionState, !Task.isCancelled
-        else { return cancelHeartbeat() }
+        else { return tasks.cancel(forKey: "heartbeat") }
 
         let id = _ws.id
 
@@ -343,7 +320,7 @@ extension PhoenixSocket {
         else { return }
 
         if didSucceed {
-            heartbeatTask = nil
+            tasks.cancel(forKey: "heartbeat")
             scheduleHeartbeat()
         } else {
             await doCloseFromServer(
@@ -448,9 +425,7 @@ extension PhoenixSocket {
 
         shouldReconnect = false
         pushes.pause()
-        cancelFlush()
-        cancelListen()
-        cancelHeartbeat()
+        tasks.cancelAll()
 
         os_log(
             "disconnect: oldstate=%{public}@",
@@ -475,9 +450,7 @@ extension PhoenixSocket {
 
         func cancelAllInputOutput() {
             pushes.pause(error: error)
-            cancelFlush()
-            cancelListen()
-            cancelHeartbeat()
+            tasks.cancelAll()
         }
 
         switch connectionState {
