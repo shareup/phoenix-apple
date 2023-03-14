@@ -32,6 +32,7 @@ final class PhoenixChannel {
 
     func isMember(_ message: Message) -> Bool {
         guard topic == message.topic else { return false }
+        
         return state.access { state in
             switch state {
             case let .joined(joinRef, _):

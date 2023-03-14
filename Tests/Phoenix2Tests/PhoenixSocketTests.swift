@@ -9,7 +9,7 @@ import XCTest
 // NOTE: Names in quotation marks below correspond to groups of tests
 // delimited by `describe("some name", {})` blocks in Phoenix JS'
 // test suite, which can be found here:
-// https://github.com/phoenixframework/phoenix/blob/v1.6.10/assets/test/socket_test.js
+// https://github.com/phoenixframework/phoenix/blob/v1.7.1/assets/test/socket_test.js
 
 final class PhoenixSocketTests: XCTestCase {
     private let url = URL(string: "ws://0.0.0.0:4003/socket")!
@@ -141,7 +141,7 @@ final class PhoenixSocketTests: XCTestCase {
 
     func testConnectionStateIsClosedInitially() async throws {
         try await withWebSocket(fake()) { socket in
-            await AssertTrue(await socket.connectionState.isClosed)
+            await AssertTrue(socket.connectionState.isClosed)
         }
     }
 
@@ -150,41 +150,47 @@ final class PhoenixSocketTests: XCTestCase {
         let socket = PhoenixSocket(
             url: url,
             makeWebSocket: makeFakeWebSocket
-        ) { state in
+        )
+        let sub = socket.onConnectionStateChange.sink { state in
             guard state.isConnecting else { return }
             didChangeToConnecting.resolve()
         }
         await socket.connect()
         try await didChangeToConnecting.value
+        sub.cancel()
     }
 
     func testConnectionStateIsOpenAfterConnecting() async throws {
         try await withWebSocket(fake()) { socket in
             await socket.connect()
-            await AssertTrue(await socket.connectionState.isOpen)
+            await AssertTrue(socket.connectionState.isOpen)
         }
     }
 
     func testConnectionStateIsClosingWhenDisconnecting() async throws {
         var didChangeToClosing = false
-        let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket) { state in
+        let socket = PhoenixSocket(url: url, makeWebSocket: makeFakeWebSocket)
+
+        let sub = socket.onConnectionStateChange.sink { state in
             guard state.isClosing else { return }
             guard !didChangeToClosing
             else { return XCTFail("Should have only changed to closing once") }
             didChangeToClosing = true
         }
+
         await socket.connect()
         await socket.disconnect()
         XCTAssertTrue(didChangeToClosing)
+        sub.cancel()
     }
 
     func testConnectionStateIsClosedAfterDisconnecting() async throws {
         try await withWebSocket(fake()) { socket in
             await socket.connect()
-            await AssertTrue(await socket.connectionState.isOpen)
+            await AssertTrue(socket.connectionState.isOpen)
 
             await socket.disconnect()
-            await AssertTrue(await socket.connectionState.isClosed)
+            await AssertTrue(socket.connectionState.isClosed)
         }
     }
 
@@ -450,7 +456,7 @@ final class PhoenixSocketTests: XCTestCase {
             // `reconnectAttempts` only lives on the `.closed`
             // connection state. So, if the socket is open, the
             // `reconnectAttempts` must be zero.
-            guard case .open = await socket.connectionState
+            guard case .open = socket.connectionState
             else { return XCTFail() }
         }
     }
@@ -512,6 +518,24 @@ final class PhoenixSocketTests: XCTestCase {
             XCTAssertLessThan(1, opens.access { $0 })
         }
     }
+
+    func testTriggersChannelErrorIfJoining() async throws {
+
+    }
+
+    func testTriggersChannelErrorIfJoined() async throws {
+
+    }
+
+    func testDoesNotTriggerChannelErrorAfterLeaving() async throws {
+
+    }
+
+    func testDoesNotSendHeartbeatIfClosedByClient() async throws {
+
+    }
+
+    // MARK: "onConnError"
 }
 
 private extension PhoenixSocketTests {
@@ -617,7 +641,9 @@ private extension PhoenixSocketTests {
             timeout: timeout,
             heartbeatInterval: heartbeatInterval,
             makeWebSocket: makeWS
-        ) { state in
+        )
+
+        let sub = socket.onConnectionStateChange.sink { state in
             switch state {
             case .connecting: break
             case .open: onOpen()
@@ -641,6 +667,7 @@ private extension PhoenixSocketTests {
         }
 
         await socket.disconnect(timeout: 0.000001)
+        sub.cancel()
     }
 }
 
