@@ -1,6 +1,6 @@
 import AsyncExtensions
 import Collections
-import Combine
+@preconcurrency import Combine
 import Foundation
 import os.log
 import Synchronized

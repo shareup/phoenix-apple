@@ -6,7 +6,8 @@ extension TimeInterval {
     }
 
     var nanoseconds: UInt64 {
-        UInt64(min(self * Double(NSEC_PER_SEC), maxNanoseconds))
+        let safeValue = max(0.000000001, self)
+        return UInt64(min(safeValue * Double(NSEC_PER_SEC), maxNanoseconds))
     }
 }
 

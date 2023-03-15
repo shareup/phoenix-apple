@@ -187,6 +187,46 @@ final class PushBufferTests: XCTestCase {
         XCTAssertTrue(didTimeout.access { $0 })
     }
 
+    func testReschedulesTimeoutAfterTimeoutFires() async throws {
+        let timeoutIDs = Locked([Int]())
+        let ex = expectation(description: "Should have timed out twice")
+
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let push1 = makePush(1, timeout: Date(timeIntervalSinceNow: 0.01))
+        let push2 = makePush(2, timeout: Date(timeIntervalSinceNow: 0.02))
+
+        @Sendable
+        func timeoutTask(push: Push) -> Task<Void, Never> {
+            Task {
+                do {
+                    prepareToSend(push)
+                    _ = try await buffer.appendAndWait(push)
+                } catch is TimeoutError {
+                    let count = timeoutIDs.access { timeoutIDs in
+                        timeoutIDs.append(Int(push.topic)!)
+                        return timeoutIDs.count
+                    }
+                    if count > 1 { ex.fulfill() }
+                } catch {
+                    XCTFail("Should have received TimeoutError, not \(error)")
+                }
+            }
+        }
+
+        let _ = await timeoutTask(push: push1).value
+        let _ = await timeoutTask(push: push2).value
+
+        #if compiler(>=5.8)
+            await fulfillment(of: [ex], timeout: 2)
+        #else
+            wait(for: expectations, timeout: 2)
+        #endif
+
+        XCTAssertEqual([1, 2], timeoutIDs.access { $0 })
+    }
+
     func testFailAppendedPush() async throws {
         struct Err: Error {}
 
@@ -373,7 +413,14 @@ final class PushBufferTests: XCTestCase {
 
             try await group.waitForAll()
 
-            state.access { XCTAssertEqual($0.pushIndex, $0.lastPushIndex) }
+            state.access { state in
+                // It's possible for the push to have been sent before the
+                // cancellation was received by the tasks, which means the
+                // buffer.next() could have been called once more after
+                // lastPushIndex was saved.
+                let diff = state.pushIndex - state.lastPushIndex!
+                XCTAssertTrue(diff == 0 || diff == 1)
+            }
         }
     }
 

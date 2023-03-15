@@ -3,9 +3,9 @@ import WebSocket
 
 public struct Message: Hashable, Sendable, CustomStringConvertible {
     enum DecodingError: Error {
-        case invalidType(Any?)
+        case invalidType(String)
         case missingValue(String)
-        case invalidTypeForValue(String, Any?)
+        case invalidTypeForValue(String, String)
     }
 
     public var joinRef: Ref?
@@ -33,7 +33,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
         let jsonArray = try JSONSerialization.jsonObject(with: data, options: [])
 
         guard let arr = jsonArray as? [Any?] else {
-            throw DecodingError.invalidType(jsonArray)
+            throw DecodingError.invalidType(String(describing: jsonArray))
         }
 
         let joinRef: Ref? = _ref(arr[0])
@@ -50,7 +50,10 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
         let event = Event(eventName)
 
         guard let payload = arr[4] as? [String: Any?] else {
-            throw DecodingError.invalidTypeForValue("payload", arr[4])
+            throw DecodingError.invalidTypeForValue(
+                "payload",
+                String(describing: arr[4])
+            )
         }
 
         self.init(
@@ -82,8 +85,30 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
 }
 
 public extension Message {
+    @Sendable
     static func decode(_ raw: WebSocketMessage) throws -> Message {
         try Message(raw)
+    }
+}
+
+public extension Message {
+    var reply: (Bool, Ref, Payload) {
+        get throws {
+            guard event == .reply,
+                  let ref,
+                  case let .string(status) = payload["status"]
+            else { throw PhoenixError.invalidReply }
+
+            return (status == "ok", ref, payload["response"] ?? [:])
+        }
+    }
+
+    var error: String? {
+        guard event == .reply,
+              case let .string(error) = payload["response"]?["error"]
+        else { return nil }
+
+        return error
     }
 }
 

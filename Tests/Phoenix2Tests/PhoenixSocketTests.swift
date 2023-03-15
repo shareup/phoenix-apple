@@ -519,21 +519,13 @@ final class PhoenixSocketTests: XCTestCase {
         }
     }
 
-    func testTriggersChannelErrorIfJoining() async throws {
+    func testTriggersChannelErrorIfJoining() async throws {}
 
-    }
+    func testTriggersChannelErrorIfJoined() async throws {}
 
-    func testTriggersChannelErrorIfJoined() async throws {
+    func testDoesNotTriggerChannelErrorAfterLeaving() async throws {}
 
-    }
-
-    func testDoesNotTriggerChannelErrorAfterLeaving() async throws {
-
-    }
-
-    func testDoesNotSendHeartbeatIfClosedByClient() async throws {
-
-    }
+    func testDoesNotSendHeartbeatIfClosedByClient() async throws {}
 
     // MARK: "onConnError"
 }

@@ -136,17 +136,26 @@ Sendable {
     }
 
     fileprivate func next() async throws -> Push {
-        let isCancelled = Locked(false)
+        // NOTE: This is `Sendable` because we only access it
+        // inside of the state's locked access blocks.
+        class Cancellation: @unchecked Sendable {
+            var isCancelled = false
+        }
+
+        let cancellation = Cancellation()
 
         return try await withTaskCancellationHandler(
             operation: { () async throws -> Push in
                 try await withCheckedThrowingContinuation { (cont: AwaitingPushContinuation) in
-                    guard !isCancelled.access({ $0 }) else {
-                        return cont.resume(throwing: CancellationError())
-                    }
-
                     do {
-                        let push = try state.access { try $0.next(cont) }
+                        let push: Push? = try state.access { state in
+                            if cancellation.isCancelled {
+                                throw CancellationError()
+                            } else {
+                                return try state.next(cont)
+                            }
+                        }
+
                         guard let push else { return }
                         cont.resume(returning: push)
                     } catch {
@@ -155,10 +164,9 @@ Sendable {
                 }
             },
             onCancel: { [weak self] in
-                isCancelled.access { $0 = true }
-
                 let result = self?.state.access
                     { (state: inout State) -> (AwaitingPushContinuation?, Pushes?) in
+                        cancellation.isCancelled = true
                         let cont = state.awaitingPushContinuation
                         state.awaitingPushContinuation = nil
                         let pushes = state.pause()
@@ -189,6 +197,10 @@ Sendable {
     private func timeout() {
         let result = state.access { $0.timeout(at: Date()) }
         result.forEach { $0.resume(throwing: TimeoutError()) }
+
+        if let nextTimeout = state.access({ $0.nextTimeout() }) {
+            setTimeout(nextTimeout)
+        }
     }
 }
 
@@ -289,6 +301,7 @@ private extension PushBuffer {
         }
 
         mutating func timeout(at date: Date) -> [Continuation] {
+            timeout = nil
             let timedOut = queue.timeout(at: date)
             timedOut.keys.forEach { errored[$0] = TimeoutError() }
             return Array(timedOut.values)
@@ -330,6 +343,8 @@ private extension PushBuffer {
                 timeout = Timeout(date: date, task: makeTask())
             }
         }
+
+        func nextTimeout() -> Date? { queue.nextTimeout() }
 
         mutating func appendForReply(
             _ push: Push,
@@ -484,6 +499,35 @@ private enum Queue {
             } else {
                 return nil
             }
+
+        case .terminal:
+            return nil
+        }
+    }
+
+    func nextTimeout() -> Date? {
+        func nextTimeout(in pushes: Pushes) -> Date? {
+            pushes.reduce(into: nil as Date?) { acc, elem in
+                let push: Push = elem.key
+
+                guard var acc else {
+                    acc = push.timeout
+                    return
+                }
+
+                acc = acc.compare(push.timeout) == .orderedAscending
+                    ? acc
+                    : push.timeout
+            }
+        }
+
+        switch self {
+        case let .active(inFlight, buffer):
+            let merged = inFlight.merging(buffer) { one, _ in one }
+            return nextTimeout(in: merged)
+
+        case let .idle(buffer):
+            return nextTimeout(in: buffer)
 
         case .terminal:
             return nil

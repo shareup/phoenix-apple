@@ -40,6 +40,7 @@ public final class Push: Hashable, CustomStringConvertible, Sendable {
         state.access { $0.reset() }
     }
 
+    @Sendable
     public static func encode(_ push: Push) throws -> WebSocketMessage {
         let (joinRef, ref) = push.state.access { state in
             precondition(

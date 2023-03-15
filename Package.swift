@@ -1,4 +1,4 @@
-// swift-tools-version:5.7
+// swift-tools-version:5.8
 import PackageDescription
 
 let package = Package(
@@ -7,10 +7,10 @@ let package = Package(
         .macOS(.v11), .iOS(.v14), .tvOS(.v14), .watchOS(.v7),
     ],
     products: [
-        .library(
-            name: "Phoenix",
-            targets: ["Phoenix"]
-        ),
+        //        .library(
+//            name: "Phoenix",
+//            targets: ["Phoenix"]
+//        ),
         .library(name: "Phoenix2", targets: ["Phoenix2"]),
     ],
     dependencies: [
@@ -38,25 +38,21 @@ let package = Package(
             url: "https://github.com/shareup/synchronized.git",
             from: "4.0.0"
         ),
-        .package(
-            name: "WebSocket",
-            path: "../websocket-apple"
-        ),
+        .package(path: "../websocket-apple"),
 //        .package(
-//            name: "WebSocket",
 //            url: "https://github.com/shareup/websocket-apple.git",
 //            from: "3.0.0"
 //        ),
     ],
     targets: [
-        .target(
-            name: "Phoenix",
-            dependencies: [
-                .product(name: "DispatchTimer", package: "dispatch-timer"),
-                .product(name: "Synchronized", package: "synchronized"),
-                "WebSocket",
-            ]
-        ),
+        //        .target(
+//            name: "Phoenix",
+//            dependencies: [
+//                .product(name: "DispatchTimer", package: "dispatch-timer"),
+//                .product(name: "Synchronized", package: "synchronized"),
+//                .product(name: "WebSocket", package: "websocket-apple"),
+//            ]
+//        ),
         .target(
             name: "Phoenix2",
             dependencies: [
@@ -64,14 +60,20 @@ let package = Package(
                 .product(name: "Collections", package: "swift-collections"),
                 .product(name: "JSON", package: "json-apple"),
                 .product(name: "Synchronized", package: "synchronized"),
-                "WebSocket",
+                .product(name: "WebSocket", package: "websocket-apple"),
+            ],
+            swiftSettings: [
+                .unsafeFlags([
+                    "-Xfrontend", "-warn-concurrency",
+                    "-Xfrontend", "-enable-actor-data-race-checks",
+                ]),
             ]
         ),
-        .testTarget(
-            name: "PhoenixTests",
-            dependencies: ["Phoenix"],
-            exclude: ["phoenix-js", "server"]
-        ),
+//        .testTarget(
+//            name: "PhoenixTests",
+//            dependencies: ["Phoenix"],
+//            exclude: ["phoenix-js", "server"]
+//        ),
         .testTarget(
             name: "Phoenix2Tests",
             dependencies: [

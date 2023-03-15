@@ -1,5 +1,5 @@
 import Foundation
 import WebSocket
 
-public typealias PushEncoder = (Push) throws -> WebSocketMessage
-public typealias MessageDecoder = (WebSocketMessage) throws -> Message
+public typealias PushEncoder = @Sendable (Push) throws -> WebSocketMessage
+public typealias MessageDecoder = @Sendable (WebSocketMessage) throws -> Message
