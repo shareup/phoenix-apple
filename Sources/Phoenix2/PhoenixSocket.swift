@@ -15,6 +15,8 @@ typealias MakeWebSocket =
         @escaping WebSocketOnClose
     ) async throws -> WebSocket
 
+typealias MessagesPublisher = AnyPublisher<Message, Never>
+
 typealias ConnectionStatePublisher =
     AnyPublisher<PhoenixSocket.ConnectionState, Never>
 
@@ -37,11 +39,11 @@ final actor PhoenixSocket {
     nonisolated let pushEncoder: PushEncoder
     nonisolated let messageDecoder: MessageDecoder
 
-    nonisolated var messages: AsyncStream<Message> {
-        messagesStream.access { $0!.stream }
+    nonisolated var messages: MessagesPublisher {
+        messagesSubject.eraseToAnyPublisher()
     }
 
-    private nonisolated let messagesStream = Locked<MessagesStream?>(nil)
+    private nonisolated let messagesSubject = PassthroughSubject<Message, Never>()
 
     private nonisolated let currentWebSocketID = Locked(0)
     private let makeWebSocket: MakeWebSocket
@@ -86,10 +88,6 @@ final actor PhoenixSocket {
         self.pushEncoder = pushEncoder
         self.messageDecoder = messageDecoder
         self.makeWebSocket = makeWebSocket
-
-        var continuation: AsyncStream<Message>.Continuation!
-        let stream = AsyncStream<Message> { continuation = $0 }
-        messagesStream.access { $0 = .init(stream, continuation) }
     }
 
     deinit {
@@ -97,7 +95,6 @@ final actor PhoenixSocket {
 
         tasks.cancelAll()
         pushes.cancelAllAndInvalidate()
-        _connectionState.value = .closed(connectionAttempts: 0)
         channels.removeAll()
     }
 
@@ -229,15 +226,12 @@ extension PhoenixSocket {
                 do {
                     let message = try decoder(msg)
 
-                    if !self.pushes.didReceive(message) {
-                        await channels.values.forEach { channel in
-                            if channel.isMember(message) {
-                                // TODO: Send to Channel
-                            }
-                        }
+                    _ = self.pushes.didReceive(message)
+                    await channels.values.forEach { channel in
+                        channel.receive(message)
                     }
 
-                    await streamToMessages(message)
+                    messagesSubject.send(message)
                 } catch {
                     os_log(
                         "message.error: %@",
@@ -252,29 +246,6 @@ extension PhoenixSocket {
         }
 
         tasks.insert(task, forKey: "listen")
-    }
-}
-
-private struct MessagesStream {
-    let stream: AsyncStream<Message>
-    let continuation: AsyncStream<Message>.Continuation
-
-    init(
-        _ stream: AsyncStream<Message>,
-        _ continuation: AsyncStream<Message>.Continuation
-    ) {
-        self.stream = stream
-        self.continuation = continuation
-    }
-
-    func yield(_ message: Message) {
-        continuation.yield(message)
-    }
-}
-
-private extension PhoenixSocket {
-    func streamToMessages(_ message: Message) {
-        messagesStream.access { $0?.yield(message) }
     }
 }
 

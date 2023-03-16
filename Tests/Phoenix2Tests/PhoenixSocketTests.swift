@@ -217,8 +217,24 @@ final class PhoenixSocketTests: XCTestCase {
         }
     }
 
-    // TODO: Test calling `channel()` twice with the same topic only creates
-    // one channel. _This is different from Phoenix JS's native behavior_
+    // NOTE: This behavior is different from PhoenixJS', which is
+    // leaving the original channel and joining the newly-created
+    // one.
+    func testCallingChannelTwiceWithSameTopicReturnsSameChannel() async throws {
+        try await withWebSocket(fake()) { socket in
+            let channel1 = await socket.channel(
+                "topic",
+                joinPayload: ["one": "two"]
+            )
+
+            let channel2 = await socket.channel(
+                "topic",
+                joinPayload: ["one": "two"]
+            )
+
+            XCTAssertEqual(ObjectIdentifier(channel1), ObjectIdentifier(channel2))
+        }
+    }
 
     // MARK: "remove"
 

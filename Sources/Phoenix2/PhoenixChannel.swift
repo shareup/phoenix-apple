@@ -7,12 +7,20 @@ import Synchronized
 private typealias JoinFuture = AsyncExtensions.Future<(Ref, Payload)>
 private typealias LeaveFuture = AsyncExtensions.Future<Void>
 
-final class PhoenixChannel: Sendable {
+private typealias MessagesSubject = PassthroughSubject<Message, Never>
+
+final class PhoenixChannel: @unchecked Sendable {
     let topic: Topic
     let joinPayload: Payload
 
+    var messages: MessagesPublisher { messagesSubject.eraseToAnyPublisher() }
+
+    var isClosed: Bool { state.access { $0.isClosed } }
+    var isJoining: Bool { state.access { $0.isJoining } }
+
     private let socket: PhoenixSocket
     private let state = Locked(State())
+    private let messagesSubject = MessagesSubject()
 
     init(
         topic: Topic,
@@ -33,12 +41,14 @@ final class PhoenixChannel: Sendable {
 
     @discardableResult
     func join(timeout: TimeInterval? = nil) async throws -> Payload {
+        let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
+
         let join = try state.access { state in
             try state.join(
                 topic: topic,
                 payload: joinPayload,
                 socket: socket,
-                timeout: timeout ?? TimeInterval(nanoseconds: socket.timeout)
+                timeout: timeout
             )
         }
 
@@ -62,12 +72,9 @@ final class PhoenixChannel: Sendable {
             )
         }
 
-        do {
-            try await leave()
-            // didLeave
-        } catch {
-            // force leave
-        }
+        try? await leave()
+        let future = state.access { $0.didLeave() }
+        future?.resolve()
     }
 
     func prepareToSend(_ push: Push) async -> Bool {
@@ -80,14 +87,14 @@ final class PhoenixChannel: Sendable {
         return true
     }
 
-    func isMember(_ message: Message) -> Bool {
-        guard topic == message.topic else { return false }
+    func receive(_ message: Message) {
+        guard topic == message.topic else { return }
 
-        return state.access { state in
+        let sendMessage: (() -> Void)? = state.access { state in
             switch state.connection {
             case let .joined(joinRef, _):
                 if message.joinRef == joinRef {
-                    return true
+                    return { self.messagesSubject.send(message) }
                 } else {
                     os_log(
                         "channel outdated message: joinRef=%d message=%d",
@@ -96,13 +103,15 @@ final class PhoenixChannel: Sendable {
                         Int(joinRef.rawValue),
                         Int(message.joinRef?.rawValue ?? 0)
                     )
-                    return false
+                    return nil
                 }
 
             case .closed, .errored, .joining, .leaving:
-                return true
+                return { self.messagesSubject.send(message) }
             }
         }
+
+        sendMessage?()
     }
 }
 
@@ -128,7 +137,6 @@ private extension PhoenixChannel {
 }
 
 private struct State: @unchecked Sendable {
-    var didJoin: Bool
     var connection: Connection
     var socketStateChangeSubscription: AnyCancellable?
 
@@ -140,6 +148,16 @@ private struct State: @unchecked Sendable {
         case let .joined(ref, _):
             return ref
         }
+    }
+
+    var isClosed: Bool {
+        guard case .closed = connection else { return false }
+        return true
+    }
+
+    var isJoining: Bool {
+        guard case .joining = connection else { return false }
+        return true
     }
 
     enum Connection: CustomStringConvertible {
@@ -161,11 +179,9 @@ private struct State: @unchecked Sendable {
     }
 
     init(
-        didJoin: Bool = false,
         connection: Connection = .closed,
         socketStateChangeSubscription: AnyCancellable? = nil
     ) {
-        self.didJoin = didJoin
         self.connection = connection
         self.socketStateChangeSubscription = socketStateChangeSubscription
     }
@@ -186,9 +202,6 @@ private struct State: @unchecked Sendable {
         socket: PhoenixSocket,
         timeout: TimeInterval
     ) throws -> () async throws -> (Ref, Payload) {
-        guard !didJoin else { throw PhoenixError.alreadyJoinedChannel }
-        didJoin = true
-
         return rejoin(
             topic: topic,
             payload: payload,
@@ -219,7 +232,7 @@ private struct State: @unchecked Sendable {
                 )
 
                 let message: Message = try await socket.push(push)
-                let (isOk, ref, payload) = try message.reply
+                let (ref, isOk, payload) = try message.refAndReply
 
                 guard isOk else {
                     throw E.joinError(message.error ?? "unknown")
@@ -242,9 +255,6 @@ private struct State: @unchecked Sendable {
     mutating func didJoin(ref: Ref, reply: Payload) -> JoinFuture? {
         switch connection {
         case .closed, .errored, .joined, .leaving:
-            assertionFailure(
-                "invalid state for didJoin: \(connection.description)"
-            )
             return nil
 
         case let .joining(future):
@@ -256,9 +266,6 @@ private struct State: @unchecked Sendable {
     mutating func didFailJoin() -> JoinFuture? {
         switch connection {
         case .closed, .errored, .joined, .leaving:
-            assertionFailure(
-                "invalid state for didJoin: \(connection.description)"
-            )
             return nil
 
         case let .joining(future):
@@ -308,18 +315,6 @@ private struct State: @unchecked Sendable {
             return nil
 
         case let .leaving(future):
-            connection = .closed
-            return future
-        }
-    }
-
-    mutating func didFailLeave(error: Error) -> LeaveFuture? {
-        switch connection {
-        case .closed, .errored, .joined, .joining:
-            return nil
-
-        case let .leaving(future):
-            if error is TimeoutError {}
             connection = .closed
             return future
         }

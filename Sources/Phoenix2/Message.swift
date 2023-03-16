@@ -92,14 +92,21 @@ public extension Message {
 }
 
 public extension Message {
-    var reply: (Bool, Ref, Payload) {
+    var reply: (Bool, Payload) {
+        get throws {
+            let refAndReply = try refAndReply
+            return (refAndReply.1, refAndReply.2)
+        }
+    }
+
+    internal var refAndReply: (Ref, Bool, Payload) {
         get throws {
             guard event == .reply,
                   let ref,
                   case let .string(status) = payload["status"]
             else { throw PhoenixError.invalidReply }
 
-            return (status == "ok", ref, payload["response"] ?? [:])
+            return (ref, status == "ok", payload["response"] ?? [:])
         }
     }
 
