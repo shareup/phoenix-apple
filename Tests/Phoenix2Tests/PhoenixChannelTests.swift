@@ -9,8 +9,6 @@ import XCTest
 final class PhoenixChannelTests: XCTestCase {
     private let url = URL(string: "ws://0.0.0.0:4003/socket")!
 
-    private var socket: PhoenixSocket!
-
     private var onOpen: AsyncExtensions.Future<Void>!
     private var onClose: AsyncExtensions.Future<WebSocketClose>!
 
@@ -25,18 +23,11 @@ final class PhoenixChannelTests: XCTestCase {
 
         sendSubject = .init()
         receiveSubject = .init()
-
-        socket = PhoenixSocket(url: url) { _, _, _, _, _ -> WebSocket in
-            self.makeWebSocket()
-        }
     }
 
     override func tearDown() async throws {
         try await super.tearDown()
 
-        await socket.disconnect(timeout: 0.000001)
-
-        socket = nil
         onOpen = nil
         onClose = nil
         sendSubject = nil
@@ -48,13 +39,14 @@ final class PhoenixChannelTests: XCTestCase {
     // NOTE: We do not allow updating the join parameters.
 
     func testChannelInit() async throws {
-        let channel = PhoenixChannel(
-            topic: "topic",
+        let channel = makeChannel(
             joinPayload: ["one": "two"],
-            socket: socket
+            PhoenixSocket(url: url) { _, _, _, _, _ in
+                self.makeWebSocket()
+            }
         )
 
-        XCTAssertTrue(channel.isClosed)
+        XCTAssertTrue(channel.isUnjoined)
         XCTAssertEqual("topic", channel.topic)
         XCTAssertEqual(
             ["one": "two"],
@@ -66,11 +58,7 @@ final class PhoenixChannelTests: XCTestCase {
         try await withSocket { socket in
             await socket.connect()
 
-            let channel = PhoenixChannel(
-                topic: "topic",
-                joinPayload: ["one": "two"],
-                socket: socket
-            )
+            let channel = self.makeChannel(joinPayload: ["one": "two"], socket)
 
             let didSendJoin = Locked(false)
             let task = Task {
@@ -95,7 +83,7 @@ final class PhoenixChannelTests: XCTestCase {
     func testSetsStateToJoining() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = PhoenixChannel(topic: "topic", socket: socket)
+            let channel = self.makeChannel(socket)
             let task = Task { try await channel.join() }
             await AssertTrueEventually(channel.isJoining)
             task.cancel()
@@ -115,7 +103,7 @@ final class PhoenixChannelTests: XCTestCase {
     func testDoesNotThrowWhenAttemptingToJoinMultipleTimes() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = PhoenixChannel(topic: "topic", socket: socket)
+            let channel = self.makeChannel(socket)
 
             Task {
                 let msg = try await self.nextOutoingMessage()
@@ -152,10 +140,9 @@ final class PhoenixChannelTests: XCTestCase {
     func testTriggersSocketPushWithJoinPayload() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = PhoenixChannel(
-                topic: "topic",
+            let channel = self.makeChannel(
                 joinPayload: ["one": "two"],
-                socket: socket
+                socket
             )
             let task = Task {
                 let msg = try await self.nextOutoingMessage()
@@ -171,7 +158,7 @@ final class PhoenixChannelTests: XCTestCase {
     func testTimeoutOnJoinPush() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = PhoenixChannel(topic: "topic", socket: socket)
+            let channel = self.makeChannel(socket)
             var didTimeout = false
             let start = Date()
             do {
@@ -184,6 +171,66 @@ final class PhoenixChannelTests: XCTestCase {
             XCTAssertTrue(didTimeout)
         }
     }
+
+    // MARK: "timeout behavior"
+
+    func testJoinSucceedsBeforeTimeout() async throws {
+        try await withAutoConnectAndJoinSocket { socket in
+            let channel = self.makeChannel(socket)
+            try await channel.join(timeout: 1)
+            await AssertTrueEventually(channel.isJoined)
+        }
+    }
+
+    func testRetriesJoinWithBackoffAfterTimeout() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+            let channel = self.makeChannel(
+                rejoinDelay: [0, 0.001, 0.1, 100],
+                socket
+            )
+
+            let start = Date()
+
+            Task {
+                var attempt = 0
+                for await msg in self.sendSubject.values {
+                    guard let message = try? Message.decode(msg),
+                          case .join = message.event
+                    else { return XCTFail() }
+
+                    defer { attempt += 1 }
+
+                    switch attempt {
+                    case 0:
+                        break
+
+                    case 1:
+                        break
+
+                    case 2:
+                        try self.sendJoinReply(for: message)
+
+                    default:
+                        XCTFail()
+                    }
+                }
+            }
+
+            Task {
+                await self.wait()
+                try await channel.join(timeout: 0.01)
+            }
+
+            await AssertTrueEventually(channel.isJoined)
+
+            XCTAssertGreaterThanOrEqual(
+                Date().timeIntervalSince(start),
+                0.11
+            )
+        }
+    }
+
 }
 
 private extension PhoenixChannelTests {
@@ -222,7 +269,72 @@ private extension PhoenixChannelTests {
             group.cancelAll()
         }
 
+        for channel in await socket.channels.values {
+            try? await channel.leave(timeout: 0.000001)
+        }
         await socket.disconnect(timeout: 0.000001)
+    }
+
+    func withAutoConnectAndJoinSocket(
+        timeout: TimeInterval = 10,
+        heartbeatInterval: TimeInterval = 30,
+        block: @escaping (PhoenixSocket) async throws -> Void
+    ) async throws {
+        let makeWS: MakeWebSocket = { _, _, _, _, _ in self.makeWebSocket() }
+
+        let socket = PhoenixSocket(
+            url: url,
+            timeout: timeout,
+            heartbeatInterval: heartbeatInterval,
+            makeWebSocket: makeWS
+        )
+
+        await socket.connect()
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await msg in self.sendSubject.values {
+                    guard let message = try? Message.decode(msg),
+                          message.event == .join,
+                          message.ref != nil
+                    else { continue }
+                    try self.sendJoinReply(for: message)
+                }
+            }
+
+            group.addTask {
+                await self.wait()
+                try await Task.sleep(nanoseconds: 2 * NSEC_PER_SEC)
+                if !Task.isCancelled { throw TimeoutError() }
+            }
+
+            group.addTask {
+                await self.wait()
+                try await block(socket)
+            }
+
+            try await group.next()
+            group.cancelAll()
+        }
+
+        for channel in await socket.channels.values {
+            try? await channel.leave(timeout: 0.000001)
+        }
+        await socket.disconnect(timeout: 0.000001)
+    }
+
+    func makeChannel(
+        topic: String = "topic",
+        rejoinDelay: [TimeInterval] = [0, 10],
+        joinPayload: Payload = [:],
+        _ socket: PhoenixSocket
+    ) -> PhoenixChannel {
+        PhoenixChannel(
+            topic: topic,
+            joinPayload: joinPayload,
+            rejoinDelay: rejoinDelay,
+            socket: socket
+        )
     }
 
     func nextOutoingMessage() async throws -> Message {
