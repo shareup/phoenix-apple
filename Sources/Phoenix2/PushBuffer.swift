@@ -40,7 +40,7 @@ Sendable {
         setTimeout(push.timeout)
 
         try await withTaskCancellationHandler(
-            operation: { () async throws in
+            operation: {
                 try await withCheckedThrowingContinuation { (cont: SendContinuation) in
                     let result = self.state.access { $0.appendForSend(push, cont) }
                     switch result {
@@ -66,7 +66,7 @@ Sendable {
         setTimeout(push.timeout)
 
         return try await withTaskCancellationHandler(
-            operation: { () async throws -> Message in
+            operation: {
                 try await withCheckedThrowingContinuation { (cont: ReplyContinuation) in
                     let result = self.state.access { $0.appendForReply(push, cont) }
                     switch result {

@@ -18,7 +18,7 @@ extension String {
         guard let string = String(data: data, encoding: encoding) else {
             throw NSError(
                 domain: "app.shareup.phoenix",
-                code: 10000,
+                code: 10_000,
                 userInfo: [
                     NSLocalizedDescriptionKey: "Could not decode '\(data)' into a UTF8 string",
                 ]
@@ -39,7 +39,7 @@ extension String {
         guard let data = optionalData else {
             throw NSError(
                 domain: "app.shareup.phoenix",
-                code: 10001,
+                code: 10_001,
                 userInfo: [
                     NSLocalizedDescriptionKey: "Could not encode '\(self)' into UTF8 bytes",
                 ]

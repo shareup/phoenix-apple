@@ -134,6 +134,7 @@ final class PhoenixSocketTests: XCTestCase {
             await socket.disconnect()
         }
 
+        //
         XCTAssertEqual(0, closes.access { $0 })
     }
 
@@ -651,16 +652,19 @@ private extension PhoenixSocketTests {
             makeWebSocket: makeWS
         )
 
-        let sub = socket.onConnectionStateChange.sink { state in
-            switch state {
-            case .connecting: break
-            case .open: onOpen()
-            case .waitingToReconnect: break
-            case .preparingToReconnect: break
-            case .closing: break
-            case .closed: onClose()
+        let sub = socket
+            .onConnectionStateChange
+            .dropFirst() // Drop the initial .closed
+            .sink { state in
+                switch state {
+                case .connecting: break
+                case .open: onOpen()
+                case .waitingToReconnect: break
+                case .preparingToReconnect: break
+                case .closing: break
+                case .closed: onClose()
+                }
             }
-        }
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {

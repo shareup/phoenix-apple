@@ -15,9 +15,10 @@ final class PhoenixChannel: @unchecked Sendable {
 
     var messages: MessagesPublisher { messagesSubject.eraseToAnyPublisher() }
 
-    var isUnjoined: Bool { state.access { $0.isUnjoined } }
+    var isErrored: Bool { state.access { $0.isErrored } }
     var isJoining: Bool { state.access { $0.isJoining } }
     var isJoined: Bool { state.access { $0.isJoined } }
+    var isUnjoined: Bool { state.access { $0.isUnjoined } }
 
     private let rejoinDelay: [TimeInterval]
     private let socket: PhoenixSocket
@@ -35,14 +36,9 @@ final class PhoenixChannel: @unchecked Sendable {
         self.joinPayload = joinPayload
         self.rejoinDelay = rejoinDelay
         self.socket = socket
-        self.state = Locked(.init(rejoinDelay: rejoinDelay))
+        state = Locked(.init(rejoinDelay: rejoinDelay))
 
-        state.access { state in
-            state.subscribeToStateChange(
-                socket: socket,
-                block: onSocketConnectionChange
-            )
-        }
+        watchSocketConnection()
     }
 
     deinit {
@@ -51,7 +47,7 @@ final class PhoenixChannel: @unchecked Sendable {
 
     @discardableResult
     func join(timeout: TimeInterval? = nil) async throws -> Payload {
-        let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
+        state.access { $0.prepareToJoin() }
         return try await rejoin(timeout: timeout)
     }
 
@@ -68,6 +64,7 @@ final class PhoenixChannel: @unchecked Sendable {
 
         try? await leave()
         let future = state.access { $0.didLeave() }
+        tasks.cancel(forKey: "socketConnection")
         os_log(
             "leave: channel=%{public}@",
             log: .phoenix,
@@ -116,29 +113,31 @@ final class PhoenixChannel: @unchecked Sendable {
 }
 
 private extension PhoenixChannel {
-    var onSocketConnectionChange: (PhoenixSocket.ConnectionState) -> Void {
-        { [weak self] (connectionState: PhoenixSocket.ConnectionState) in
-            guard let self else { return }
+    func watchSocketConnection() {
+        tasks.storedTask(key: "socketConnection") { [socket, state, weak self] in
+            let connectionStates = socket.onConnectionStateChange.values
+            for await connectionState in connectionStates {
+                try Task.checkCancellation()
 
-            switch connectionState {
-            case .closed:
-                let onClose = self.state.access { $0.timedOut() }
-                onClose()
-                self.scheduleRejoinIfPossible()
+                switch connectionState {
+                case .closed:
+                    let onClose = state.access { $0.timedOut() }
+                    onClose()
+                    self?.scheduleRejoinIfPossible()
 
-            case .open:
-                // TODO: rejoin
-                break
+                case .open:
+                    self?.scheduleRejoinIfPossible()
 
-            case .waitingToReconnect, .preparingToReconnect,
-                 .connecting, .closing:
-                break
+                case .waitingToReconnect, .preparingToReconnect,
+                     .connecting, .closing:
+                    break
+                }
             }
         }
     }
 
     @discardableResult
-    func rejoin(timeout: TimeInterval) async throws -> Payload {
+    func rejoin(timeout: TimeInterval? = nil) async throws -> Payload {
         let join = state.access { state in
             state.rejoin(
                 topic: topic,
@@ -162,6 +161,8 @@ private extension PhoenixChannel {
 
             future?.resolve((ref, reply))
             return reply
+        } catch let error as NotReadyToJoinError {
+            throw error
         } catch {
             state.access { $0.didFailJoin() }?.fail(error)
             tasks.cancel(forKey: "rejoin")
@@ -181,8 +182,6 @@ private extension PhoenixChannel {
     }
 
     func scheduleRejoinIfPossible(timeout: TimeInterval? = nil) {
-        let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
-
         tasks.storedNewTask(key: "rejoin") { [weak self] in
             try Task.checkCancellation()
             try await self?.rejoin(timeout: timeout)
@@ -191,18 +190,11 @@ private extension PhoenixChannel {
 }
 
 private struct State: @unchecked Sendable {
-    var connection: Connection
-    var rejoinAttempts: Int
-    var rejoinDelay: [TimeInterval]
-    var socketStateChangeSubscription: AnyCancellable?
-
-    var shouldRejoin: Bool {
-        if case .left = connection {
-            return false
-        } else {
-            return true
-        }
-    }
+    private(set) var connection: Connection
+    private var isReadyToJoin: Bool
+    private var lastJoinTimeout: TimeInterval?
+    private var rejoinAttempts: Int
+    private var rejoinDelay: [TimeInterval]
 
     var joinRef: Ref? {
         switch connection {
@@ -212,6 +204,11 @@ private struct State: @unchecked Sendable {
         case let .joined(ref, _):
             return ref
         }
+    }
+
+    var isErrored: Bool {
+        guard case .errored = connection else { return false }
+        return true
     }
 
     var isUnjoined: Bool {
@@ -230,21 +227,21 @@ private struct State: @unchecked Sendable {
     }
 
     enum Connection: CustomStringConvertible {
-        case unjoined
         case errored
         case joined(Ref, reply: Payload)
         case joining(JoinFuture)
         case leaving(LeaveFuture)
         case left
+        case unjoined
 
         var description: String {
             switch self {
-            case .errored: "errored"
-            case .joined: "joined"
-            case .joining: "joining"
-            case .leaving: "leaving"
-            case .left: "left"
-            case .unjoined: "unjoined"
+            case .errored: return "errored"
+            case .joined: return "joined"
+            case .joining: return "joining"
+            case .leaving: return "leaving"
+            case .left: return "left"
+            case .unjoined: return "unjoined"
             }
         }
     }
@@ -252,32 +249,28 @@ private struct State: @unchecked Sendable {
     init(
         connection: Connection = .unjoined,
         rejoinAttempts: Int = 0,
-        rejoinDelay: [TimeInterval],
-        socketStateChangeSubscription: AnyCancellable? = nil
+        rejoinDelay: [TimeInterval]
     ) {
         self.connection = connection
+        isReadyToJoin = false
+        lastJoinTimeout = nil
         self.rejoinAttempts = rejoinAttempts
         self.rejoinDelay = rejoinDelay
-        self.socketStateChangeSubscription = socketStateChangeSubscription
     }
 
-    mutating func subscribeToStateChange(
-        socket: PhoenixSocket,
-        block: @escaping (PhoenixSocket.ConnectionState) -> Void
-    ) {
-        precondition(socketStateChangeSubscription == nil)
-        socketStateChangeSubscription = socket
-            .onConnectionStateChange
-            .sink(receiveValue: block)
+    mutating func prepareToJoin() {
+        isReadyToJoin = true
     }
 
     mutating func rejoin(
         topic: Topic,
         payload: Payload,
         socket: PhoenixSocket,
-        timeout: TimeInterval
+        timeout: TimeInterval?
     ) -> () async throws -> (Ref, Payload) {
         typealias E = PhoenixError
+
+        guard isReadyToJoin else { return { throw NotReadyToJoinError() } }
 
         switch connection {
         case .errored, .unjoined:
@@ -286,10 +279,23 @@ private struct State: @unchecked Sendable {
 
             let attempt = rejoinAttempts
             rejoinAttempts += 1
-            let delay = self.delay(for: attempt)
+            let delay = delay(for: attempt)
+
+            // NOTE: When trying to rejoin after an issue,
+            // we want to reuse the timeout from the last
+            // explicit call to `PhoenixChannel.join(timeout:)`,
+            // which is why we keep track of it using
+            // `lastJoinTimeout`.
+            if let timeout { lastJoinTimeout = timeout }
+            let timeout = timeout ?? lastJoinTimeout
 
             return {
                 try await delay()
+
+                // NOTE: Because it's possible for a timeout
+                // was never specified for `join(timeout:)`,
+                // we fallback to the socket's timeout.
+                let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
 
                 let push = Push(
                     topic: topic,
@@ -312,7 +318,7 @@ private struct State: @unchecked Sendable {
             return { (ref, reply) }
 
         case let .joining(future):
-            return { return try await future.value }
+            return { try await future.value }
 
         case .leaving, .left:
             return { throw PhoenixError.leavingChannel }
@@ -417,3 +423,5 @@ private struct State: @unchecked Sendable {
         return { try await Task.sleep(nanoseconds: delay.nanoseconds) }
     }
 }
+
+private struct NotReadyToJoinError: Error {}

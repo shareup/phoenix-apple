@@ -53,7 +53,7 @@ final actor PhoenixSocket {
     }
 
     nonisolated var onConnectionStateChange: ConnectionStatePublisher {
-        _connectionState.dropFirst().eraseToAnyPublisher()
+        _connectionState.eraseToAnyPublisher()
     }
 
     private nonisolated let _connectionState =
@@ -175,13 +175,6 @@ extension PhoenixSocket {
             let encoder = self.pushEncoder
 
             for try await push in self.pushes {
-                os_log(
-                    "send: %@",
-                    log: .phoenix,
-                    type: .debug,
-                    push.description
-                )
-
                 guard let ws = await self.webSocket,
                       !Task.isCancelled
                 else { return }
@@ -199,6 +192,13 @@ extension PhoenixSocket {
                     try await ws.send(encoder(push))
 
                     if Task.isCancelled { return }
+
+                    os_log(
+                        "send: %@",
+                        log: .phoenix,
+                        type: .debug,
+                        push.description
+                    )
 
                     self.pushes.didSend(push)
                 } catch {

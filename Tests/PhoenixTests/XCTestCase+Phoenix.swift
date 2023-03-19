@@ -45,10 +45,9 @@ extension XCTestCase {
         let valueToExpectation = valueToAction.reduce(into: [T.RawCase: XCTestExpectation]())
             { [unowned self] dict, valueToAction in
                 let key = valueToAction.key
-                let expectation = self
-                    .expectation(
-                        description: "Should have received '\(String(describing: key))'"
-                    )
+                let expectation = expectation(
+                    description: "Should have received '\(String(describing: key))'"
+                )
                 dict[key] = expectation
             }
 

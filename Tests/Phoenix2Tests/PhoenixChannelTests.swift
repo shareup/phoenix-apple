@@ -9,17 +9,11 @@ import XCTest
 final class PhoenixChannelTests: XCTestCase {
     private let url = URL(string: "ws://0.0.0.0:4003/socket")!
 
-    private var onOpen: AsyncExtensions.Future<Void>!
-    private var onClose: AsyncExtensions.Future<WebSocketClose>!
-
     private var sendSubject: PassthroughSubject<WebSocketMessage, Never>!
     private var receiveSubject: PassthroughSubject<WebSocketMessage, Never>!
 
     override func setUp() async throws {
         try await super.setUp()
-
-        onOpen = .init()
-        onClose = .init()
 
         sendSubject = .init()
         receiveSubject = .init()
@@ -28,8 +22,6 @@ final class PhoenixChannelTests: XCTestCase {
     override func tearDown() async throws {
         try await super.tearDown()
 
-        onOpen = nil
-        onClose = nil
         sendSubject = nil
         receiveSubject = nil
     }
@@ -40,6 +32,7 @@ final class PhoenixChannelTests: XCTestCase {
 
     func testChannelInit() async throws {
         let channel = makeChannel(
+            rejoinDelay: [10],
             joinPayload: ["one": "two"],
             PhoenixSocket(url: url) { _, _, _, _, _ in
                 self.makeWebSocket()
@@ -231,25 +224,148 @@ final class PhoenixChannelTests: XCTestCase {
         }
     }
 
+    func testJoinsAfterSocketOpenAndJoinDelays() async throws {
+        let openFuture = AsyncExtensions.Future<Void>()
+        let canJoin = Locked(false)
+        let didJoin = Locked(false)
+
+        let ws = makeDelayedWebSocket(
+            openDelay: { try? await openFuture.value }
+        )
+
+        try await withSocket(webSocket: ws) { socket in
+            await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { await socket.connect() }
+
+                group.addTask {
+                    for await msg in self.sendSubject.values {
+                        guard let message = try? Message.decode(msg),
+                              case .join = message.event,
+                              canJoin.access({ $0 })
+                        else { continue }
+
+                        try self.sendJoinReply(for: message)
+                    }
+                }
+
+                group.addTask {
+                    let channel = self.makeChannel(rejoinDelay: [0, 0.02], socket)
+
+                    do {
+                        try await channel.join(timeout: 0.01)
+                    } catch is TimeoutError {
+                        // This is different from the PhoenixJS test.
+                        // Our channel errors on timeout, but then we
+                        // switch to `joining` while waiting for the join
+                        // delay to pass. We do this to prevent races.
+                        XCTAssertTrue(channel.isErrored || channel.isJoining)
+
+                        openFuture.resolve()
+
+                        try? await Task.sleep(nanoseconds: NSEC_PER_MSEC * 15)
+                        canJoin.access { $0 = true }
+
+                        await AssertTrueEventually(channel.isJoined)
+                        didJoin.access { $0 = true }
+                    } catch is CancellationError {
+                    } catch {
+                        XCTFail("Should have timed out")
+                    }
+                }
+
+                await AssertTrueEventually(didJoin.access { $0 })
+                group.cancelAll()
+            }
+        }
+
+        XCTAssertTrue(didJoin.access { $0 })
+    }
+
+    func testOpensAfterSocketOpenDelay() async throws {
+        let openFuture = AsyncExtensions.Future<Void>()
+        let canJoin = Locked(false)
+        let didJoin = Locked(false)
+
+        let ws = makeDelayedWebSocket(
+            openDelay: { try? await openFuture.value }
+        )
+
+        try await withSocket(webSocket: ws) { socket in
+            await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask { await socket.connect() }
+
+                group.addTask {
+                    for await msg in self.sendSubject.values {
+                        guard let message = try? Message.decode(msg),
+                              case .join = message.event,
+                              canJoin.access({ $0 })
+                        else { continue }
+
+                        try self.sendJoinReply(for: message)
+                    }
+                }
+
+                group.addTask {
+                    let channel = self.makeChannel(rejoinDelay: [0, 0.02], socket)
+
+                    do {
+                        try await channel.join(timeout: 0.01)
+                    } catch is TimeoutError {
+                        try? await Task.sleep(nanoseconds: NSEC_PER_MSEC * 30)
+
+                        openFuture.resolve()
+                        canJoin.access { $0 = true }
+
+                        await AssertTrueEventually(channel.isJoined)
+                        didJoin.access { $0 = true }
+                    } catch is CancellationError {
+                    } catch {
+                        XCTFail("Should have timed out")
+                    }
+                }
+
+                await AssertTrueEventually(didJoin.access { $0 })
+                group.cancelAll()
+            }
+        }
+
+        XCTAssertTrue(didJoin.access { $0 })
+    }
 }
 
 private extension PhoenixChannelTests {
     func makeWebSocket() -> WebSocket {
         WebSocket(
             id: .random(in: 1 ... 1_000_000_000),
-            open: { self.onOpen.resolve() },
-            close: { code, _ in self.onClose.resolve(.init(code, nil)) },
+            open: {},
+            close: { _, _ in },
+            send: { self.sendSubject.send($0) },
+            messagesPublisher: { self.receiveSubject.eraseToAnyPublisher() }
+        )
+    }
+
+    func makeDelayedWebSocket(
+        openDelay: (() async -> Void)? = nil,
+        closeDelay: (() async -> Void)? = nil
+    ) -> WebSocket {
+        WebSocket(
+            id: .random(in: 1 ... 1_000_000_000),
+            open: { if let openDelay { await openDelay() } },
+            close: { _, _ in if let closeDelay { await closeDelay() } },
             send: { self.sendSubject.send($0) },
             messagesPublisher: { self.receiveSubject.eraseToAnyPublisher() }
         )
     }
 
     func withSocket(
+        webSocket: WebSocket? = nil,
         timeout: TimeInterval = 10,
         heartbeatInterval: TimeInterval = 30,
         block: @escaping (PhoenixSocket) async throws -> Void
     ) async throws {
-        let makeWS: MakeWebSocket = { _, _, _, _, _ in self.makeWebSocket() }
+        let makeWS: MakeWebSocket = { _, _, _, _, _ in
+            webSocket ?? self.makeWebSocket()
+        }
 
         let socket = PhoenixSocket(
             url: url,
@@ -276,11 +392,14 @@ private extension PhoenixChannelTests {
     }
 
     func withAutoConnectAndJoinSocket(
+        webSocket: WebSocket? = nil,
         timeout: TimeInterval = 10,
         heartbeatInterval: TimeInterval = 30,
         block: @escaping (PhoenixSocket) async throws -> Void
     ) async throws {
-        let makeWS: MakeWebSocket = { _, _, _, _, _ in self.makeWebSocket() }
+        let makeWS: MakeWebSocket = { _, _, _, _, _ in
+            webSocket ?? self.makeWebSocket()
+        }
 
         let socket = PhoenixSocket(
             url: url,

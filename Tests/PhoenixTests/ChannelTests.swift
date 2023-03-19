@@ -326,7 +326,7 @@ class ChannelTests: XCTestCase {
                     // test,
                     // there is a delay after sending 'connect' before receiving the response.
                     didReceiveError = true
-                    usleep(50000)
+                    usleep(50_000)
                     self.socket.connect()
                 },
                 .join: { didJoinEx.fulfill() },
@@ -356,7 +356,7 @@ class ChannelTests: XCTestCase {
                 // there is a delay after sending 'connect' before receiving the response.
                 .error: {
                     didReceiveError = true
-                    usleep(50000)
+                    usleep(50_000)
                     self.socket.connect()
                 },
                 .join: { didJoinEx.fulfill() },

@@ -7,25 +7,17 @@ let package = Package(
         .macOS(.v11), .iOS(.v15), .tvOS(.v15), .watchOS(.v8),
     ],
     products: [
-        //        .library(
-//            name: "Phoenix",
-//            targets: ["Phoenix"]
-//        ),
         .library(name: "Phoenix2", targets: ["Phoenix2"]),
     ],
     dependencies: [
         .package(
             url: "https://github.com/shareup/async-extensions.git",
-            from: "2.5.1"
+            from: "3.0.0"
         ),
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",
             from: "3.0.0"
         ),
-//        .package(
-//            url: "https://github.com/apple/swift-async-algorithms",
-//            from: "0.0.1"
-//        ),
         .package(
             url: "https://github.com/shareup/json-apple.git",
             from: "1.1.0"
@@ -45,14 +37,6 @@ let package = Package(
 //        ),
     ],
     targets: [
-        //        .target(
-//            name: "Phoenix",
-//            dependencies: [
-//                .product(name: "DispatchTimer", package: "dispatch-timer"),
-//                .product(name: "Synchronized", package: "synchronized"),
-//                .product(name: "WebSocket", package: "websocket-apple"),
-//            ]
-//        ),
         .target(
             name: "Phoenix2",
             dependencies: [
@@ -69,11 +53,6 @@ let package = Package(
                 ]),
             ]
         ),
-//        .testTarget(
-//            name: "PhoenixTests",
-//            dependencies: ["Phoenix"],
-//            exclude: ["phoenix-js", "server"]
-//        ),
         .testTarget(
             name: "Phoenix2Tests",
             dependencies: [
