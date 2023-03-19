@@ -1,13 +1,13 @@
-// swift-tools-version:5.8
+// swift-tools-version:5.7
 import PackageDescription
 
 let package = Package(
     name: "Phoenix",
     platforms: [
-        .macOS(.v11), .iOS(.v15), .tvOS(.v15), .watchOS(.v8),
+        .macOS(.v12), .iOS(.v15), .tvOS(.v15), .watchOS(.v8),
     ],
     products: [
-        .library(name: "Phoenix2", targets: ["Phoenix2"]),
+        .library(name: "Phoenix", targets: ["Phoenix"]),
     ],
     dependencies: [
         .package(
@@ -38,8 +38,9 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "Phoenix2",
+            name: "Phoenix",
             dependencies: [
+                .product(name: "AsyncExtensions", package: "async-extensions"),
                 .product(name: "DispatchTimer", package: "dispatch-timer"),
                 .product(name: "Collections", package: "swift-collections"),
                 .product(name: "JSON", package: "json-apple"),
@@ -54,11 +55,11 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "Phoenix2Tests",
+            name: "PhoenixTests",
             dependencies: [
                 .product(name: "AsyncExtensions", package: "async-extensions"),
                 .product(name: "AsyncTestExtensions", package: "async-extensions"),
-                "Phoenix2",
+                "Phoenix",
             ]
         ),
     ]

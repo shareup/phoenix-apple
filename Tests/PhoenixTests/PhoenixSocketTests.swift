@@ -1,7 +1,7 @@
 import AsyncExtensions
 import AsyncTestExtensions
 import Combine
-@testable import Phoenix2
+@testable import Phoenix
 import Synchronized
 import WebSocket
 import XCTest

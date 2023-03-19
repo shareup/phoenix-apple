@@ -1,3 +1,0 @@
-#! /usr/bin/env bash
-
-while swift test -v; do :; done

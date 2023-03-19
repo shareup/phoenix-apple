@@ -1,4 +1,4 @@
-@testable import Phoenix2
+@testable import Phoenix
 import XCTest
 
 final class PayloadTests: XCTestCase {
