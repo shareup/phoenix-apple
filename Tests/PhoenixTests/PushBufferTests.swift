@@ -760,6 +760,8 @@ final class PushBufferTests: XCTestCase {
                 }
             }
 
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+
             group.addTask {
                 var iterator = buffer.makeAsyncIterator()
 
