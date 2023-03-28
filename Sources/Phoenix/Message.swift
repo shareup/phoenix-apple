@@ -80,7 +80,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
     }
 
     public var description: String {
-        "\(topic) \(event) \(String(describing: joinRef)) \(String(describing: ref))"
+        "[\(topic), \(event), \(String(describing: joinRef)), \(String(describing: ref))]"
     }
 }
 

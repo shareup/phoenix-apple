@@ -29,7 +29,7 @@ public final class Push: Hashable, CustomStringConvertible, Sendable {
         let (joinRef, ref) = state.access { ($0.joinRef, $0.ref) }
         let _joinRef = joinRef != nil ? "\(joinRef!.rawValue)" : "nil"
         let _ref = ref != nil ? "\(ref!.rawValue)" : "nil"
-        return "\(topic) \(event) \(_joinRef) \(_ref)"
+        return "[\(topic), \(event), \(_joinRef), \(_ref)]"
     }
 
     func prepareToSend(ref: Ref, joinRef: Ref? = nil) {

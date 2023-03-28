@@ -41,7 +41,7 @@ Sendable {
 
         try await withTaskCancellationHandler(
             operation: {
-                try await withCheckedThrowingContinuation { (cont: SendContinuation) in
+                try await withUnsafeThrowingContinuation { (cont: SendContinuation) in
                     let result = self.state.access { $0.appendForSend(push, cont) }
                     switch result {
                     case let .cancel(cont, error):
@@ -67,7 +67,7 @@ Sendable {
 
         return try await withTaskCancellationHandler(
             operation: {
-                try await withCheckedThrowingContinuation { (cont: ReplyContinuation) in
+                try await withUnsafeThrowingContinuation { (cont: ReplyContinuation) in
                     let result = self.state.access { $0.appendForReply(push, cont) }
                     switch result {
                     case let .cancel(cont, error):
@@ -146,7 +146,7 @@ Sendable {
 
         return try await withTaskCancellationHandler(
             operation: { () async throws -> Push in
-                try await withCheckedThrowingContinuation { (cont: AwaitingPushContinuation) in
+                try await withUnsafeThrowingContinuation { (cont: AwaitingPushContinuation) in
                     do {
                         let push: Push? = try state.access { state in
                             if cancellation.isCancelled {
@@ -181,8 +181,13 @@ Sendable {
     }
 
     private func setTimeout(_ date: Date) {
-        let timeoutNs = date.timeIntervalSinceNow.nanoseconds
-        assert(timeoutNs > 0)
+        // Maximum of one hour timeout because `.distantFuture` timeouts
+        // cause `Task.sleep(nanoseconds:)` to return immediately, for
+        // some reason.
+        let timeoutNs = Swift.min(
+            date.timeIntervalSinceNow.nanoseconds,
+            NSEC_PER_SEC * 60 * 60
+        )
 
         state.access { state in
             state.setTimeout(date) {
@@ -233,15 +238,16 @@ private enum Continuation {
 
 /// A continuation stored in `State` while its waiting for new
 /// pushes to be appended.
-private typealias AwaitingPushContinuation = CheckedContinuation<Push, Error>
+private typealias AwaitingPushContinuation = UnsafeContinuation<Push, Error>
 
 /// A continuation resolved when a Push receives a reply.
-private typealias ReplyContinuation = CheckedContinuation<Message, Error>
+private typealias ReplyContinuation = UnsafeContinuation<Message, Error>
 
 /// A continuation resolved when a Push is sent. Replies are ignored.
-private typealias SendContinuation = CheckedContinuation<Void, Error>
+private typealias SendContinuation = UnsafeContinuation<Void, Error>
 
 private typealias Pushes = OrderedDictionary<Push, Continuation>
+private typealias BufferedPushes = OrderedDictionary<Topic, Pushes>
 
 private enum AppendResult {
     case cancel(Continuation, Error)
@@ -410,8 +416,8 @@ private struct Timeout {
 }
 
 private enum Queue {
-    case active(inFlight: Pushes, buffer: Pushes)
-    case idle(buffer: Pushes)
+    case active(inFlight: Pushes, buffer: BufferedPushes)
+    case idle(buffer: BufferedPushes)
     case terminal(Error)
 
     var isTerminal: Bool {
@@ -444,7 +450,9 @@ private enum Queue {
             return nil
 
         case var .idle(buffer):
-            let first = buffer.removeFirst()
+            var (topic, pushes) = buffer.removeFirst()
+            let first = pushes.removeFirst()
+            if !pushes.isEmpty { buffer[topic] = pushes }
             self = .active(
                 inFlight: .init(dictionaryLiteral: first),
                 buffer: buffer
@@ -468,11 +476,11 @@ private enum Queue {
         switch self {
         case let .active(inFlight, buffer):
             self = .terminal(error)
-            return inFlight.merging(buffer) { _, _ in preconditionFailure() }
+            return inFlight.merging(buffer)
 
         case let .idle(buffer):
             self = .terminal(error)
-            return buffer
+            return buffer.pushes
 
         case .terminal:
             return nil
@@ -485,7 +493,9 @@ private enum Queue {
             if let cont = inFlight.removeValue(forKey: push) {
                 self = .active(inFlight: inFlight, buffer: buffer)
                 return cont
-            } else if let cont = buffer.removeValue(forKey: push) {
+            } else if var pushes = buffer.removeValue(forKey: push.topic) {
+                let cont: Continuation? = pushes.removeValue(forKey: push)
+                if !pushes.isEmpty { buffer[push.topic] = pushes }
                 self = .active(inFlight: inFlight, buffer: buffer)
                 return cont
             } else {
@@ -493,7 +503,9 @@ private enum Queue {
             }
 
         case var .idle(buffer):
-            if let cont = buffer.removeValue(forKey: push) {
+            if var pushes = buffer.removeValue(forKey: push.topic) {
+                let cont: Continuation? = pushes.removeValue(forKey: push)
+                if !pushes.isEmpty { buffer[push.topic] = pushes }
                 self = .idle(buffer: buffer)
                 return cont
             } else {
@@ -523,11 +535,10 @@ private enum Queue {
 
         switch self {
         case let .active(inFlight, buffer):
-            let merged = inFlight.merging(buffer) { one, _ in one }
-            return nextTimeout(in: merged)
+            return nextTimeout(in: inFlight.merging(buffer))
 
         case let .idle(buffer):
-            return nextTimeout(in: buffer)
+            return nextTimeout(in: buffer.pushes)
 
         case .terminal:
             return nil
@@ -535,8 +546,12 @@ private enum Queue {
     }
 
     mutating func timeout(at date: Date) -> Pushes {
+        func isTimedOut(_ push: Push) -> Bool {
+            push.timeout <= date
+        }
+
         func isTimedOut(_ element: (Push, Continuation)) -> Bool {
-            element.0.timeout <= date
+            isTimedOut(element.0)
         }
 
         switch self {
@@ -544,17 +559,13 @@ private enum Queue {
             let timedOutInFlight = inFlight.filter(isTimedOut)
             timedOutInFlight.forEach { inFlight.removeValue(forKey: $0.key) }
 
-            let timedOutBuffered = buffer.filter(isTimedOut)
-            timedOutBuffered.forEach { buffer.removeValue(forKey: $0.key) }
+            let timedOutBuffered = buffer.removePushes(where: isTimedOut)
 
             self = .active(inFlight: inFlight, buffer: buffer)
-            return timedOutInFlight.merging(timedOutBuffered) { _, _ in
-                preconditionFailure("Pushes can either be in-flight or buffered")
-            }
+            return timedOutInFlight.merging(timedOutBuffered)
 
         case var .idle(buffer):
-            let timedOut = buffer.filter(isTimedOut)
-            timedOut.forEach { buffer.removeValue(forKey: $0.key) }
+            let timedOut = buffer.removePushes(where: isTimedOut)
             self = .idle(buffer: buffer)
             return timedOut
 
@@ -625,12 +636,20 @@ private enum Queue {
     ) -> (Continuation, Error)? {
         switch self {
         case .active(let inFlight, var buffer):
-            buffer[push] = continuation
+            buffer.updateValue(
+                forKey: push.topic,
+                default: Pushes(),
+                with: { $0[push] = continuation }
+            )
             self = .active(inFlight: inFlight, buffer: buffer)
             return nil
 
         case var .idle(buffer):
-            buffer[push] = continuation
+            buffer.updateValue(
+                forKey: push.topic,
+                default: Pushes(),
+                with: { $0[push] = continuation }
+            )
             self = .idle(buffer: buffer)
             return nil
 
@@ -668,14 +687,14 @@ private enum Queue {
     mutating func removeSendContinuation(for push: Push) -> SendContinuation? {
         switch self {
         case .active(var inFlight, let buffer):
-            precondition(buffer[push] == nil)
+            precondition(!buffer.contains(push))
             guard case let .send(cont) = inFlight[push] else { return nil }
             inFlight.removeValue(forKey: push)
             self = .active(inFlight: inFlight, buffer: buffer)
             return cont
 
         case let .idle(buffer):
-            precondition(buffer[push] == nil)
+            precondition(!buffer.contains(push))
             return nil
 
         case .terminal:
@@ -690,8 +709,10 @@ private enum Queue {
         switch self {
         case var .active(inFlight, buffer):
             guard !buffer.isEmpty else { return nil }
-            let next = buffer.removeFirst()
+            var (topic, pushes) = buffer.removeFirst()
+            let next = pushes.removeFirst()
             inFlight[next.key] = next.value
+            if !pushes.isEmpty { buffer[topic] = pushes }
             self = .active(inFlight: inFlight, buffer: buffer)
             return next.key
 
@@ -707,13 +728,18 @@ private enum Queue {
         switch self {
         case var .active(inFlight, buffer):
             guard let cont = inFlight.removeValue(forKey: push)
-            else { return buffer[push] != nil }
-            buffer[push] = cont
+            else { return buffer.contains(push) }
+            let replaced = buffer.updateValue(
+                forKey: push.topic,
+                default: Pushes(),
+                with: { $0.updateValue(cont, forKey: push, insertingAt: 0) }
+            )
+            precondition(replaced.originalMember == nil)
             self = .active(inFlight: inFlight, buffer: buffer)
             return true
 
         case let .idle(buffer):
-            return buffer[push] != nil
+            return buffer.contains(push)
 
         case .terminal:
             return false
@@ -739,5 +765,52 @@ private extension Pushes {
         removeValue(forKey: push)
 
         return cont
+    }
+
+    mutating func merge(_ other: Pushes) {
+        merge(other, uniquingKeysWith: { _, _ in preconditionFailure() })
+    }
+
+    func merging(_ other: Pushes) -> Pushes {
+        merging(other, uniquingKeysWith: { _, _ in preconditionFailure() })
+    }
+
+    func merging(_ other: BufferedPushes) -> Pushes {
+        merging(other.pushes)
+    }
+}
+
+private extension BufferedPushes {
+    var pushes: Pushes {
+        reduce(into: Pushes()) { acc, value in
+            let (_, pushes) = value
+            acc.merge(pushes)
+        }
+    }
+
+    func contains(_ push: Push) -> Bool {
+        self[push.topic]?[push] != nil
+    }
+
+    func findPush(matching ref: Ref?) -> Push? {
+        guard let ref else { return nil }
+        for (_, pushes) in self {
+            if let push = pushes.findPush(matching: ref) {
+                return push
+            }
+        }
+        return nil
+    }
+
+    mutating func removePushes(where predicate: (Push) -> Bool) -> Pushes {
+        var removed = Pushes()
+        self = reduce(into: BufferedPushes()) { acc, value in
+            var (topic, pushes) = value
+            let filteredOut = pushes.filter { predicate($0.0) }
+            filteredOut.forEach { pushes.removeValue(forKey: $0.key) }
+            if !pushes.isEmpty { acc[topic] = pushes }
+            removed.merge(filteredOut)
+        }
+        return removed
     }
 }

@@ -1,9 +1,17 @@
 import AsyncExtensions
+import AsyncTestExtensions
 @testable import Phoenix
 import Synchronized
 import XCTest
 
 final class PushBufferTests: XCTestCase {
+    var ref: Locked<Ref>!
+
+    override func setUp() {
+        super.setUp()
+        ref = Locked(Ref(1))
+    }
+
     func testInitializer() throws {
         XCTAssertFalse(PushBuffer().isActive)
         XCTAssertTrue(PushBuffer().isIdle)
@@ -369,6 +377,193 @@ final class PushBufferTests: XCTestCase {
         XCTAssertEqual(expectedCount, count.access { $0 })
     }
 
+    func testCanWorkThroughMultipleBufferedPushesWaitingForReply() async throws {
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let count = Locked(0)
+        let expectedCount = 100
+        let pushes = makePushes(expectedCount)
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for push in pushes {
+                group.addTask {
+                    self.prepareToSend(push)
+                    let msg = try await buffer.appendAndWait(push)
+                    XCTAssertEqual(self.makeReply(for: push), msg)
+                    count.access { $0 += 1 }
+                }
+            }
+
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+
+            group.addTask {
+                for try await push in buffer {
+                    buffer.didSend(push)
+                    XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
+                }
+            }
+
+            await AssertEqualEventually(expectedCount, count.access { $0 })
+            group.cancelAll()
+        }
+
+        XCTAssertEqual(expectedCount, count.access { $0 })
+    }
+
+    // NOTE: This test is hard to follow, but I couldn't think of a better
+    // way to write it. The goal of the test is to determine whether or not
+    // the order of pushes inside a channel is maintained. Phoenix channels
+    // require that the first message pushed to a channel is a `phx_join`
+    // message. The rest of the messages should also be sent in the order
+    // the Phoenix client (i.e., `PhoenixSocket`) received them. So, this
+    // test adds a bunch of messages to `PushBuffer` in different "channels",
+    // iterates over them, puts each message back the first time it is seen,
+    // and then, the second time it is seen, sends its reply. Also, each time
+    // a message is "put back", the queue should move on to the next "channel"
+    // to try to send one of its messages. This ensures sync will never get
+    // stuck behind a single, badly-behaving channel.
+    func testPuttingBackMaintainsTopicSortOrder() async throws {
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let expectedCount = 5
+        let topics = [1, 2, 3]
+
+        let replies = Locked<[Topic: [Message]]>([:])
+
+        @Sendable
+        func append(_ reply: Message) {
+            replies.access { replies in
+                if var messages = replies[reply.topic] {
+                    messages.append(reply)
+                    replies[reply.topic] = messages
+                } else {
+                    replies[reply.topic] = [reply]
+                }
+            }
+        }
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for topic in topics {
+                for i in 1 ... expectedCount {
+                    group.addTask {
+                        let push = self.makePush(i, topic: topic)
+                        self.prepareToSend(push)
+                        let reply = try! await buffer.appendAndWait(push)
+                        append(reply)
+                    }
+                }
+            }
+
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+
+            group.addTask {
+                var count = 0
+                var lastReceivedValues = [Topic: Int]()
+                var receivedTopics: [Topic] = []
+                for try await push in buffer {
+                    count += 1
+
+                    receivedTopics.append(push.topic)
+
+                    if let lastValue = lastReceivedValues[push.topic] {
+                        XCTAssertEqual(lastValue, self.value(for: push))
+                        lastReceivedValues[push.topic] = nil
+                        buffer.didSend(push)
+                        XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
+                    } else {
+                        lastReceivedValues[push.topic] = self.value(for: push)
+                        buffer.putBack(push)
+                    }
+
+                    if count == 2 * (topics.count * expectedCount) { break }
+                }
+
+                // Check that the topics were always cycled through in the same order
+                let topicCycles: [[Topic]] = receivedTopics.reduce(into: []) { acc, topic in
+                    if var cycle = acc.popLast(), cycle.count < topics.count {
+                        cycle.append(topic)
+                        acc.append(cycle)
+                    } else {
+                        acc.append([topic])
+                    }
+                }
+                XCTAssertTrue(topicCycles.allSatisfy { $0.count == topics.count })
+                let firstCycle = topicCycles[0]
+                XCTAssertTrue(topicCycles.allSatisfy { $0 == firstCycle })
+            }
+
+            try await group.waitForAll()
+        }
+
+        XCTAssertTrue(replies.access { replies in
+            replies.allSatisfy { $0.value.count == expectedCount }
+        })
+    }
+
+    func testEmptyTopicsAreRemovedFromNext() async throws {
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let topicsAndCounts = [1: 1, 2: 2, 3: 3]
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for (topic, count) in topicsAndCounts {
+                for i in 1 ... count {
+                    group.addTask {
+                        let push = self.makePush(i, topic: topic)
+                        self.prepareToSend(push)
+                        try! await buffer.append(push)
+                    }
+                }
+            }
+
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+
+            group.addTask {
+                var remainingRepliesForTopic = topicsAndCounts.reduce(
+                    into: [Topic: Int](),
+                    { $0["\($1.key)"] = $1.value }
+                )
+                var receivedTopics: [Topic] = []
+
+                for try await push in buffer {
+                    receivedTopics.append(push.topic)
+
+                    guard let count = remainingRepliesForTopic[push.topic],
+                          count > 0
+                    else {
+                        return XCTFail("Exceeded maximum messages for \(push.topic)")
+                    }
+
+                    let remainingCount = count - 1
+                    remainingRepliesForTopic[push.topic] = remainingCount == 0
+                        ? nil
+                        : remainingCount
+
+                    buffer.didSend(push)
+
+                    if remainingRepliesForTopic.isEmpty { break }
+                }
+
+                // We would expect to see something like this:
+                // `[1, 2, 2, 3, 3, 3]`
+                XCTAssertEqual(
+                    receivedTopics.sorted(),
+                    topicsAndCounts
+                        .flatMap { topicAndCount in
+                            let (topic, count) = topicAndCount
+                            return (0 ..< count).map { _ in "\(topic)" }
+                        }
+                        .sorted()
+                )
+            }
+
+            try await group.waitForAll()
+        }
+    }
+
     func testCancellationCancelsIteration() async throws {
         struct State {
             var pushIndex: Int = 0
@@ -713,25 +908,48 @@ final class PushBufferTests: XCTestCase {
 }
 
 private extension PushBufferTests {
+    func makeRef() -> Ref {
+        ref.access { ref in
+            let current = ref
+            ref = ref.next
+            return current
+        }
+    }
+
     func makeJoinPush() -> Push {
         Push(topic: "two", event: .join)
     }
 
-    func makePushes(_ count: Int) -> [Push] {
-        (1 ... count).map { makePush($0) }
+    func makePushes(_ count: Int, topic: Int? = nil) -> [Push] {
+        (1 ... count).map { makePush($0, topic: topic) }
     }
 
     func makePush(
         _ id: Int,
+        topic: Int? = nil,
         timeout: Date = Date.distantFuture
     ) -> Push {
         let push = Push(
-            topic: "\(id)",
+            topic: topic == nil ? "\(id)" : "\(topic!)",
             event: .custom("\(id)"),
             payload: ["value": id],
             timeout: timeout
         )
         return push
+    }
+
+    func value(for push: Push) -> Int {
+        guard let anyValue = push.payload["value"]?.jsonValue,
+              let doubleValue = anyValue as? Double
+        else { preconditionFailure() }
+        return Int(doubleValue)
+    }
+
+    func value(for message: Message) -> Int {
+        guard let anyValue = message.payload["value"]?.jsonValue,
+              let doubleValue = anyValue as? Double
+        else { preconditionFailure() }
+        return Int(doubleValue)
     }
 
     func makePushStream(maxCount: Int = 1000) -> AsyncStream<Push> {
@@ -746,8 +964,8 @@ private extension PushBufferTests {
     func prepareToSend(_ push: Push) {
         assert(push.joinRef == nil)
         assert(push.ref == nil)
-        let i = UInt64(push.topic)!
-        push.prepareToSend(ref: Ref(i), joinRef: Ref(i))
+        let joinRef = UInt64(push.topic)!
+        push.prepareToSend(ref: makeRef(), joinRef: Ref(joinRef))
     }
 
     func makeReply(for push: Push) -> Message {
