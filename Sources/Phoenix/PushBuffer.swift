@@ -605,7 +605,7 @@ private enum Queue {
 
         precondition(buffer.isEmpty)
 
-        inFlight[push] = continuation
+        inFlight.append(continuation, forKey: push)
         self = .active(inFlight: inFlight, buffer: buffer)
         return true
     }
@@ -639,7 +639,7 @@ private enum Queue {
             buffer.updateValue(
                 forKey: push.topic,
                 default: Pushes(),
-                with: { $0[push] = continuation }
+                with: { $0.append(continuation, forKey: push) }
             )
             self = .active(inFlight: inFlight, buffer: buffer)
             return nil
@@ -648,7 +648,7 @@ private enum Queue {
             buffer.updateValue(
                 forKey: push.topic,
                 default: Pushes(),
-                with: { $0[push] = continuation }
+                with: { $0.append(continuation, forKey: push) }
             )
             self = .idle(buffer: buffer)
             return nil
@@ -729,12 +729,11 @@ private enum Queue {
         case var .active(inFlight, buffer):
             guard let cont = inFlight.removeValue(forKey: push)
             else { return buffer.contains(push) }
-            let replaced = buffer.updateValue(
+            buffer.updateValue(
                 forKey: push.topic,
                 default: Pushes(),
-                with: { $0.updateValue(cont, forKey: push, insertingAt: 0) }
+                with: { $0.insertAtStart(cont, forKey: push) }
             )
-            precondition(replaced.originalMember == nil)
             self = .active(inFlight: inFlight, buffer: buffer)
             return true
 
@@ -777,6 +776,48 @@ private extension Pushes {
 
     func merging(_ other: BufferedPushes) -> Pushes {
         merging(other.pushes)
+    }
+
+    /// Appends the key-value pair at the end of the `OrderedDictionary`
+    /// unless `key.event` is equal to `.join`, in which case it inserts
+    /// the key-value pair after the last join push.
+    mutating func append(_ value: Continuation, forKey key: Push) {
+        if key.event == .join {
+            var insertAtIndex = 0
+            for (push, _) in self {
+                guard push.event == .join else { break }
+                insertAtIndex += 1
+            }
+            let (originalMember, _) = updateValue(
+                value,
+                forKey: key,
+                insertingAt: insertAtIndex
+            )
+            precondition(originalMember == nil)
+        } else {
+            self[key] = value
+        }
+    }
+
+    mutating func insertAtStart(_ value: Continuation, forKey key: Push) {
+        var insertAtIndex = 0
+
+        // If the push isn't a join, insert it after the rest of the joins.
+        // If the push is a join, insert it at the beginning.
+        if key.event != .join {
+            for (push, _) in self {
+                guard push.event == .join else { break }
+                insertAtIndex += 1
+            }
+        }
+
+        let (originalMember, _) = updateValue(
+            value,
+            forKey: key,
+            insertingAt: insertAtIndex
+        )
+
+        precondition(originalMember == nil)
     }
 }
 

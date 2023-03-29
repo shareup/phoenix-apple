@@ -92,7 +92,7 @@ public extension Message {
 }
 
 public extension Message {
-    var reply: (Bool, Payload) {
+    var reply: (isOk: Bool, payload: Payload) {
         get throws {
             let refAndReply = try refAndReply
             return (refAndReply.1, refAndReply.2)
@@ -110,12 +110,20 @@ public extension Message {
         }
     }
 
-    var error: String? {
+    var errorPayload: Payload? {
         guard event == .reply,
-              case let .string(error) = payload["response"]?["error"]
+              case let .string(status) = payload["status"],
+              status == "error"
         else { return nil }
 
-        return error
+        return payload["response"]?["error"] ?? [:]
+    }
+}
+
+public extension Message {
+    var isPhoenixError: Bool {
+        guard event == .error else { return false }
+        return true
     }
 }
 

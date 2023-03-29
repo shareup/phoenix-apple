@@ -20,7 +20,6 @@ final class PhoenixChannel: @unchecked Sendable {
     var isJoined: Bool { state.access { $0.isJoined } }
     var isUnjoined: Bool { state.access { $0.isUnjoined } }
 
-    private let rejoinDelay: [TimeInterval]
     private let socket: PhoenixSocket
     private let state: Locked<State>
     private let messagesSubject = MessagesSubject()
@@ -34,7 +33,6 @@ final class PhoenixChannel: @unchecked Sendable {
     ) {
         self.topic = topic
         self.joinPayload = joinPayload
-        self.rejoinDelay = rejoinDelay
         self.socket = socket
         state = Locked(.init(rejoinDelay: rejoinDelay))
 
@@ -74,11 +72,41 @@ final class PhoenixChannel: @unchecked Sendable {
         future?.resolve()
     }
 
+    @discardableResult
+    func push(
+        _ event: String,
+        payload: Payload = [:],
+        timeout: TimeInterval? = nil
+    ) async throws -> Payload {
+        let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
+        let push = Push(
+            topic: topic,
+            event: .custom(event),
+            payload: payload,
+            timeout: Date(timeIntervalSinceNow: timeout)
+        )
+
+        let response: Message = try await socket.push(push)
+        let reply = try response.reply
+
+        guard reply.isOk else {
+            throw PhoenixError.pushError(topic, event, reply.payload)
+        }
+
+        return reply.payload
+    }
+
     func prepareToSend(_ push: Push) async -> Bool {
         precondition(push.topic == topic)
 
-        guard let joinRef = state.access({ $0.joinRef })
-        else { return false }
+        guard let joinRef = state.access({ $0.joinRef }) else {
+            if push.event == .join {
+                push.prepareToSend(ref: await socket.makeRef())
+                return true
+            } else {
+                return false
+            }
+        }
 
         push.prepareToSend(ref: await socket.makeRef(), joinRef: joinRef)
         return true
@@ -163,6 +191,8 @@ private extension PhoenixChannel {
             return reply
         } catch let error as NotReadyToJoinError {
             throw error
+        } catch PhoenixError.leavingChannel {
+            throw PhoenixError.leavingChannel
         } catch {
             state.access { $0.didFailJoin() }?.fail(error)
             tasks.cancel(forKey: "rejoin")
@@ -307,9 +337,7 @@ private struct State: @unchecked Sendable {
                 let message: Message = try await socket.push(push)
                 let (ref, isOk, payload) = try message.refAndReply
 
-                guard isOk else {
-                    throw E.joinError(message.error ?? "unknown")
-                }
+                guard isOk else { throw E.joinError }
 
                 return (ref, payload)
             }
@@ -407,7 +435,7 @@ private struct State: @unchecked Sendable {
             return { future.fail(TimeoutError()) }
 
         case let .leaving(future):
-            connection = .errored
+            connection = .left
             return { future.resolve() }
 
         case .left:

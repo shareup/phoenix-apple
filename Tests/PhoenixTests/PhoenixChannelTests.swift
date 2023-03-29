@@ -31,9 +31,9 @@ final class PhoenixChannelTests: XCTestCase {
     // NOTE: We do not allow updating the join parameters.
 
     func testChannelInit() async throws {
-        let channel = makeChannel(
-            rejoinDelay: [10],
+        let channel = await makeChannel(
             joinPayload: ["one": "two"],
+            rejoinDelay: [10],
             PhoenixSocket(url: url) { _, _, _, _, _ in
                 self.makeWebSocket()
             }
@@ -51,7 +51,10 @@ final class PhoenixChannelTests: XCTestCase {
         try await withSocket { socket in
             await socket.connect()
 
-            let channel = self.makeChannel(joinPayload: ["one": "two"], socket)
+            let channel = await self.makeChannel(
+                joinPayload: ["one": "two"],
+                socket
+            )
 
             let didSendJoin = Locked(false)
             let task = Task {
@@ -76,7 +79,7 @@ final class PhoenixChannelTests: XCTestCase {
     func testSetsStateToJoining() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = self.makeChannel(socket)
+            let channel = await self.makeChannel(socket)
             let task = Task { try await channel.join() }
             await AssertTrueEventually(channel.isJoining)
             task.cancel()
@@ -96,13 +99,13 @@ final class PhoenixChannelTests: XCTestCase {
     func testDoesNotThrowWhenAttemptingToJoinMultipleTimes() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = self.makeChannel(socket)
+            let channel = await self.makeChannel(socket)
 
             Task {
                 let msg = try await self.nextOutoingMessage()
                 XCTAssertEqual("topic", msg.topic)
                 XCTAssertEqual(.join, msg.event)
-                try self.sendJoinReply(for: msg, payload: ["one": "two"])
+                try self.sendReply(for: msg, payload: ["one": "two"])
             }
 
             await withThrowingTaskGroup(of: Payload.self) { group in
@@ -133,7 +136,7 @@ final class PhoenixChannelTests: XCTestCase {
     func testTriggersSocketPushWithJoinPayload() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = self.makeChannel(
+            let channel = await self.makeChannel(
                 joinPayload: ["one": "two"],
                 socket
             )
@@ -151,7 +154,7 @@ final class PhoenixChannelTests: XCTestCase {
     func testTimeoutOnJoinPush() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = self.makeChannel(socket)
+            let channel = await self.makeChannel(socket)
             var didTimeout = false
             let start = Date()
             do {
@@ -169,7 +172,7 @@ final class PhoenixChannelTests: XCTestCase {
 
     func testJoinSucceedsBeforeTimeout() async throws {
         try await withAutoConnectAndJoinSocket { socket in
-            let channel = self.makeChannel(socket)
+            let channel = await self.makeChannel(socket)
             try await channel.join(timeout: 1)
             await AssertTrueEventually(channel.isJoined)
         }
@@ -178,7 +181,7 @@ final class PhoenixChannelTests: XCTestCase {
     func testRetriesJoinWithBackoffAfterTimeout() async throws {
         try await withSocket { socket in
             await socket.connect()
-            let channel = self.makeChannel(
+            let channel = await self.makeChannel(
                 rejoinDelay: [0, 0.001, 0.1, 100],
                 socket
             )
@@ -202,7 +205,7 @@ final class PhoenixChannelTests: XCTestCase {
                         break
 
                     case 2:
-                        try self.sendJoinReply(for: message)
+                        try self.sendReply(for: message)
 
                     default:
                         XCTFail()
@@ -244,12 +247,17 @@ final class PhoenixChannelTests: XCTestCase {
                               canJoin.access({ $0 })
                         else { continue }
 
-                        try self.sendJoinReply(for: message)
+                        try self.sendReply(for: message)
                     }
                 }
 
                 group.addTask {
-                    let channel = self.makeChannel(rejoinDelay: [0, 0.02], socket)
+                    await self.wait()
+
+                    let channel = await self.makeChannel(
+                        rejoinDelay: [0, 0.02],
+                        socket
+                    )
 
                     do {
                         try await channel.join(timeout: 0.01)
@@ -301,12 +309,15 @@ final class PhoenixChannelTests: XCTestCase {
                               canJoin.access({ $0 })
                         else { continue }
 
-                        try self.sendJoinReply(for: message)
+                        try self.sendReply(for: message)
                     }
                 }
 
                 group.addTask {
-                    let channel = self.makeChannel(rejoinDelay: [0, 0.02], socket)
+                    let channel = await self.makeChannel(
+                        rejoinDelay: [0, 0.02],
+                        socket
+                    )
 
                     do {
                         try await channel.join(timeout: 0.01)
@@ -330,6 +341,99 @@ final class PhoenixChannelTests: XCTestCase {
         }
 
         XCTAssertTrue(didJoin.access { $0 })
+    }
+
+    // MARK: "joinPush"
+
+    // NOTE: This test consolidates many smaller, focused tests
+    // in the PhoenixJS test suite.
+    func testReceivesSuccessfulJoinResponse() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    for await msg in self.sendSubject.values {
+                        guard let message = try? Message.decode(msg),
+                              case .join = message.event
+                        else { continue }
+
+                        // Only replies to one join message, which
+                        // let's us test that the second call to
+                        // join() reuses the initial response.
+                        return try self.sendReply(
+                            for: message,
+                            payload: ["worked": true]
+                        )
+                    }
+                }
+
+                let didJoin1 = AsyncExtensions.Future<Void>()
+                let didJoin2 = AsyncExtensions.Future<Void>()
+
+                let channel = await self.makeChannel(socket)
+
+                group.addTask {
+                    let payload = try await channel.join(timeout: 1)
+                    XCTAssertEqual(["worked": true], payload)
+                    await AssertTrueEventually(channel.isJoined)
+                    didJoin1.resolve()
+                }
+
+                group.addTask {
+                    try await didJoin1.value
+                    XCTAssertTrue(channel.isJoined)
+                    let payload = try await channel.join(timeout: 0.01)
+                    XCTAssertEqual(["worked": true], payload)
+                    didJoin2.resolve()
+                }
+
+                try await didJoin2.value
+                XCTAssertTrue(channel.isJoined)
+            }
+        }
+    }
+
+    func testBufferedMessagesAllGetSentAfterSuccessfulJoin() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+
+            let sentMessages = Locked<[Message]>([])
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    for await msg in self.sendSubject.values {
+                        let message = try Message.decode(msg)
+                        try self.sendReply(for: message)
+                        let count = sentMessages.access { sentMessages in
+                            sentMessages.append(message)
+                            return sentMessages.count
+                        }
+                        if count == 4 { break }
+                    }
+                }
+
+                let channel = await self.makeChannel(socket)
+
+                for event in ["one", "two", "three"] {
+                    group.addTask {
+                        do {
+                            try await channel.push(event)
+                        } catch {
+                            XCTFail("Push should have succeeded instead of \(error)")
+                        }
+                    }
+                }
+
+                try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+                try await channel.join()
+
+                try await group.waitForAll()
+            }
+
+            XCTAssertEqual(4, sentMessages.access { $0.count })
+            XCTAssertEqual(.join, sentMessages.access { $0[0].event })
+        }
     }
 }
 
@@ -417,7 +521,7 @@ private extension PhoenixChannelTests {
                           message.event == .join,
                           message.ref != nil
                     else { continue }
-                    try self.sendJoinReply(for: message)
+                    try self.sendReply(for: message)
                 }
             }
 
@@ -444,15 +548,14 @@ private extension PhoenixChannelTests {
 
     func makeChannel(
         topic: String = "topic",
-        rejoinDelay: [TimeInterval] = [0, 10],
         joinPayload: Payload = [:],
+        rejoinDelay: [TimeInterval] = [0, 10],
         _ socket: PhoenixSocket
-    ) -> PhoenixChannel {
-        PhoenixChannel(
-            topic: topic,
+    ) async -> PhoenixChannel {
+        await socket.channel(
+            topic,
             joinPayload: joinPayload,
-            rejoinDelay: rejoinDelay,
-            socket: socket
+            rejoinDelay: rejoinDelay
         )
     }
 
@@ -463,14 +566,15 @@ private extension PhoenixChannelTests {
         throw CancellationError()
     }
 
-    func sendJoinReply(
+    func sendReply(
         for message: Message,
         payload: Payload = [:]
     ) throws {
+        let joinRef = message.event == .join ? message.ref! : message.joinRef!
         let reply = String(
             data: try JSONSerialization.data(
                 withJSONObject: [
-                    message.ref!.rawValue,
+                    joinRef.rawValue,
                     message.ref!.rawValue,
                     message.topic,
                     "phx_reply",

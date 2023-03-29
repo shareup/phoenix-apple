@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/shareup/async-extensions.git",
-            from: "3.0.0"
+            from: "3.0.2"
         ),
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",

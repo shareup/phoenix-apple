@@ -377,6 +377,76 @@ final class PushBufferTests: XCTestCase {
         XCTAssertEqual(expectedCount, count.access { $0 })
     }
 
+    func testJoinPushesAreAlwaysSentFirst() async throws {
+        let buffer = PushBuffer()
+
+        let didProcessJoin = Locked(false)
+
+        let join = makeJoinPush("999")
+        let push1 = makePush(1, topic: 999)
+        let push2 = makePush(2, topic: 999)
+        let push3 = makePush(3, topic: 999)
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                self.prepareToSend(push1)
+                let reply = try await buffer.appendAndWait(push1)
+                XCTAssertTrue(didProcessJoin.access { $0 })
+                XCTAssertEqual(self.value(for: reply), 1)
+            }
+
+            group.addTask {
+                self.prepareToSend(push2)
+                let reply = try await buffer.appendAndWait(push2)
+                XCTAssertTrue(didProcessJoin.access { $0 })
+                XCTAssertEqual(self.value(for: reply), 2)
+            }
+
+            group.addTask {
+                self.prepareToSend(push3)
+                let reply = try await buffer.appendAndWait(push3)
+                XCTAssertTrue(didProcessJoin.access { $0 })
+                XCTAssertEqual(self.value(for: reply), 3)
+            }
+
+            // Make sure the non-join pushes were added first
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+
+            group.addTask {
+                self.prepareToSend(join)
+                let _ = try await buffer.appendAndWait(join)
+                XCTAssertFalse(didProcessJoin.access { didProcess in
+                    let old = didProcess
+                    didProcess = true
+                    return old
+                })
+            }
+
+            // Make sure the join push was added to the buffer
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+            buffer.resume()
+
+            group.addTask {
+                var count = 0
+                for try await push in buffer {
+                    buffer.didSend(push)
+                    XCTAssertTrue(buffer.didReceive(self.makeReply(for: push)))
+
+                    // NOTE: With this `Task.yield()` it's sometimes possible
+                    // for the next iteration of this loop to return before
+                    // the response for this push has been processed. Adding
+                    // `Task.yield()` removes that race condition.
+                    await Task.yield()
+
+                    count += 1
+                    if count == 4 { break }
+                }
+            }
+
+            try await group.waitForAll()
+        }
+    }
+
     func testCanWorkThroughMultipleBufferedPushesWaitingForReply() async throws {
         let buffer = PushBuffer()
         buffer.resume()
@@ -918,8 +988,8 @@ private extension PushBufferTests {
         }
     }
 
-    func makeJoinPush() -> Push {
-        Push(topic: "two", event: .join)
+    func makeJoinPush(_ topic: String) -> Push {
+        Push(topic: topic, event: .join)
     }
 
     func makePushes(_ count: Int, topic: Int? = nil) -> [Push] {

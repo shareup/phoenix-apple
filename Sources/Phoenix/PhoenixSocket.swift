@@ -114,13 +114,18 @@ final actor PhoenixSocket {
 }
 
 extension PhoenixSocket {
-    func channel(_ topic: Topic, joinPayload: Payload = [:]) -> PhoenixChannel {
+    func channel(
+        _ topic: Topic,
+        joinPayload: Payload = [:],
+        rejoinDelay: [TimeInterval] = [0, 1, 2, 5, 10]
+    ) -> PhoenixChannel {
         if let channel = channels[topic] {
             return channel
         } else {
             let channel = PhoenixChannel(
                 topic: topic,
                 joinPayload: joinPayload,
+                rejoinDelay: rejoinDelay,
                 socket: self
             )
             channels[topic] = channel
@@ -183,6 +188,7 @@ extension PhoenixSocket {
                     if let channel = await channels[push.topic] {
                         guard await channel.prepareToSend(push) else {
                             self.pushes.putBack(push)
+                            await Task.yield()
                             continue
                         }
                     } else {
