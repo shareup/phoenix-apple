@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/async-extensions.git",
       "state" : {
-        "revision" : "5b70f57e4d87aa9ca25d83e7a6db1f4a8f89cd65",
-        "version" : "3.0.2"
+        "revision" : "327714b7021127d28f99f5a451ac564d04a8884b",
+        "version" : "4.0.0"
       }
     },
     {

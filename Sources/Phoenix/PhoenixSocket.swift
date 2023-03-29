@@ -192,7 +192,7 @@ extension PhoenixSocket {
                             continue
                         }
                     } else {
-                        await push.prepareToSend(ref: makeRef())
+                        push.prepareToSend(ref: await makeRef())
                     }
 
                     try await ws.send(encoder(push))

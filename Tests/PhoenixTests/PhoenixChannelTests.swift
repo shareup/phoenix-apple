@@ -22,8 +22,8 @@ final class PhoenixChannelTests: XCTestCase {
     override func tearDown() async throws {
         try await super.tearDown()
 
-        sendSubject = nil
-        receiveSubject = nil
+        sendSubject.send(completion: .finished)
+        receiveSubject.send(completion: .finished)
     }
 
     // MARK: "constructor"
@@ -190,7 +190,7 @@ final class PhoenixChannelTests: XCTestCase {
 
             Task {
                 var attempt = 0
-                for await msg in self.sendSubject.values {
+                for await msg in self.outgoingMessages {
                     guard let message = try? Message.decode(msg),
                           case .join = message.event
                     else { return XCTFail() }
@@ -241,7 +241,7 @@ final class PhoenixChannelTests: XCTestCase {
                 group.addTask { await socket.connect() }
 
                 group.addTask {
-                    for await msg in self.sendSubject.values {
+                    for await msg in self.outgoingMessages {
                         guard let message = try? Message.decode(msg),
                               case .join = message.event,
                               canJoin.access({ $0 })
@@ -303,7 +303,7 @@ final class PhoenixChannelTests: XCTestCase {
                 group.addTask { await socket.connect() }
 
                 group.addTask {
-                    for await msg in self.sendSubject.values {
+                    for await msg in self.outgoingMessages {
                         guard let message = try? Message.decode(msg),
                               case .join = message.event,
                               canJoin.access({ $0 })
@@ -353,7 +353,7 @@ final class PhoenixChannelTests: XCTestCase {
 
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
-                    for await msg in self.sendSubject.values {
+                    for await msg in self.outgoingMessages {
                         guard let message = try? Message.decode(msg),
                               case .join = message.event
                         else { continue }
@@ -402,7 +402,7 @@ final class PhoenixChannelTests: XCTestCase {
 
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
-                    for await msg in self.sendSubject.values {
+                    for await msg in self.outgoingMessages {
                         let message = try Message.decode(msg)
                         try self.sendReply(for: message)
                         let count = sentMessages.access { sentMessages in
@@ -516,7 +516,7 @@ private extension PhoenixChannelTests {
 
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
-                for await msg in self.sendSubject.values {
+                for await msg in self.outgoingMessages {
                     guard let message = try? Message.decode(msg),
                           message.event == .join,
                           message.ref != nil
@@ -559,8 +559,12 @@ private extension PhoenixChannelTests {
         )
     }
 
+    var outgoingMessages: AsyncStream<WebSocketMessage> {
+        sendSubject.allValues
+    }
+
     func nextOutoingMessage() async throws -> Message {
-        for await message in sendSubject.values {
+        for await message in outgoingMessages {
             return try Message.decode(message)
         }
         throw CancellationError()

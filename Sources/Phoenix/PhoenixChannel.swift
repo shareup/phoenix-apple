@@ -143,7 +143,7 @@ final class PhoenixChannel: @unchecked Sendable {
 private extension PhoenixChannel {
     func watchSocketConnection() {
         tasks.storedTask(key: "socketConnection") { [socket, state, weak self] in
-            let connectionStates = socket.onConnectionStateChange.values
+            let connectionStates = socket.onConnectionStateChange.allValues
             for await connectionState in connectionStates {
                 try Task.checkCancellation()
 
@@ -426,7 +426,10 @@ private struct State: @unchecked Sendable {
 
     mutating func timedOut() -> () -> Void {
         switch connection {
-        case .unjoined, .errored, .joined:
+        case .unjoined:
+            return {}
+
+        case .errored, .joined:
             connection = .errored
             return {}
 
