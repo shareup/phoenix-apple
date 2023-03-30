@@ -232,6 +232,13 @@ extension PhoenixSocket {
                 do {
                     let message = try decoder(msg)
 
+                    guard message.event != .error else {
+                        await channels
+                            .values
+                            .forEach { $0.receiveSocketError() }
+                        throw PhoenixError.socketError
+                    }
+
                     _ = self.pushes.didReceive(message)
                     await channels.values.forEach { channel in
                         channel.receive(message)
@@ -245,6 +252,9 @@ extension PhoenixSocket {
                         type: .error,
                         String(describing: error)
                     )
+
+                    if Task.isCancelled { return }
+                    await doCloseFromServer(id: ws.id, error: error)
                 }
 
                 if Task.isCancelled { break }

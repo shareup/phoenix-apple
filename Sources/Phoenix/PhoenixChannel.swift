@@ -138,6 +138,11 @@ final class PhoenixChannel: @unchecked Sendable {
 
         sendMessage?()
     }
+
+    func receiveSocketError() {
+        let sendError = state.access { $0.onSocketError() }
+        sendError()
+    }
 }
 
 private extension PhoenixChannel {
@@ -151,7 +156,6 @@ private extension PhoenixChannel {
                 case .closed:
                     let onClose = state.access { $0.timedOut() }
                     onClose()
-                    self?.scheduleRejoinIfPossible()
 
                 case .open:
                     self?.scheduleRejoinIfPossible()
@@ -191,6 +195,8 @@ private extension PhoenixChannel {
             return reply
         } catch let error as NotReadyToJoinError {
             throw error
+        } catch PhoenixError.socketError {
+            throw PhoenixError.socketError
         } catch PhoenixError.leavingChannel {
             throw PhoenixError.leavingChannel
         } catch {
@@ -300,7 +306,9 @@ private struct State: @unchecked Sendable {
     ) -> () async throws -> (Ref, Payload) {
         typealias E = PhoenixError
 
-        guard isReadyToJoin else { return { throw NotReadyToJoinError() } }
+        guard isReadyToJoin else {
+            return { throw NotReadyToJoinError() }
+        }
 
         switch connection {
         case .errored, .unjoined:
@@ -436,6 +444,31 @@ private struct State: @unchecked Sendable {
         case let .joining(future):
             connection = .errored
             return { future.fail(TimeoutError()) }
+
+        case let .leaving(future):
+            connection = .left
+            return { future.resolve() }
+
+        case .left:
+            return {}
+        }
+    }
+
+    mutating func onSocketError() -> () -> Void {
+        switch connection {
+        case .unjoined:
+            return {}
+
+        case .errored:
+            return {}
+
+        case .joined:
+            connection = .errored
+            return {}
+
+        case let .joining(future):
+            connection = .errored
+            return { future.fail(PhoenixError.socketError) }
 
         case let .leaving(future):
             connection = .left

@@ -68,7 +68,7 @@ final class PhoenixChannelTests: XCTestCase {
             // The join will fail because we don't reply, but it
             // doesn't matter because we only are testing the
             // content of the join message.
-            async let _ = channel.join()
+            async let _ = channel.join(timeout: 0.01)
             try await task.value
             XCTAssertTrue(didSendJoin.access { $0 })
         }
@@ -433,6 +433,51 @@ final class PhoenixChannelTests: XCTestCase {
 
             XCTAssertEqual(4, sentMessages.access { $0.count })
             XCTAssertEqual(.join, sentMessages.access { $0[0].event })
+        }
+    }
+
+    func testRejoinsAfterJoinTimeout() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+
+            let channel = await self.makeChannel(
+                rejoinDelay: [0.01],
+                socket
+            )
+
+            let didJoin = Locked(false)
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    var receivedJoin = false
+                    for await msg in self.outgoingMessages {
+                        let message = try Message.decode(msg)
+
+                        guard message.event == .join else { continue }
+
+                        if receivedJoin {
+                            didJoin.access { $0 = true }
+                            break
+                        } else {
+                            receivedJoin = true
+                            await Task.yield()
+                        }
+                    }
+                    XCTAssertTrue(receivedJoin)
+                }
+
+                group.addTask {
+                    do { try await channel.join(timeout: 0.01) }
+                    catch is TimeoutError {}
+                    catch {
+                        XCTFail("Should not have received \(error)")
+                    }
+                }
+
+                try await group.waitForAll()
+
+                XCTAssertTrue(didJoin.access { $0 })
+            }
         }
     }
 }

@@ -525,6 +525,10 @@ final class PhoenixSocketTests: XCTestCase {
             onOpen: { opens.access { $0 += 1 }},
             onClose: { _ in closes.access { $0 += 1 }}
         )
+
+        // Since we never answer the heartbeat, the socket connection will
+        // close automatically after 0.01 seconds, and then the socket
+        // should try to reconnect.
         try await withWebSocket(ws, timeout: 0.01, heartbeatInterval: 0.01) { socket in
             await socket.connect()
             XCTAssertEqual(1, opens.access { $0 })
@@ -532,11 +536,34 @@ final class PhoenixSocketTests: XCTestCase {
 
             await AssertTrueEventually(opens.access { $0 } > 1)
 
-            XCTAssertLessThan(1, opens.access { $0 })
+            XCTAssertGreaterThanOrEqual(1, closes.access { $0 })
         }
     }
 
-    func testTriggersChannelErrorIfJoining() async throws {}
+    func testTriggersChannelErrorIfJoining() async throws {
+        let didErrorWhileJoining = Locked(false)
+
+        try await withWebSocket(
+            fake(),
+            timeout: 0.01,
+            heartbeatInterval: 0.01
+        ) { socket in
+            await socket.connect()
+            let channel = await socket.channel("abc", rejoinDelay: [0, 0.01])
+
+            let task = Task {
+                do {
+                    try await channel.join(timeout: 10)
+                    XCTFail("Should not have joined")
+                } catch {
+                    didErrorWhileJoining.access { $0 = true }
+                }
+            }
+
+            await task.value
+            XCTAssertTrue(didErrorWhileJoining.access { $0 })
+        }
+    }
 
     func testTriggersChannelErrorIfJoined() async throws {}
 

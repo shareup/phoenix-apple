@@ -9,4 +9,5 @@ public enum PhoenixError: Error, Equatable, Sendable {
     case joinError
     case leavingChannel
     case pushError(String, String, Payload)
+    case socketError
 }
