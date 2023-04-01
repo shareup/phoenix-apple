@@ -1011,17 +1011,15 @@ private extension PushBufferTests {
     }
 
     func value(for push: Push) -> Int {
-        guard let anyValue = push.payload["value"]?.jsonValue,
-              let doubleValue = anyValue as? Double
+        guard let value = push.payload["value"]?.integerValue
         else { preconditionFailure() }
-        return Int(doubleValue)
+        return value
     }
 
     func value(for message: Message) -> Int {
-        guard let anyValue = message.payload["value"]?.jsonValue,
-              let doubleValue = anyValue as? Double
+        guard let value = message.payload["value"]?.integerValue
         else { preconditionFailure() }
-        return Int(doubleValue)
+        return value
     }
 
     func makePushStream(maxCount: Int = 1000) -> AsyncStream<Push> {

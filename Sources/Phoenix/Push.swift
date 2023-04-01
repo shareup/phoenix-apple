@@ -1,4 +1,5 @@
 import Foundation
+import JSON
 import Synchronized
 import WebSocket
 
@@ -8,7 +9,7 @@ public final class Push: Hashable, CustomStringConvertible, Sendable {
 
     public let topic: Topic
     public let event: Event
-    public let payload: Payload
+    public let payload: JSON
     public let timeout: Date
 
     private let state = Locked(State())
@@ -16,7 +17,7 @@ public final class Push: Hashable, CustomStringConvertible, Sendable {
     public init(
         topic: Topic,
         event: Event,
-        payload: Payload = [:],
+        payload: JSON = [:],
         timeout: Date = Date(timeIntervalSinceNow: 5)
     ) {
         self.topic = topic
@@ -56,7 +57,7 @@ public final class Push: Hashable, CustomStringConvertible, Sendable {
             ref.rawValue,
             push.topic,
             push.event.stringValue,
-            push.payload.jsonDictionary,
+            push.payload.dictionaryValue,
         ]
 
         let data = try JSONSerialization.data(

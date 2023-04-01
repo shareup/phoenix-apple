@@ -1,6 +1,8 @@
 import Foundation
+import JSON
 
 public enum PhoenixError: Error, Equatable, Sendable {
+    case channelError
     case couldNotDecodeMessage
     case couldNotEncodePush
     case disconnect
@@ -8,6 +10,6 @@ public enum PhoenixError: Error, Equatable, Sendable {
     case invalidReply
     case joinError
     case leavingChannel
-    case pushError(String, String, Payload)
+    case pushError(String, String, JSON)
     case socketError
 }

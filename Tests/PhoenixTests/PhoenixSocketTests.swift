@@ -1,6 +1,7 @@
 import AsyncExtensions
 import AsyncTestExtensions
 import Combine
+import JSON
 @testable import Phoenix
 import Synchronized
 import WebSocket
@@ -10,9 +11,27 @@ import XCTest
 // delimited by `describe("some name", {})` blocks in Phoenix JS'
 // test suite, which can be found here:
 // https://github.com/phoenixframework/phoenix/blob/v1.7.1/assets/test/socket_test.js
+//
+// Many of the test in the Phoenix framework's JavaScript client tests
+// do not apply to our socket or overlap other tests. We skip those tests.
 
 final class PhoenixSocketTests: XCTestCase {
     private let url = URL(string: "ws://0.0.0.0:4003/socket")!
+
+    private var sendSubject: PassthroughSubject<WebSocketMessage, Never>!
+    private var receiveSubject: PassthroughSubject<WebSocketMessage, Never>!
+
+    override func setUp() {
+        super.setUp()
+        sendSubject = PassthroughSubject()
+        receiveSubject = PassthroughSubject()
+    }
+
+    override func tearDown() {
+        sendSubject.send(completion: .finished)
+        receiveSubject.send(completion: .finished)
+        super.tearDown()
+    }
 
     // MARK: "constructor" and "endpointURL"
 
@@ -262,7 +281,7 @@ final class PhoenixSocketTests: XCTestCase {
         let ws: WebSocket = fake(onSend: { sent.append($0) })
         try await withWebSocket(ws) { socket in
             await socket.connect()
-            try await socket.push(self.push1) as Void
+            try await socket.send(self.push1)
             await AssertEqualEventually(self.encodedPush1, sent.first)
         }
     }
@@ -283,7 +302,7 @@ final class PhoenixSocketTests: XCTestCase {
         )
 
         try await withWebSocket(ws) { socket in
-            Task.detached { try await socket.push(self.push1) as Void }
+            Task.detached { try await socket.send(self.push1) }
             let sleep = Task {
                 try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
                 canSend.access { $0 = true }
@@ -371,7 +390,6 @@ final class PhoenixSocketTests: XCTestCase {
 
     // This test is not in Phoenix JavaScript
     func testSendsHeartbeatAgainAfterReceivingReply() async throws {
-        let subject = PassthroughSubject<WebSocketMessage, Never>()
         let heartbeat1 = future(timeout: 2)
         let heartbeat2 = future(timeout: 2)
 
@@ -382,15 +400,14 @@ final class PhoenixSocketTests: XCTestCase {
                 } else if message == self.heartbeat(ref: 2) {
                     heartbeat2.resolve()
                 }
-            },
-            messagesPublisher: { subject.eraseToAnyPublisher() }
+            }
         )
 
         try await withWebSocket(ws, heartbeatInterval: 0.05) { socket in
             await socket.connect()
 
             try await heartbeat1.value
-            subject.send(self.heartbeatReply(ref: 1))
+            self.receiveSubject.send(self.heartbeatReply(ref: 1))
 
             try await heartbeat2.value
         }
@@ -416,7 +433,7 @@ final class PhoenixSocketTests: XCTestCase {
                 pushes
                     .access { $0 }
                     .forEach { push in
-                        group.addTask { try await socket.push(push) }
+                        group.addTask { try await socket.send(push) }
                     }
                 try await group.waitForAll()
             }
@@ -445,7 +462,7 @@ final class PhoenixSocketTests: XCTestCase {
                 pushes
                     .access { $0 }
                     .forEach { push in
-                        group.addTask { try await socket.push(push) }
+                        group.addTask { try await socket.send(push) }
                     }
                 try await group.waitForAll()
             }
@@ -565,13 +582,108 @@ final class PhoenixSocketTests: XCTestCase {
         }
     }
 
-    func testTriggersChannelErrorIfJoined() async throws {}
+    func testTriggersChannelErrorIfJoined() async throws {
+        try await withWebSocket(fake()) { socket in
+            await socket.connect()
+            let channel = await socket.channel("abc", rejoinDelay: [0, 0.01])
 
-    func testDoesNotTriggerChannelErrorAfterLeaving() async throws {}
+            let isErrored = AsyncExtensions.Future<Void>()
 
-    func testDoesNotSendHeartbeatIfClosedByClient() async throws {}
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    for await msg in self.outgoingMessages {
+                        let message = try Message.decode(msg)
 
-    // MARK: "onConnError"
+                        if message.event == .join {
+                            try self.sendReply(for: message)
+                            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+                            self.receiveSubject.send(
+                                .text(#"[1,2,"abc","phx_error",{}]"#)
+                            )
+                            break
+                        }
+                    }
+                }
+
+                group.addTask {
+                    for await message in channel.messages {
+                        if message.event == .error {
+                            isErrored.resolve()
+                            XCTAssertTrue(channel.isErrored || channel.isJoining)
+                            break
+                        }
+                    }
+                }
+
+                await self.wait()
+                try await channel.join()
+
+                try await isErrored.value
+                group.cancelAll()
+            }
+        }
+    }
+
+    // MARK: "onConnMessage"
+
+    func testParsesRawMessageAndSendsToCorrectChannel() async throws {
+        let didReceiveMessage = Locked(false)
+
+        try await withWebSocket(fake()) { socket in
+            await socket.connect()
+            let channel1 = await socket.channel("abc")
+            let channel2 = await socket.channel("def")
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    for await msg in self.outgoingMessages {
+                        let message = try Message.decode(msg)
+
+                        if message.event == .join {
+                            try self.sendReply(for: message)
+                        }
+                    }
+                }
+
+                group.addTask {
+                    for await message in channel1.messages {
+                        if message.event == .custom("test") {
+                            didReceiveMessage.access { $0 = true }
+                            break
+                        }
+                    }
+                }
+
+                group.addTask {
+                    var count = 0
+                    for await message in channel2.messages {
+                        // Should only receive join reply
+                        if count > 0 {
+                            XCTFail("Should not have received message: \(message)")
+                        } else {
+                            count += 1
+                        }
+                    }
+                }
+
+                await self.wait()
+
+                try await channel1.join()
+                try await channel2.join()
+
+                self.receiveSubject.send(
+                    WebSocketMessage.text(#"[1,1,"abc","test",{}]"#)
+                )
+
+                try await group.next()
+
+                await self.wait()
+                group.cancelAll()
+
+                XCTAssertTrue(didReceiveMessage.access { $0 })
+            }
+        }
+    }
 }
 
 private extension PhoenixSocketTests {
@@ -579,7 +691,7 @@ private extension PhoenixSocketTests {
         Push(
             topic: "topic",
             event: "event",
-            payload: ["one": 1] as Payload
+            payload: ["one": 1] as JSON
         )
     }
 
@@ -631,8 +743,7 @@ private extension PhoenixSocketTests {
         onClose: @escaping WebSocketOnClose = { _ in },
         onSend: @escaping (WebSocketMessage) -> Void = { _ in },
         open: (@Sendable () async throws -> Void)? = nil,
-        close: (@Sendable (WebSocketCloseCode, TimeInterval?) async throws -> Void)? = nil,
-        messagesPublisher: (@Sendable () -> AnyPublisher<WebSocketMessage, Never>)? = nil
+        close: (@Sendable (WebSocketCloseCode, TimeInterval?) async throws -> Void)? = nil
     ) -> WebSocket {
         let _open = open ?? { @Sendable () async throws in
             onOpen()
@@ -641,17 +752,16 @@ private extension PhoenixSocketTests {
             { @Sendable (code: WebSocketCloseCode, _: TimeInterval?) async throws in
                 onClose(WebSocketClose(code, nil))
             }
+
         return WebSocket(
             id: .random(in: 1 ... 1_000_000_000),
-            onOpen: onOpen,
-            onClose: onClose,
             open: _open,
             close: _close,
-            send: { onSend($0) },
-            messagesPublisher: messagesPublisher ?? {
-                Empty<WebSocketMessage, Never>(completeImmediately: false)
-                    .eraseToAnyPublisher()
-            }
+            send: { message in
+                self.sendSubject.send(message)
+                onSend(message)
+            },
+            messagesPublisher: { self.receiveSubject.eraseToAnyPublisher() }
         )
     }
 
@@ -707,6 +817,40 @@ private extension PhoenixSocketTests {
 
         await socket.disconnect(timeout: 0.000001)
         sub.cancel()
+    }
+
+    var outgoingMessages: AsyncStream<WebSocketMessage> {
+        sendSubject.allValues
+    }
+
+    func sendReply(
+        for message: Message,
+        payload: JSON = [:]
+    ) throws {
+        let joinRef = message.event == .join ? message.ref! : message.joinRef!
+        let reply = String(
+            data: try JSONSerialization.data(
+                withJSONObject: [
+                    joinRef.rawValue,
+                    message.ref!.rawValue,
+                    message.topic,
+                    "phx_reply",
+                    [
+                        "status": "ok",
+                        "response": payload.dictionaryValue!,
+                    ] as [String: Any],
+                ] as [Any]
+            ),
+            encoding: .utf8
+        )!
+
+        receiveSubject.send(.text(reply))
+    }
+
+    func wait() async {
+        for _ in 0 ..< 100 {
+            await Task.yield()
+        }
     }
 }
 

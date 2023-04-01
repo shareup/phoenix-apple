@@ -1,4 +1,5 @@
 import Foundation
+import JSON
 import WebSocket
 
 public struct Message: Hashable, Sendable, CustomStringConvertible {
@@ -12,7 +13,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
     public var ref: Ref?
     public var topic: Topic
     public var event: Event
-    public var payload: Payload
+    public var payload: JSON
 
     init(string: String) throws {
         try self.init(data: Data(string.utf8))
@@ -61,7 +62,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
             ref: ref,
             topic: topic,
             event: event,
-            payload: Payload(payload)
+            payload: JSON(payload)
         )
     }
 
@@ -70,7 +71,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
         ref: Ref?,
         topic: Topic,
         event: Event,
-        payload: Payload = [:]
+        payload: JSON = [:]
     ) {
         self.joinRef = joinRef
         self.ref = ref
@@ -92,14 +93,14 @@ public extension Message {
 }
 
 public extension Message {
-    var reply: (isOk: Bool, payload: Payload) {
+    var reply: (isOk: Bool, response: JSON) {
         get throws {
             let refAndReply = try refAndReply
             return (refAndReply.1, refAndReply.2)
         }
     }
 
-    internal var refAndReply: (Ref, Bool, Payload) {
+    internal var refAndReply: (Ref, Bool, JSON) {
         get throws {
             guard event == .reply,
                   let ref,
@@ -110,7 +111,7 @@ public extension Message {
         }
     }
 
-    var errorPayload: Payload? {
+    var errorPayload: JSON? {
         guard event == .reply,
               case let .string(status) = payload["status"],
               status == "error"

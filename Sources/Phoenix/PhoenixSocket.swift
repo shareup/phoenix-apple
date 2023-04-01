@@ -2,6 +2,7 @@ import AsyncExtensions
 import Collections
 @preconcurrency import Combine
 import Foundation
+import JSON
 import os.log
 import Synchronized
 import WebSocket
@@ -14,8 +15,6 @@ typealias MakeWebSocket =
         @escaping WebSocketOnOpen,
         @escaping WebSocketOnClose
     ) async throws -> WebSocket
-
-typealias MessagesPublisher = AnyPublisher<Message, Never>
 
 typealias ConnectionStatePublisher =
     AnyPublisher<PhoenixSocket.ConnectionState, Never>
@@ -39,11 +38,8 @@ final actor PhoenixSocket {
     nonisolated let pushEncoder: PushEncoder
     nonisolated let messageDecoder: MessageDecoder
 
-    nonisolated var messages: MessagesPublisher {
-        messagesSubject.eraseToAnyPublisher()
-    }
-
-    private nonisolated let messagesSubject = PassthroughSubject<Message, Never>()
+    nonisolated var messages: AsyncStream<Message> { messageSubject.allValues }
+    private nonisolated let messageSubject = PassthroughSubject<Message, Never>()
 
     private nonisolated let currentWebSocketID = Locked(0)
     private let makeWebSocket: MakeWebSocket
@@ -116,7 +112,7 @@ final actor PhoenixSocket {
 extension PhoenixSocket {
     func channel(
         _ topic: Topic,
-        joinPayload: Payload = [:],
+        joinPayload: JSON = [:],
         rejoinDelay: [TimeInterval] = [0, 1, 2, 5, 10]
     ) -> PhoenixChannel {
         if let channel = channels[topic] {
@@ -143,18 +139,7 @@ extension PhoenixSocket {
 }
 
 extension PhoenixSocket {
-    func push(_ push: Push) async throws -> Message {
-        os_log(
-            "push: %@",
-            log: .phoenix,
-            type: .debug,
-            push.description
-        )
-
-        return try await pushes.appendAndWait(push)
-    }
-
-    func push(_ push: Push) async throws {
+    func send(_ push: Push) async throws {
         os_log(
             "push: %@",
             log: .phoenix,
@@ -163,6 +148,17 @@ extension PhoenixSocket {
         )
 
         try await pushes.append(push)
+    }
+
+    func request(_ push: Push) async throws -> Message {
+        os_log(
+            "push: %@",
+            log: .phoenix,
+            type: .debug,
+            push.description
+        )
+
+        return try await pushes.appendAndWait(push)
     }
 
     func makeRef() -> Ref {
@@ -232,19 +228,19 @@ extension PhoenixSocket {
                 do {
                     let message = try decoder(msg)
 
-                    guard message.event != .error else {
-                        await channels
-                            .values
-                            .forEach { $0.receiveSocketError() }
-                        throw PhoenixError.socketError
-                    }
-
                     _ = self.pushes.didReceive(message)
-                    await channels.values.forEach { channel in
-                        channel.receive(message)
+
+                    // NOTE: In the case a channel receives
+                    // `Event.close`, it will remove itself from
+                    // `channels`. To avoid any potential problems
+                    // we make a copy of the channels before
+                    // iterating over it.
+                    let channels = Array(await channels.values)
+                    for channel in channels {
+                        await channel.receive(message)
                     }
 
-                    messagesSubject.send(message)
+                    messageSubject.send(message)
                 } catch {
                     os_log(
                         "message.error: %@",
@@ -289,7 +285,7 @@ extension PhoenixSocket {
                 else { throw PhoenixError.heartbeatTimeout }
 
                 let push = Push(topic: "phoenix", event: .heartbeat)
-                let message: Message = try await self.push(push)
+                let message: Message = try await self.request(push)
 
                 guard !Task.isCancelled
                 else { throw PhoenixError.heartbeatTimeout }

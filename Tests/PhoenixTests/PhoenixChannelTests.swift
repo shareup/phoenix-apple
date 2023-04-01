@@ -1,10 +1,19 @@
 import AsyncExtensions
 import AsyncTestExtensions
 import Combine
+import JSON
 @testable import Phoenix
 import Synchronized
 import WebSocket
 import XCTest
+
+// NOTE: Names in quotation marks below correspond to groups of tests
+// delimited by `describe("some name", {})` blocks in Phoenix JavaScript'
+// test suite, which can be found here:
+// https://github.com/phoenixframework/phoenix/blob/v1.7.1/assets/test/channel_test.js
+//
+// Many of the test in the Phoenix framework's JavaScript client tests
+// do not apply to our socket or overlap other tests. We skip those tests.
 
 final class PhoenixChannelTests: XCTestCase {
     private let url = URL(string: "ws://0.0.0.0:4003/socket")!
@@ -14,16 +23,14 @@ final class PhoenixChannelTests: XCTestCase {
 
     override func setUp() async throws {
         try await super.setUp()
-
         sendSubject = .init()
         receiveSubject = .init()
     }
 
     override func tearDown() async throws {
-        try await super.tearDown()
-
         sendSubject.send(completion: .finished)
         receiveSubject.send(completion: .finished)
+        try await super.tearDown()
     }
 
     // MARK: "constructor"
@@ -43,7 +50,7 @@ final class PhoenixChannelTests: XCTestCase {
         XCTAssertEqual("topic", channel.topic)
         XCTAssertEqual(
             ["one": "two"],
-            channel.joinPayload.jsonDictionary as? [String: String]
+            channel.joinPayload.dictionaryValue as? [String: String]
         )
     }
 
@@ -108,14 +115,14 @@ final class PhoenixChannelTests: XCTestCase {
                 try self.sendReply(for: msg, payload: ["one": "two"])
             }
 
-            await withThrowingTaskGroup(of: Payload.self) { group in
+            await withThrowingTaskGroup(of: JSON.self) { group in
                 // Make sure the listener starts first
                 await self.wait()
 
                 group.addTask { try await channel.join() }
                 group.addTask { try await channel.join() }
 
-                var payloads: [Payload?] = []
+                var payloads: [JSON?] = []
 
                 do {
                     for try await payload in group {
@@ -418,7 +425,7 @@ final class PhoenixChannelTests: XCTestCase {
                 for event in ["one", "two", "three"] {
                     group.addTask {
                         do {
-                            try await channel.push(event)
+                            try await channel.send(event)
                         } catch {
                             XCTFail("Push should have succeeded instead of \(error)")
                         }
@@ -477,6 +484,189 @@ final class PhoenixChannelTests: XCTestCase {
                 try await group.waitForAll()
 
                 XCTAssertTrue(didJoin.access { $0 })
+            }
+        }
+    }
+
+    // MARK: "onError"
+
+    func testSetsChannelStateToErroredReconnectsAfterSocketReopens() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+
+            let channel = await self.makeChannel(
+                rejoinDelay: [0.001],
+                socket
+            )
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    var messages = 0
+                    for await msg in self.outgoingMessages {
+                        let message = try Message.decode(msg)
+                        try self.sendReply(for: message)
+                        messages += 1
+                        if messages == 2 { break }
+                    }
+                }
+
+                group.addTask {
+                    var joinReplies = 0
+                    var errorMessages = 0
+                    for await message in channel.messages {
+                        if message.event == .reply {
+                            joinReplies += 1
+                        } else if message.event == .error {
+                            errorMessages += 1
+                        }
+
+                        if joinReplies == 2 { break }
+                    }
+
+                    XCTAssertEqual(2, joinReplies)
+                    XCTAssertEqual(1, errorMessages)
+                }
+
+                await self.wait()
+
+                group.addTask {
+                    try await channel.join()
+                    self.receiveSubject.send(
+                        .text(#"[1,2,"topic","phx_error",{}]"#)
+                    )
+                }
+
+                try await group.waitForAll()
+            }
+        }
+    }
+
+    // MARK: "onClose"
+
+    func testClosingSocketLeavesChannel() async throws {
+        try await withAutoConnectAndJoinSocket { socket in
+            let channel = await self.makeChannel(
+                rejoinDelay: [0.001],
+                socket
+            )
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                let didClose = Locked(false)
+
+                group.addTask {
+                    for await message in channel.messages {
+                        // After the channel closes, it should never
+                        // receive another message because it was
+                        // removed from `PhoenixSocket.channels`.
+                        XCTAssertFalse(didClose.access { $0 })
+
+                        if case .close = message.event {
+                            didClose.access { $0 = true }
+                        }
+                    }
+                }
+
+                try await channel.join()
+
+                self.receiveSubject.send(.text(#"[1,null,"topic","phx_close",{}]"#))
+                self.receiveSubject.send(.text(#"[1,null,"topic","never",{}]"#))
+
+                try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+                XCTAssertTrue(didClose.access { $0 })
+
+                group.cancelAll()
+            }
+        }
+    }
+
+    // MARK: "onMessage"
+
+    func testRepliesAreReceivedByPusherAndMessagesPublisher() async throws {
+        let rawReply =
+            """
+            [1,2,"topic","phx_reply",{"status":"ok","response":{"is_awesome": true}}]
+            """
+
+        try await withAutoConnectAndJoinSocket { socket in
+            let channel = await self.makeChannel(socket)
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                let replyFromMessages = Locked<Message?>(nil)
+
+                group.addTask {
+                    for await msg in self.outgoingMessages {
+                        let message = try Message.decode(msg)
+                        if case .custom("awesome") = message.event {
+                            self.receiveSubject.send(.text(rawReply))
+                            break
+                        }
+                    }
+                }
+
+                group.addTask {
+                    for await message in channel.messages {
+                        if message.ref == Ref(2) {
+                            replyFromMessages.access { $0 = message }
+                            break
+                        }
+                    }
+                }
+
+                await self.wait()
+
+                try await channel.join()
+
+                let responseFromPush = try await channel.request("awesome")
+
+                try await group.waitForAll()
+
+                let (isOk, responseFromMessages) = try replyFromMessages
+                    .access { try $0?.reply }!
+
+                XCTAssertTrue(isOk)
+                XCTAssertEqual(["is_awesome": true], responseFromMessages)
+
+                XCTAssertEqual(responseFromPush, responseFromMessages)
+            }
+        }
+    }
+
+    func testReceivesMessagesAndReplies() async throws {
+        let first = #"[1,null,"topic","first",{"id": "first"}]"#
+        let second = #"[1,null,"topic","second",{"id": 2}]"#
+        let reply =
+            """
+            [1,2,"topic","phx_reply",{"status":"ok","response":{"is_awesome": true}}]
+            """
+
+        try await withAutoConnectAndJoinSocket { socket in
+            let channel = await self.makeChannel(socket)
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                let receivedMessages = Locked([Message]())
+
+                group.addTask {
+                    for await message in channel.messages {
+                        receivedMessages.access { $0.append(message) }
+                    }
+                }
+
+                try await channel.join()
+
+                self.receiveSubject.send(.text(first))
+                self.receiveSubject.send(.text(second))
+
+                // We do not wait for the reply here just to make the
+                // test simpler.
+                try await channel.send("awesome")
+                self.receiveSubject.send(.text(reply))
+
+                await AssertEqualEventually(
+                    [Event.reply, .custom("first"), .custom("second"), .reply],
+                    receivedMessages.access { $0.map(\.event) }
+                )
+
+                group.cancelAll()
             }
         }
     }
@@ -593,7 +783,7 @@ private extension PhoenixChannelTests {
 
     func makeChannel(
         topic: String = "topic",
-        joinPayload: Payload = [:],
+        joinPayload: JSON = [:],
         rejoinDelay: [TimeInterval] = [0, 10],
         _ socket: PhoenixSocket
     ) async -> PhoenixChannel {
@@ -617,7 +807,7 @@ private extension PhoenixChannelTests {
 
     func sendReply(
         for message: Message,
-        payload: Payload = [:]
+        payload: JSON = [:]
     ) throws {
         let joinRef = message.event == .join ? message.ref! : message.joinRef!
         let reply = String(
@@ -629,7 +819,7 @@ private extension PhoenixChannelTests {
                     "phx_reply",
                     [
                         "status": "ok",
-                        "response": payload.jsonDictionary,
+                        "response": payload.dictionaryValue!,
                     ] as [String: Any],
                 ] as [Any]
             ),
