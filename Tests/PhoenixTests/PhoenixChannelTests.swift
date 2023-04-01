@@ -198,9 +198,11 @@ final class PhoenixChannelTests: XCTestCase {
             Task {
                 var attempt = 0
                 for await msg in self.outgoingMessages {
-                    guard let message = try? Message.decode(msg),
-                          case .join = message.event
-                    else { return XCTFail() }
+                    let message = try! Message.decode(msg)
+
+                    // Ignore leave messages
+                    if message.event == .leave { continue }
+                    XCTAssert(message.event == .join)
 
                     defer { attempt += 1 }
 
@@ -670,6 +672,165 @@ final class PhoenixChannelTests: XCTestCase {
             }
         }
     }
+
+    // MARK: "canPush"
+
+    func testPrepareToSendReturnsTrueWhenSocketAndChannelAreJoined() async throws {
+        try await withAutoConnectAndJoinSocket { socket in
+            let channel = await self.makeChannel(socket)
+            try await channel.join()
+
+            let push = Push(topic: channel.topic, event: .custom("test"))
+            let canPush = await channel.prepareToSend(push)
+            XCTAssertTrue(canPush)
+        }
+    }
+
+    func testPrepareToSendReturnsFalseOtherwise() async throws {
+        try await withAutoReplySocket { socket in
+            let channel = await self.makeChannel(socket)
+
+            let push = Push(topic: channel.topic, event: .custom("test"))
+
+            // socket and channel not joined
+            var canPush = await channel.prepareToSend(push)
+            XCTAssertFalse(canPush)
+
+            await socket.connect()
+
+            // socket joined, but channel not joined
+            canPush = await channel.prepareToSend(push)
+            XCTAssertFalse(canPush)
+
+            try await channel.join()
+
+            // socket and channel both joined
+            canPush = await channel.prepareToSend(push)
+            XCTAssertTrue(canPush)
+        }
+    }
+
+    // MARK: "on"
+
+    // NOTE: Does not apply to PhoenixChannel
+
+    // MARK: "off"
+
+    // NOTE: Does not apply to PhoenixChannel
+
+    // MARK: "push"
+
+    func testPushesAfterSuccessfullyJoining() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+            let channel = await self.makeChannel(socket)
+
+            let isJoined = Locked(false)
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    var didJoin = false
+                    var didSendTestPush = false
+                    for await msg in self.outgoingMessages {
+                        let message = try Message.decode(msg)
+                        if message.event == .join {
+                            isJoined.access { $0 = true }
+                            didJoin = true
+                        } else {
+                            // We shouldn't get the push until after joining
+                            XCTAssertTrue(didJoin)
+                            didSendTestPush = true
+                        }
+                        try self.sendReply(for: message)
+
+                        if didJoin, didSendTestPush { break }
+                    }
+                }
+
+                group.addTask {
+                    do {
+                        let resp = try await channel.request("test")
+                        XCTAssertTrue(isJoined.access { $0 })
+                        XCTAssertNotNil(resp.dictionaryValue)
+                    } catch {
+                        XCTFail("Should not have thrown \(error)")
+                    }
+                }
+
+                group.addTask {
+                    await self.wait()
+                    try await channel.join()
+                }
+
+                try await group.waitForAll()
+            }
+        }
+    }
+
+    func testDoesNotPushIfNotJoined() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+            let channel = await self.makeChannel(socket)
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                let didSendPush = Locked(false)
+
+                group.addTask {
+                    try await channel.send("test")
+                    didSendPush.access { $0 = true }
+                }
+
+                group.addTask {
+                    await self.wait()
+                    try await channel.join()
+                }
+
+                try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+
+                XCTAssertFalse(didSendPush.access { $0 })
+
+                group.cancelAll()
+            }
+        }
+    }
+
+    // MARK: "leave"
+
+    func testLeaveRemovesChannelFromSocket() async throws {
+        try await withAutoConnectAndJoinSocket { socket in
+            let channel = await self.makeChannel(socket)
+
+            let channelBeforeJoining = await socket.channels[channel.topic]
+            XCTAssertNotNil(channelBeforeJoining)
+
+            try await channel.join()
+
+            let channelAfterJoining = await socket.channels[channel.topic]
+            XCTAssertNotNil(channelAfterJoining)
+
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    for await msg in self.outgoingMessages {
+                        let message = try Message.decode(msg)
+                        if message.event == .leave {
+                            try self.sendReply(for: message)
+                            break
+                        }
+                    }
+                }
+
+                group.addTask {
+                    await self.wait()
+                    try await channel.leave()
+
+                    let channelAfterLeaving = await socket.channels[channel.topic]
+                    XCTAssertNil(channelAfterLeaving)
+                }
+
+                try await group.waitForAll()
+            }
+        }
+    }
 }
 
 private extension PhoenixChannelTests {
@@ -719,6 +880,51 @@ private extension PhoenixChannelTests {
                 if !Task.isCancelled { throw TimeoutError() }
             }
             group.addTask { try await block(socket) }
+
+            try await group.next()
+            group.cancelAll()
+        }
+
+        for channel in await socket.channels.values {
+            try? await channel.leave(timeout: 0.000001)
+        }
+        await socket.disconnect(timeout: 0.000001)
+    }
+
+    func withAutoReplySocket(
+        webSocket: WebSocket? = nil,
+        timeout: TimeInterval = 10,
+        heartbeatInterval: TimeInterval = 10,
+        block: @escaping (PhoenixSocket) async throws -> Void
+    ) async throws {
+        let makeWS: MakeWebSocket = { _, _, _, _, _ in
+            webSocket ?? self.makeWebSocket()
+        }
+
+        let socket = PhoenixSocket(
+            url: url,
+            timeout: timeout,
+            heartbeatInterval: heartbeatInterval,
+            makeWebSocket: makeWS
+        )
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            group.addTask {
+                for await msg in self.outgoingMessages {
+                    try self.sendReply(for: try Message.decode(msg))
+                }
+            }
+
+            group.addTask {
+                await self.wait()
+                try await Task.sleep(nanoseconds: 2 * NSEC_PER_SEC)
+                if !Task.isCancelled { throw TimeoutError() }
+            }
+
+            group.addTask {
+                await self.wait()
+                try await block(socket)
+            }
 
             try await group.next()
             group.cancelAll()

@@ -234,10 +234,13 @@ private struct State: @unchecked Sendable {
 
     var joinRef: Ref? {
         switch connection {
-        case .unjoined, .errored, .joining, .leaving, .left:
+        case .unjoined, .errored, .joining, .left:
             return nil
 
         case let .joined(ref, _):
+            return ref
+
+        case let .leaving(ref, _):
             return ref
         }
     }
@@ -266,7 +269,7 @@ private struct State: @unchecked Sendable {
         case errored
         case joined(Ref, reply: JSON)
         case joining(JoinFuture)
-        case leaving(LeaveFuture)
+        case leaving(Ref?, LeaveFuture)
         case left
         case unjoined
 
@@ -395,7 +398,13 @@ private struct State: @unchecked Sendable {
                 event: .leave,
                 timeout: Date(timeIntervalSinceNow: timeout)
             )
-            let _: Message = try await socket.request(push)
+
+            do {
+                let _: Message = try await socket.request(push)
+                await socket.remove(topic)
+            } catch {
+                await socket.remove(topic)
+            }
         }
 
         switch connection {
@@ -404,18 +413,18 @@ private struct State: @unchecked Sendable {
             return {}
 
         case let .joining(join):
-            connection = .leaving(LeaveFuture())
+            connection = .leaving(nil, LeaveFuture())
 
             return {
                 join.fail(CancellationError())
                 try await doLeave()
             }
 
-        case let .leaving(leave):
+        case let .leaving(_, leave):
             return { try await leave.value }
 
-        case .joined:
-            connection = .leaving(LeaveFuture())
+        case let .joined(joinRef, _):
+            connection = .leaving(joinRef, LeaveFuture())
             return doLeave
         }
     }
@@ -426,7 +435,7 @@ private struct State: @unchecked Sendable {
             connection = .left
             return nil
 
-        case let .leaving(future):
+        case let .leaving(_, future):
             connection = .left
             return future
         }
@@ -473,7 +482,7 @@ private struct State: @unchecked Sendable {
                 connection = .left
                 close = { fut.fail(PhoenixError.leavingChannel) }
 
-            case let .leaving(fut):
+            case let .leaving(_, fut):
                 connection = .left
                 close = { fut.resolve() }
             }
@@ -513,7 +522,7 @@ private struct State: @unchecked Sendable {
                 connection = .errored
                 leave = { fut.fail(PhoenixError.channelError) }
 
-            case let .leaving(fut):
+            case let .leaving(_, fut):
                 connection = .left
                 leave = { fut.resolve() }
             }
@@ -550,7 +559,7 @@ private struct State: @unchecked Sendable {
             connection = .errored
             return { future.fail(TimeoutError()) }
 
-        case let .leaving(future):
+        case let .leaving(_, future):
             connection = .left
             return { future.resolve() }
 
