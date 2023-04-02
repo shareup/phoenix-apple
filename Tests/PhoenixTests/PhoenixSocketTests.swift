@@ -68,11 +68,11 @@ final class PhoenixSocketTests: XCTestCase {
     // MARK: "connect with WebSocket"
 
     func testConnectsToCorrectURL() async throws {
-        var createdWebSocket = false
+        let createdWebSocket = Locked(false)
         let expected = URL(string: "ws://0.0.0.0:4003/socket/websocket?vsn=2.0.0")!
 
         let makeWS: MakeWebSocket = { _, url, _, _, _ in
-            createdWebSocket = true
+            createdWebSocket.access { $0 = true }
             XCTAssertEqual(expected, url)
             return self.fake()
         }
@@ -80,7 +80,7 @@ final class PhoenixSocketTests: XCTestCase {
         let socket = PhoenixSocket(url: url, makeWebSocket: makeWS)
         await socket.connect()
 
-        XCTAssertTrue(createdWebSocket)
+        XCTAssertTrue(createdWebSocket.access { $0 })
     }
 
     func testOpenStateCallbackIsCalled() async throws {

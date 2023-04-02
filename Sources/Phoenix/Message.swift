@@ -19,7 +19,7 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
         try self.init(data: Data(string.utf8))
     }
 
-    public init(_ msg: WebSocketMessage) throws {
+    init(_ msg: WebSocketMessage) throws {
         switch msg {
         case let .data(data):
             try self.init(data: data)

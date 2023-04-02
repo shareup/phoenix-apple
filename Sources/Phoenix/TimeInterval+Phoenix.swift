@@ -1,6 +1,6 @@
 import Foundation
 
-extension TimeInterval {
+public extension TimeInterval {
     init(nanoseconds: UInt64) {
         self = Double(nanoseconds) / Double(NSEC_PER_SEC)
     }

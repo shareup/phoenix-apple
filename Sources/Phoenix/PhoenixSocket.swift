@@ -8,7 +8,7 @@ import Synchronized
 import WebSocket
 
 typealias MakeWebSocket =
-    (
+    @Sendable (
         Int,
         URL,
         WebSocketOptions,
@@ -31,7 +31,6 @@ final actor PhoenixSocket {
     }
 
     nonisolated let url: URL
-    nonisolated let connectOptions: [String: Any]
     nonisolated let timeout: UInt64
     nonisolated let heartbeatInterval: UInt64
 
@@ -70,7 +69,6 @@ final actor PhoenixSocket {
 
     init(
         url: URL,
-        connectionOptions: [String: Any] = [:],
         timeout: TimeInterval = 10,
         heartbeatInterval: TimeInterval = 30,
         pushEncoder: @escaping PushEncoder = Push.encode,
@@ -78,7 +76,6 @@ final actor PhoenixSocket {
         makeWebSocket: @escaping MakeWebSocket
     ) {
         self.url = url.webSocketURLV2
-        connectOptions = connectionOptions
         self.timeout = timeout.nanoseconds
         self.heartbeatInterval = heartbeatInterval.nanoseconds
         self.pushEncoder = pushEncoder
@@ -282,13 +279,13 @@ extension PhoenixSocket {
         let didSucceed = await withThrowingTaskGroup(of: Bool.self) { group in
             group.addTask { [weak self] in
                 guard !Task.isCancelled, let self
-                else { throw PhoenixError.heartbeatTimeout }
+                else { throw TimeoutError() }
 
                 let push = Push(topic: "phoenix", event: .heartbeat)
                 let message: Message = try await self.request(push)
 
                 guard !Task.isCancelled
-                else { throw PhoenixError.heartbeatTimeout }
+                else { throw TimeoutError() }
 
                 return message.payload["status"] == "ok"
             }
@@ -319,7 +316,7 @@ extension PhoenixSocket {
         } else {
             await doCloseFromServer(
                 id: ws.id,
-                error: PhoenixError.heartbeatTimeout
+                error: TimeoutError()
             )
         }
     }

@@ -11,16 +11,20 @@ import Foundation
 // standard.
 // So, we have to manually encode all query parameters as `x-www-form-urlencoded`.
 
-extension URL {
+public extension URL {
     func appendingQueryItems(_ items: [String: String]) -> URL {
-        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
-            fatalError()
-        }
+        guard var components = URLComponents(
+            url: self,
+            resolvingAgainstBaseURL: false
+        ) else { fatalError() }
 
         var queryItems: [URLQueryItem] = components
             .queryItemsOrEmpty
-            .map {
-                URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncodingForFormData())
+            .map { item in
+                URLQueryItem(
+                    name: item.name,
+                    value: item.value?.addingPercentEncodingForFormData()
+                )
             }
 
         items.forEach { name, value in
@@ -31,9 +35,7 @@ extension URL {
 
         components.percentEncodedQueryItems = queryItems
 
-        guard let url = components.url else {
-            fatalError()
-        }
+        guard let url = components.url else { fatalError() }
 
         return url
     }
@@ -51,7 +53,8 @@ private extension String {
         var allowedCharacterSet = CharacterSet.alphanumerics
         allowedCharacterSet.insert(charactersIn: allowedCharacters)
 
-        return addingPercentEncoding(withAllowedCharacters: allowedCharacterSet)?
-            .replacingOccurrences(of: " ", with: "+")
+        return addingPercentEncoding(
+            withAllowedCharacters: allowedCharacterSet
+        )?.replacingOccurrences(of: " ", with: "+")
     }
 }

@@ -106,7 +106,11 @@ final class PhoenixChannel: @unchecked Sendable {
         let reply = try message.reply
 
         guard reply.isOk else {
-            throw PhoenixError.pushError(topic, event, reply.response)
+            throw PhoenixError.channelErrorWithResponse(
+                topic,
+                event,
+                reply.response
+            )
         }
 
         return reply.response
@@ -195,8 +199,6 @@ private extension PhoenixChannel {
             return reply
         } catch let error as NotReadyToJoinError {
             throw error
-        } catch PhoenixError.socketError {
-            throw PhoenixError.socketError
         } catch PhoenixError.leavingChannel {
             throw PhoenixError.leavingChannel
         } catch {
@@ -348,7 +350,13 @@ private struct State: @unchecked Sendable {
                 let message: Message = try await socket.request(push)
                 let (ref, isOk, payload) = try message.refAndReply
 
-                guard isOk else { throw E.joinError }
+                guard isOk else {
+                    throw E.channelErrorWithResponse(
+                        topic,
+                        Event.join.stringValue,
+                        payload
+                    )
+                }
 
                 return (ref, payload)
             }
