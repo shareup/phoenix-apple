@@ -35,7 +35,7 @@ public struct Socket: Identifiable, Sendable {
 }
 
 public extension Socket {
-    static func production(
+    static func system(
         url: URL,
         decoder: @escaping MessageDecoder = Message.decode,
         encoder: @escaping PushEncoder = Push.encode,
