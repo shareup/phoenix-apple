@@ -23,7 +23,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/json-apple.git",
       "state" : {
-        "revision" : "e4a298e5d7b7f6c75bc58cc40770494519647d7e",
+        "revision" : "daf272a12f5ad8cb1ea309fc3bf8b9972aa7fb18",
         "version" : "1.3.0"
       }
     },
