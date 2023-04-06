@@ -131,7 +131,13 @@ extension PhoenixSocket {
     }
 
     func remove(_ topic: Topic) {
-        channels.removeValue(forKey: topic)
+        let channel = channels.removeValue(forKey: topic)
+        channel?.leaveImmediately()
+    }
+
+    func removeAll() {
+        channels.values.forEach { $0.leaveImmediately() }
+        channels.removeAll()
     }
 }
 
@@ -396,6 +402,8 @@ extension PhoenixSocket {
 
             try await ws.open()
 
+            try Task.checkCancellation()
+
             _connectionState.value = .open(ws)
             pushes.resume()
             listen()
@@ -483,7 +491,7 @@ private extension PhoenixSocket {
             {}, // onOpen
             { [id] close in
                 Task { [weak self] in
-                    guard let self else { return }
+                    guard let self, !Task.isCancelled else { return }
                     await self.doCloseFromServer(
                         id: id,
                         error: WebSocketError.closeCodeAndReason(

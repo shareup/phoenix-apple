@@ -9,6 +9,7 @@ public struct Socket: Identifiable, Sendable {
     public var disconnect: @Sendable () async -> Void
     public var channel: @Sendable (Topic, JSON) async -> Channel
     public var remove: @Sendable (Topic) async -> Void
+    public var removeAll: @Sendable () async -> Void
     public var send: @Sendable (Topic, Event, JSON) async throws -> Void
     public var request: @Sendable (Topic, Event, JSON) async throws -> Message
     public var messages: @Sendable () async -> AsyncStream<Message>
@@ -19,6 +20,7 @@ public struct Socket: Identifiable, Sendable {
         disconnect: @escaping @Sendable () async -> Void,
         channel: @escaping @Sendable (Topic, JSON) async -> Channel,
         remove: @escaping @Sendable (Topic) async -> Void,
+        removeAll: @escaping @Sendable () async -> Void,
         send: @escaping @Sendable (Topic, Event, JSON) async throws -> Void,
         request: @escaping @Sendable (Topic, Event, JSON) async throws -> Message,
         messages: @escaping @Sendable () async -> AsyncStream<Message>
@@ -28,6 +30,7 @@ public struct Socket: Identifiable, Sendable {
         self.disconnect = disconnect
         self.channel = channel
         self.remove = remove
+        self.removeAll = removeAll
         self.send = send
         self.request = request
         self.messages = messages
@@ -61,14 +64,14 @@ public extension Socket {
             disconnect: { await phoenix.disconnect() },
             channel: { topic, joinPayload in
                 Channel.with(
-                    PhoenixChannel(
-                        topic: topic,
-                        joinPayload: joinPayload,
-                        socket: phoenix
+                    await phoenix.channel(
+                        topic,
+                        joinPayload: joinPayload
                     )
                 )
             },
             remove: { await phoenix.remove($0) },
+            removeAll: { await phoenix.removeAll() },
             send: { topic, event, payload in
                 let push = Push(topic: topic, event: event, payload: payload)
                 try await phoenix.send(push)

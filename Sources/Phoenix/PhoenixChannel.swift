@@ -65,12 +65,27 @@ final class PhoenixChannel: @unchecked Sendable {
         let future = state.access { $0.didLeave() }
         tasks.cancel(forKey: "socketConnection")
         os_log(
-            "leave: channel=%{public}@",
+            "leave: channel=%{public}s",
             log: .phoenix,
             type: .debug,
             topic
         )
         future?.resolve()
+    }
+
+    func leaveImmediately() {
+        tasks.cancel(forKey: "rejoin")
+        tasks.cancel(forKey: "socketConnection")
+
+        let leave = state.access { $0.leaveImmediately(topic: topic) }
+        leave()
+
+        os_log(
+            "leave: channel=%{public}s",
+            log: .phoenix,
+            type: .debug,
+            topic
+        )
     }
 
     func send(
@@ -189,7 +204,7 @@ private extension PhoenixChannel {
             tasks.cancel(forKey: "rejoin")
 
             os_log(
-                "join: channel=%{public}@",
+                "join: channel=%{public}s",
                 log: .phoenix,
                 type: .debug,
                 topic
@@ -201,12 +216,14 @@ private extension PhoenixChannel {
             throw error
         } catch PhoenixError.leavingChannel {
             throw PhoenixError.leavingChannel
+        } catch is CancellationError {
+            throw CancellationError()
         } catch {
             state.access { $0.didFailJoin() }?.fail(error)
             tasks.cancel(forKey: "rejoin")
 
             os_log(
-                "join: channel=%{public}@ error=%{public}@",
+                "join: channel=%{public}s error=%{public}@",
                 log: .phoenix,
                 type: .error,
                 topic,
@@ -437,6 +454,26 @@ private struct State: @unchecked Sendable {
         }
     }
 
+    mutating func leaveImmediately(topic: Topic) -> () -> Void {
+        switch connection {
+        case .errored, .left, .unjoined:
+            connection = .left
+            return {}
+
+        case let .joining(join):
+            connection = .left
+            return { join.fail(CancellationError()) }
+
+        case let .leaving(_, leave):
+            connection = .left
+            return { leave.resolve() }
+
+        case .joined:
+            connection = .left
+            return {}
+        }
+    }
+
     mutating func didLeave() -> LeaveFuture? {
         switch connection {
         case .unjoined, .errored, .joined, .joining, .left:
@@ -462,7 +499,7 @@ private struct State: @unchecked Sendable {
                 } else {
                     return {
                         os_log(
-                            "outdated message: channel=%{public}@ joinRef=%d message=%d",
+                            "outdated message: channel=%{public}s joinRef=%d message=%d",
                             log: .phoenix,
                             type: .debug,
                             message.topic,
@@ -497,7 +534,7 @@ private struct State: @unchecked Sendable {
 
             return {
                 os_log(
-                    "close: channel=%{public}@ topic=%s",
+                    "close: channel=%s",
                     log: .phoenix,
                     type: .debug,
                     message.topic
@@ -537,7 +574,7 @@ private struct State: @unchecked Sendable {
 
             return {
                 os_log(
-                    "error: channel=%{public}@ joinRef=%d",
+                    "error: channel=%{public}s joinRef=%d",
                     log: .phoenix,
                     type: .error,
                     message.topic,
