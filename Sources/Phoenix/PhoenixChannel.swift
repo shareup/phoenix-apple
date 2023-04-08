@@ -77,7 +77,7 @@ final class PhoenixChannel: @unchecked Sendable {
         tasks.cancel(forKey: "rejoin")
         tasks.cancel(forKey: "socketConnection")
 
-        let leave = state.access { $0.leaveImmediately(topic: topic) }
+        let leave = state.access { $0.leaveImmediately() }
         leave()
 
         os_log(
@@ -454,7 +454,7 @@ private struct State: @unchecked Sendable {
         }
     }
 
-    mutating func leaveImmediately(topic: Topic) -> () -> Void {
+    mutating func leaveImmediately() -> () -> Void {
         switch connection {
         case .errored, .left, .unjoined:
             connection = .left
