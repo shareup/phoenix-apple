@@ -176,17 +176,17 @@ extension PhoenixSocket {
         let task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
 
-            let encoder = self.pushEncoder
+            let encoder = pushEncoder
 
-            for try await push in self.pushes {
-                guard let ws = await self.webSocket,
+            for try await push in pushes {
+                guard let ws = await webSocket,
                       !Task.isCancelled
                 else { return }
 
                 do {
                     if let channel = await channels[push.topic] {
                         guard await channel.prepareToSend(push) else {
-                            self.pushes.putBack(push)
+                            pushes.putBack(push)
                             await Task.yield()
                             continue
                         }
@@ -205,7 +205,7 @@ extension PhoenixSocket {
                         push.description
                     )
 
-                    self.pushes.didSend(push)
+                    pushes.didSend(push)
                 } catch {
                     if Task.isCancelled { return }
                     await doCloseFromServer(id: ws.id, error: error)
