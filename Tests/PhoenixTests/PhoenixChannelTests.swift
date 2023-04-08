@@ -475,6 +475,8 @@ final class PhoenixChannelTests: XCTestCase {
                     XCTAssertTrue(receivedJoin)
                 }
 
+                await self.wait()
+
                 group.addTask {
                     do { try await channel.join(timeout: 0.01) }
                     catch is TimeoutError {}

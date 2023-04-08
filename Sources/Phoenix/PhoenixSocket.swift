@@ -379,7 +379,7 @@ extension PhoenixSocket {
     /// and this one will happen after a delay.
     func doConnect() async {
         guard case let .closed(attempts) = _connectionState.value,
-              shouldReconnect
+              shouldReconnect, !Task.isCancelled
         else { return }
 
         _connectionState.value = .waitingToReconnect
@@ -469,7 +469,10 @@ extension PhoenixSocket {
             try? await ws.close(closeCode(from: error), timeout)
             _connectionState.value = .closed(connectionAttempts: 0)
 
-            await doConnect()
+            let connectTask = Task.detached { [weak self] in
+                await self?.doConnect()
+            }
+            tasks.add(connectTask)
 
         default:
             break
