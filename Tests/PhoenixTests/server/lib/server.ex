@@ -1,2 +1,0 @@
-defmodule Server do
-end

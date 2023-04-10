@@ -1,25 +1,30 @@
-// swift-tools-version:5.7
+// swift-tools-version:5.8
 import PackageDescription
 
 let package = Package(
     name: "Phoenix",
     platforms: [
-        .macOS(.v11), .iOS(.v14), .tvOS(.v14), .watchOS(.v7),
+        .macOS(.v12), .iOS(.v15), .tvOS(.v15), .watchOS(.v8),
     ],
     products: [
-        .library(
-            name: "Phoenix",
-            targets: ["Phoenix"]
-        ),
+        .library(name: "Phoenix", targets: ["Phoenix"]),
     ],
     dependencies: [
         .package(
             url: "https://github.com/shareup/async-extensions.git",
-            from: "2.2.0"
+            from: "4.1.0"
         ),
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",
             from: "3.0.0"
+        ),
+        .package(
+            url: "https://github.com/shareup/json-apple.git",
+            from: "1.3.0"
+        ),
+        .package(
+            url: "https://github.com/apple/swift-collections.git",
+            from: "1.0.3"
         ),
         .package(
             url: "https://github.com/shareup/synchronized.git",
@@ -27,7 +32,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "2.5.2"
+            from: "4.0.1"
         ),
     ],
     targets: [
@@ -36,14 +41,19 @@ let package = Package(
             dependencies: [
                 .product(name: "AsyncExtensions", package: "async-extensions"),
                 .product(name: "DispatchTimer", package: "dispatch-timer"),
+                .product(name: "Collections", package: "swift-collections"),
+                .product(name: "JSON", package: "json-apple"),
                 .product(name: "Synchronized", package: "synchronized"),
                 .product(name: "WebSocket", package: "websocket-apple"),
             ]
         ),
         .testTarget(
             name: "PhoenixTests",
-            dependencies: ["Phoenix"],
-            exclude: ["phoenix-js", "server"]
+            dependencies: [
+                .product(name: "AsyncExtensions", package: "async-extensions"),
+                .product(name: "AsyncTestExtensions", package: "async-extensions"),
+                "Phoenix",
+            ]
         ),
     ]
 )

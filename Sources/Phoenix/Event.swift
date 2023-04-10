@@ -1,4 +1,4 @@
-public enum PhxEvent: Equatable, ExpressibleByStringLiteral {
+public enum Event: Hashable, ExpressibleByStringLiteral, Sendable {
     case join
     case leave
     case close
@@ -49,12 +49,7 @@ public enum PhxEvent: Equatable, ExpressibleByStringLiteral {
         }
     }
 
-    public static func == (lhs: PhxEvent, rhs: PhxEvent) -> Bool {
+    public static func == (lhs: Event, rhs: Event) -> Bool {
         lhs.stringValue == rhs.stringValue
-    }
-
-    var isCustom: Bool {
-        guard case .custom = self else { return false }
-        return true
     }
 }
