@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/async-extensions.git",
       "state" : {
-        "revision" : "327714b7021127d28f99f5a451ac564d04a8884b",
-        "version" : "4.0.0"
+        "revision" : "59504194f84b8c66a27503b5fd0640ac9b01f42a",
+        "version" : "4.1.0"
       }
     },
     {
@@ -14,8 +14,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/dispatch-timer.git",
       "state" : {
-        "revision" : "7c233b28f54d3797a6e66d54aa342f1cfc05d8db",
-        "version" : "3.0.0"
+        "revision" : "2d8c304aa6f382a7a362cd5a814884f3930c5662",
+        "version" : "3.0.1"
       }
     },
     {
@@ -32,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "f504716c27d2e5d4144fa4794b12129301d17729",
-        "version" : "1.0.3"
+        "revision" : "937e904258d22af6e447a0b72c0bc67583ef64a2",
+        "version" : "1.0.4"
       }
     },
     {
@@ -41,8 +41,17 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/synchronized.git",
       "state" : {
-        "revision" : "3a07451bbd0933933804c7d9a92ef2fa57b6766f",
-        "version" : "4.0.0"
+        "revision" : "85653e23270ec88ae19f8d494157769487e34aed",
+        "version" : "4.0.1"
+      }
+    },
+    {
+      "identity" : "websocket-apple",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/shareup/websocket-apple.git",
+      "state" : {
+        "revision" : "2fa14629e689ac73e76b949b2216a6ae3f5545c5",
+        "version" : "4.0.1"
       }
     }
   ],

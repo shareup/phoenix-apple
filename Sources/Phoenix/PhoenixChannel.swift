@@ -494,7 +494,7 @@ private struct State: @unchecked Sendable {
         func doSendMessage() -> () -> Void {
             switch connection {
             case let .joined(joinRef, _):
-                if message.joinRef == joinRef {
+                if message.joinRef == joinRef || message.joinRef == nil {
                     return { sendMessage(message) }
                 } else {
                     return {

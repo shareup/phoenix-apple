@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/shareup/async-extensions.git",
-            from: "4.0.0"
+            from: "4.1.0"
         ),
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",
@@ -30,11 +30,10 @@ let package = Package(
             url: "https://github.com/shareup/synchronized.git",
             from: "4.0.0"
         ),
-        .package(path: "../websocket-apple"),
-//        .package(
-//            url: "https://github.com/shareup/websocket-apple.git",
-//            from: "3.0.0"
-//        ),
+        .package(
+            url: "https://github.com/shareup/websocket-apple.git",
+            from: "4.0.1"
+        ),
     ],
     targets: [
         .target(
@@ -46,12 +45,6 @@ let package = Package(
                 .product(name: "JSON", package: "json-apple"),
                 .product(name: "Synchronized", package: "synchronized"),
                 .product(name: "WebSocket", package: "websocket-apple"),
-            ],
-            swiftSettings: [
-                .unsafeFlags([
-                    "-Xfrontend", "-warn-concurrency",
-                    "-Xfrontend", "-enable-actor-data-race-checks",
-                ]),
             ]
         ),
         .testTarget(
