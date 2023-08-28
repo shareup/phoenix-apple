@@ -16,7 +16,7 @@ import XCTest
 // do not apply to our socket or overlap other tests. We skip those tests.
 
 final class PhoenixSocketTests: XCTestCase {
-    private let url = URL(string: "ws://0.0.0.0:4003/socket")!
+    private let url = { @Sendable in URL(string: "ws://0.0.0.0:4003/socket")! }
 
     private var sendSubject: PassthroughSubject<WebSocketMessage, Never>!
     private var receiveSubject: PassthroughSubject<WebSocketMessage, Never>!
@@ -42,8 +42,8 @@ final class PhoenixSocketTests: XCTestCase {
         )
 
         let url = socket.url
-        XCTAssertEqual(url.path, "/socket/websocket")
-        XCTAssertEqual(url.query, "vsn=2.0.0")
+        XCTAssertEqual(url().path, "/socket/websocket")
+        XCTAssertEqual(url().query, "vsn=2.0.0")
 
         XCTAssertEqual(10 * NSEC_PER_SEC, socket.timeout)
         XCTAssertEqual(30 * NSEC_PER_SEC, socket.heartbeatInterval)
@@ -58,8 +58,8 @@ final class PhoenixSocketTests: XCTestCase {
         )
 
         let url = socket.url
-        XCTAssertEqual(url.path, "/socket/websocket")
-        XCTAssertEqual(url.query, "vsn=2.0.0")
+        XCTAssertEqual(url().path, "/socket/websocket")
+        XCTAssertEqual(url().query, "vsn=2.0.0")
 
         XCTAssertEqual(12 * NSEC_PER_SEC, socket.timeout)
         XCTAssertEqual(29 * NSEC_PER_SEC, socket.heartbeatInterval)
@@ -587,7 +587,7 @@ final class PhoenixSocketTests: XCTestCase {
             await socket.connect()
             let channel = await socket.channel("abc", rejoinDelay: [0, 0.01])
 
-            let isErrored = AsyncExtensions.Future<Void>()
+            let isErrored = AsyncThrowingFuture<Void>()
 
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -726,7 +726,7 @@ private extension PhoenixSocketTests {
 
 private func future(
     timeout: TimeInterval
-) -> AsyncExtensions.Future<Void> {
+) -> AsyncThrowingFuture<Void> {
     .init(timeout: timeout)
 }
 
@@ -735,7 +735,7 @@ private extension PhoenixSocketTests {
         onOpen: @escaping WebSocketOnOpen = {},
         onClose: @escaping WebSocketOnClose = { _ in }
     ) async throws -> WebSocket {
-        try await .system(url: url, onOpen: onOpen, onClose: onClose)
+        try await .system(url: url(), onOpen: onOpen, onClose: onClose)
     }
 
     func fake(

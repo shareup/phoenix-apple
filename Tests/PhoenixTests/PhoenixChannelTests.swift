@@ -16,7 +16,7 @@ import XCTest
 // do not apply to our socket or overlap other tests. We skip those tests.
 
 final class PhoenixChannelTests: XCTestCase {
-    private let url = URL(string: "ws://0.0.0.0:4003/socket")!
+    private let url = { @Sendable in URL(string: "ws://0.0.0.0:4003/socket")! }
 
     private var sendSubject: PassthroughSubject<WebSocketMessage, Never>!
     private var receiveSubject: PassthroughSubject<WebSocketMessage, Never>!
@@ -237,7 +237,7 @@ final class PhoenixChannelTests: XCTestCase {
     }
 
     func testJoinsAfterSocketOpenAndJoinDelays() async throws {
-        let openFuture = AsyncExtensions.Future<Void>()
+        let openFuture = AsyncThrowingFuture<Void>()
         let canJoin = Locked(false)
         let didJoin = Locked(false)
 
@@ -299,7 +299,7 @@ final class PhoenixChannelTests: XCTestCase {
     }
 
     func testOpensAfterSocketOpenDelay() async throws {
-        let openFuture = AsyncExtensions.Future<Void>()
+        let openFuture = AsyncThrowingFuture<Void>()
         let canJoin = Locked(false)
         let didJoin = Locked(false)
 
@@ -377,8 +377,8 @@ final class PhoenixChannelTests: XCTestCase {
                     }
                 }
 
-                let didJoin1 = AsyncExtensions.Future<Void>()
-                let didJoin2 = AsyncExtensions.Future<Void>()
+                let didJoin1 = AsyncThrowingFuture<Void>()
+                let didJoin2 = AsyncThrowingFuture<Void>()
 
                 let channel = await self.makeChannel(socket)
 

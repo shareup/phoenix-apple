@@ -30,7 +30,7 @@ final actor PhoenixSocket {
         }
     }
 
-    nonisolated let url: URL
+    nonisolated let url: @Sendable () -> URL
     nonisolated let timeout: UInt64
     nonisolated let heartbeatInterval: UInt64
 
@@ -68,14 +68,14 @@ final actor PhoenixSocket {
     private nonisolated let tasks = TaskStore()
 
     init(
-        url: URL,
+        url: @escaping @Sendable () -> URL,
         timeout: TimeInterval = 10,
         heartbeatInterval: TimeInterval = 30,
         pushEncoder: @escaping PushEncoder = Push.encode,
         messageDecoder: @escaping MessageDecoder = Message.decode,
         makeWebSocket: @escaping MakeWebSocket
     ) {
-        self.url = url.webSocketURLV2
+        self.url = { url().webSocketURLV2 }
         self.timeout = timeout.nanoseconds
         self.heartbeatInterval = heartbeatInterval.nanoseconds
         self.pushEncoder = pushEncoder
@@ -489,7 +489,7 @@ private extension PhoenixSocket {
 
         return try await makeWebSocket(
             id, // id
-            url, // url
+            url(), // url
             .init(), // options
             {}, // onOpen
             { [id] close in

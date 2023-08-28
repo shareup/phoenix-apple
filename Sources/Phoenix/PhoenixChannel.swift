@@ -5,8 +5,8 @@ import JSON
 import os.log
 import Synchronized
 
-private typealias JoinFuture = AsyncExtensions.Future<(Ref, JSON)>
-private typealias LeaveFuture = AsyncExtensions.Future<Void>
+private typealias JoinFuture = AsyncThrowingFuture<(Ref, JSON)>
+private typealias LeaveFuture = AsyncThrowingFuture<Void>
 
 private typealias MessageSubject = PassthroughSubject<Message, Never>
 
