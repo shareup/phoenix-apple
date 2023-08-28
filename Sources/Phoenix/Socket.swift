@@ -39,7 +39,7 @@ public struct Socket: Identifiable, Sendable {
 
 public extension Socket {
     static func system(
-        url: URL,
+        url: @escaping @Sendable () -> URL,
         decoder: @escaping MessageDecoder = Message.decode,
         encoder: @escaping PushEncoder = Push.encode,
         maxMessageSize: Int = 5 * 1024 * 1024

@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/async-extensions.git",
       "state" : {
-        "revision" : "59504194f84b8c66a27503b5fd0640ac9b01f42a",
-        "version" : "4.1.0"
+        "revision" : "f8dec7a227bbbe15fd4df90c787d4c73e91451ba",
+        "version" : "4.2.1"
       }
     },
     {
@@ -50,8 +50,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/websocket-apple.git",
       "state" : {
-        "revision" : "2fa14629e689ac73e76b949b2216a6ae3f5545c5",
-        "version" : "4.0.1"
+        "revision" : "f409dca92eb61be6dd1183941a8590f9c4459f07",
+        "version" : "4.0.2"
       }
     }
   ],

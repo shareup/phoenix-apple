@@ -30,7 +30,7 @@ final actor PhoenixSocket {
         }
     }
 
-    nonisolated let url: URL
+    nonisolated let url: @Sendable () -> URL
     nonisolated let timeout: UInt64
     nonisolated let heartbeatInterval: UInt64
 
@@ -68,14 +68,14 @@ final actor PhoenixSocket {
     private nonisolated let tasks = TaskStore()
 
     init(
-        url: URL,
+        url: @escaping @Sendable () -> URL,
         timeout: TimeInterval = 10,
         heartbeatInterval: TimeInterval = 30,
         pushEncoder: @escaping PushEncoder = Push.encode,
         messageDecoder: @escaping MessageDecoder = Message.decode,
         makeWebSocket: @escaping MakeWebSocket
     ) {
-        self.url = url.webSocketURLV2
+        self.url = { url().webSocketURLV2 }
         self.timeout = timeout.nanoseconds
         self.heartbeatInterval = heartbeatInterval.nanoseconds
         self.pushEncoder = pushEncoder
@@ -221,17 +221,19 @@ extension PhoenixSocket {
 
     private func listen() {
         let task = Task { [weak self] in
-            guard let self, !Task.isCancelled,
-                  let ws = await self.webSocket
+            guard !Task.isCancelled,
+                  let ws = await self?.webSocket,
+                  let decoder = self?.messageDecoder
             else { return }
 
-            let decoder = self.messageDecoder
-
             for await msg in ws.messages {
+                guard let self else { return }
+
                 do {
+                    
                     let message = try decoder(msg)
 
-                    _ = self.pushes.didReceive(message)
+                    _ = pushes.didReceive(message)
 
                     // NOTE: In the case a channel receives
                     // `Event.close`, it will remove itself from
@@ -284,14 +286,16 @@ extension PhoenixSocket {
 
         let didSucceed = await withThrowingTaskGroup(of: Bool.self) { group in
             group.addTask { [weak self] in
-                guard !Task.isCancelled, let self
-                else { throw TimeoutError() }
+                guard !Task.isCancelled else {
+                    throw TimeoutError()
+                }
 
                 let push = Push(topic: "phoenix", event: .heartbeat)
-                let message: Message = try await self.request(push)
+                let message: Message? = try await self?.request(push)
 
-                guard !Task.isCancelled
-                else { throw TimeoutError() }
+                guard !Task.isCancelled, let message else {
+                    throw TimeoutError()
+                }
 
                 return message.payload["status"] == "ok"
             }
@@ -489,13 +493,13 @@ private extension PhoenixSocket {
 
         return try await makeWebSocket(
             id, // id
-            url, // url
+            url(), // url
             .init(), // options
             {}, // onOpen
             { [id] close in
                 Task { [weak self] in
                     guard let self, !Task.isCancelled else { return }
-                    await self.doCloseFromServer(
+                    await doCloseFromServer(
                         id: id,
                         error: WebSocketError.closeCodeAndReason(
                             close.code, close.reason

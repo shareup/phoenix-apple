@@ -155,7 +155,7 @@ final class PushBufferTests: XCTestCase {
 
     func testEarlierTimeoutOverridesLaterTimeout() async throws {
         let didTimeout = Locked(false)
-        let replyFut = Future<Message>()
+        let replyFut = AsyncThrowingFuture<Message>()
 
         let buffer = PushBuffer()
         buffer.resume()
