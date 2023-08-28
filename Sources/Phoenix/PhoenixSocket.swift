@@ -221,14 +221,16 @@ extension PhoenixSocket {
 
     private func listen() {
         let task = Task { [weak self] in
-            guard let self, !Task.isCancelled,
-                  let ws = await webSocket
+            guard !Task.isCancelled,
+                  let ws = await self?.webSocket,
+                  let decoder = self?.messageDecoder
             else { return }
 
-            let decoder = messageDecoder
-
             for await msg in ws.messages {
+                guard let self else { return }
+
                 do {
+                    
                     let message = try decoder(msg)
 
                     _ = pushes.didReceive(message)
@@ -284,14 +286,16 @@ extension PhoenixSocket {
 
         let didSucceed = await withThrowingTaskGroup(of: Bool.self) { group in
             group.addTask { [weak self] in
-                guard !Task.isCancelled, let self
-                else { throw TimeoutError() }
+                guard !Task.isCancelled else {
+                    throw TimeoutError()
+                }
 
                 let push = Push(topic: "phoenix", event: .heartbeat)
-                let message: Message = try await request(push)
+                let message: Message? = try await self?.request(push)
 
-                guard !Task.isCancelled
-                else { throw TimeoutError() }
+                guard !Task.isCancelled, let message else {
+                    throw TimeoutError()
+                }
 
                 return message.payload["status"] == "ok"
             }
