@@ -222,16 +222,16 @@ extension PhoenixSocket {
     private func listen() {
         let task = Task { [weak self] in
             guard let self, !Task.isCancelled,
-                  let ws = await self.webSocket
+                  let ws = await webSocket
             else { return }
 
-            let decoder = self.messageDecoder
+            let decoder = messageDecoder
 
             for await msg in ws.messages {
                 do {
                     let message = try decoder(msg)
 
-                    _ = self.pushes.didReceive(message)
+                    _ = pushes.didReceive(message)
 
                     // NOTE: In the case a channel receives
                     // `Event.close`, it will remove itself from
@@ -288,7 +288,7 @@ extension PhoenixSocket {
                 else { throw TimeoutError() }
 
                 let push = Push(topic: "phoenix", event: .heartbeat)
-                let message: Message = try await self.request(push)
+                let message: Message = try await request(push)
 
                 guard !Task.isCancelled
                 else { throw TimeoutError() }
@@ -495,7 +495,7 @@ private extension PhoenixSocket {
             { [id] close in
                 Task { [weak self] in
                     guard let self, !Task.isCancelled else { return }
-                    await self.doCloseFromServer(
+                    await doCloseFromServer(
                         id: id,
                         error: WebSocketError.closeCodeAndReason(
                             close.code, close.reason
