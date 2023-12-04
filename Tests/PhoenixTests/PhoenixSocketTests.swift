@@ -849,7 +849,7 @@ private extension PhoenixSocketTests {
     }
 
     var outgoingMessages: AsyncStream<WebSocketMessage> {
-        sendSubject.allValues
+        sendSubject.allAsyncValues
     }
 
     func sendReply(

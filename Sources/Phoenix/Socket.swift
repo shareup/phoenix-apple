@@ -1,43 +1,43 @@
+import Combine
 import Foundation
 import JSON
 import Synchronized
 import WebSocket
-import Combine
 
 public struct Socket: Identifiable, Sendable {
     public let id: Int
     public var connect: @Sendable () async -> Void
     public var disconnect: @Sendable () async -> Void
+    public var isConnected: @Sendable () async -> AnyPublisher<Bool, Never>
     public var channel: @Sendable (Topic, JSON) async -> Channel
     public var remove: @Sendable (Topic) async -> Void
     public var removeAll: @Sendable () async -> Void
     public var send: @Sendable (Topic, Event, JSON) async throws -> Void
     public var request: @Sendable (Topic, Event, JSON) async throws -> Message
     public var messages: @Sendable () async -> AsyncStream<Message>
-    public var isConnected: @Sendable () async -> AnyPublisher<Bool, Never>
 
     public init(
         id: Int,
         connect: @escaping @Sendable () async -> Void,
         disconnect: @escaping @Sendable () async -> Void,
+        isConnected: @escaping @Sendable () async -> AnyPublisher<Bool, Never>,
         channel: @escaping @Sendable (Topic, JSON) async -> Channel,
         remove: @escaping @Sendable (Topic) async -> Void,
         removeAll: @escaping @Sendable () async -> Void,
         send: @escaping @Sendable (Topic, Event, JSON) async throws -> Void,
         request: @escaping @Sendable (Topic, Event, JSON) async throws -> Message,
-        messages: @escaping @Sendable () async -> AsyncStream<Message>,
-        isConnected: @escaping @Sendable () async -> AnyPublisher<Bool, Never>
+        messages: @escaping @Sendable () async -> AsyncStream<Message>
     ) {
         self.id = id
         self.connect = connect
         self.disconnect = disconnect
+        self.isConnected = isConnected
         self.channel = channel
         self.remove = remove
         self.removeAll = removeAll
         self.send = send
         self.request = request
         self.messages = messages
-        self.isConnected = isConnected
     }
 }
 
@@ -66,6 +66,7 @@ public extension Socket {
             id: nextSocketID(),
             connect: { await phoenix.connect() },
             disconnect: { await phoenix.disconnect() },
+            isConnected: { phoenix.isConnected },
             channel: { topic, joinPayload in
                 Channel.with(
                     await phoenix.channel(
@@ -84,8 +85,7 @@ public extension Socket {
                 let push = Push(topic: topic, event: event, payload: payload)
                 return try await phoenix.request(push)
             },
-            messages: { phoenix.messages },
-            isConnected: { phoenix.isConnected }
+            messages: { phoenix.messages }
         )
     }
 }

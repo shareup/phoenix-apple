@@ -37,7 +37,10 @@ final actor PhoenixSocket {
     nonisolated let pushEncoder: PushEncoder
     nonisolated let messageDecoder: MessageDecoder
 
-    nonisolated var messages: AsyncStream<Message> { messageSubject.allValues }
+    nonisolated var messages: AsyncStream<Message> {
+        messageSubject.allAsyncValues
+    }
+
     private nonisolated let messageSubject = PassthroughSubject<Message, Never>()
 
     private nonisolated let currentWebSocketID = Locked(0)

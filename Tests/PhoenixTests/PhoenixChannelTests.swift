@@ -1003,7 +1003,7 @@ private extension PhoenixChannelTests {
     }
 
     var outgoingMessages: AsyncStream<WebSocketMessage> {
-        sendSubject.allValues
+        sendSubject.allAsyncValues
     }
 
     func nextOutoingMessage() async throws -> Message {
