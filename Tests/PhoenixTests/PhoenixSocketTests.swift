@@ -215,8 +215,8 @@ final class PhoenixSocketTests: XCTestCase {
     }
 
     func testIsConnectedPublisher() async throws {
-        let didConnected = future(timeout: 2)
-        let didDisconnected = future(timeout: 2)
+        let didConnect = future(timeout: 2)
+        let didDisconnect = future(timeout: 2)
 
         let socket = PhoenixSocket(
             url: url,
@@ -226,19 +226,19 @@ final class PhoenixSocketTests: XCTestCase {
         let sub = socket.isConnected
             .sink { isConnected in
                 if isConnected {
-                    didConnected.resolve()
+                    didConnect.resolve()
                 } else {
-                    didDisconnected.resolve()
+                    didDisconnect.resolve()
                 }
             }
 
         await socket.connect()
 
-        try await didConnected.value
+        try await didConnect.value
 
         await socket.disconnect()
 
-        try await didDisconnected.value
+        try await didDisconnect.value
 
         sub.cancel()
     }
