@@ -14,7 +14,9 @@ final class PhoenixChannel: @unchecked Sendable {
     let topic: Topic
     let joinPayload: JSON
 
-    var messages: AsyncStream<Message> { messageSubject.allValues }
+    var messages: AsyncStream<Message> {
+        messageSubject.allAsyncValues
+    }
 
     var isErrored: Bool { state.access { $0.isErrored } }
     var isJoining: Bool { state.access { $0.isJoining } }
@@ -167,7 +169,7 @@ final class PhoenixChannel: @unchecked Sendable {
 private extension PhoenixChannel {
     func watchSocketConnection() {
         tasks.storedTask(key: "socketConnection") { [socket, state, weak self] in
-            let connectionStates = socket.onConnectionStateChange.allValues
+            let connectionStates = socket.onConnectionStateChange.allAsyncValues
             for await connectionState in connectionStates {
                 try Task.checkCancellation()
 
@@ -254,13 +256,13 @@ private struct State: @unchecked Sendable {
     var joinRef: Ref? {
         switch connection {
         case .unjoined, .errored, .joining, .left:
-            return nil
+            nil
 
         case let .joined(ref, _):
-            return ref
+            ref
 
         case let .leaving(ref, _):
-            return ref
+            ref
         }
     }
 
@@ -294,12 +296,12 @@ private struct State: @unchecked Sendable {
 
         var description: String {
             switch self {
-            case .errored: return "errored"
-            case .joined: return "joined"
-            case .joining: return "joining"
-            case .leaving: return "leaving"
-            case .left: return "left"
-            case .unjoined: return "unjoined"
+            case .errored: "errored"
+            case .joined: "joined"
+            case .joining: "joining"
+            case .leaving: "leaving"
+            case .left: "left"
+            case .unjoined: "unjoined"
             }
         }
     }
@@ -495,9 +497,9 @@ private struct State: @unchecked Sendable {
             switch connection {
             case let .joined(joinRef, _):
                 if message.joinRef == joinRef || message.joinRef == nil {
-                    return { sendMessage(message) }
+                    { sendMessage(message) }
                 } else {
-                    return {
+                    {
                         os_log(
                             "outdated message: channel=%{public}s joinRef=%d message=%d",
                             log: .phoenix,
@@ -510,7 +512,7 @@ private struct State: @unchecked Sendable {
                 }
 
             case .unjoined, .errored, .joining, .leaving, .left:
-                return { sendMessage(message) }
+                { sendMessage(message) }
             }
         }
 

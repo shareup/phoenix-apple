@@ -1,4 +1,4 @@
-// swift-tools-version:5.8
+// swift-tools-version:5.9
 import PackageDescription
 
 let package = Package(
@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/shareup/async-extensions.git",
-            from: "4.1.0"
+            from: "4.3.0"
         ),
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",
@@ -32,7 +32,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "4.0.2"
+            from: "4.0.3"
         ),
     ],
     targets: [

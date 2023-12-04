@@ -214,6 +214,35 @@ final class PhoenixSocketTests: XCTestCase {
         }
     }
 
+    func testIsConnectedPublisher() async throws {
+        let didConnect = future(timeout: 2)
+        let didDisconnect = future(timeout: 2)
+
+        let socket = PhoenixSocket(
+            url: url,
+            makeWebSocket: makeFakeWebSocket
+        )
+
+        let sub = socket.isConnected
+            .sink { isConnected in
+                if isConnected {
+                    didConnect.resolve()
+                } else {
+                    didDisconnect.resolve()
+                }
+            }
+
+        await socket.connect()
+
+        try await didConnect.value
+
+        await socket.disconnect()
+
+        try await didDisconnect.value
+
+        sub.cancel()
+    }
+
     // MARK: "channel"
 
     func testCreateChannelWithTopicAndPayload() async throws {
@@ -768,7 +797,7 @@ private extension PhoenixSocketTests {
     var makeFakeWebSocket: MakeWebSocket {
         { [weak self] _, _, _, onOpen, onClose async throws in
             guard let self else { throw CancellationError() }
-            return self.fake(onOpen: onOpen, onClose: onClose)
+            return fake(onOpen: onOpen, onClose: onClose)
         }
     }
 
@@ -820,7 +849,7 @@ private extension PhoenixSocketTests {
     }
 
     var outgoingMessages: AsyncStream<WebSocketMessage> {
-        sendSubject.allValues
+        sendSubject.allAsyncValues
     }
 
     func sendReply(

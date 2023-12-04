@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import JSON
 import Synchronized
@@ -7,6 +8,7 @@ public struct Socket: Identifiable, Sendable {
     public let id: Int
     public var connect: @Sendable () async -> Void
     public var disconnect: @Sendable () async -> Void
+    public var isConnected: @Sendable () async -> AnyPublisher<Bool, Never>
     public var channel: @Sendable (Topic, JSON) async -> Channel
     public var remove: @Sendable (Topic) async -> Void
     public var removeAll: @Sendable () async -> Void
@@ -18,6 +20,7 @@ public struct Socket: Identifiable, Sendable {
         id: Int,
         connect: @escaping @Sendable () async -> Void,
         disconnect: @escaping @Sendable () async -> Void,
+        isConnected: @escaping @Sendable () async -> AnyPublisher<Bool, Never>,
         channel: @escaping @Sendable (Topic, JSON) async -> Channel,
         remove: @escaping @Sendable (Topic) async -> Void,
         removeAll: @escaping @Sendable () async -> Void,
@@ -28,6 +31,7 @@ public struct Socket: Identifiable, Sendable {
         self.id = id
         self.connect = connect
         self.disconnect = disconnect
+        self.isConnected = isConnected
         self.channel = channel
         self.remove = remove
         self.removeAll = removeAll
@@ -62,6 +66,7 @@ public extension Socket {
             id: nextSocketID(),
             connect: { await phoenix.connect() },
             disconnect: { await phoenix.disconnect() },
+            isConnected: { phoenix.isConnected },
             channel: { topic, joinPayload in
                 Channel.with(
                     await phoenix.channel(
