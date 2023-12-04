@@ -2,6 +2,7 @@ import Foundation
 import JSON
 import Synchronized
 import WebSocket
+import Combine
 
 public struct Socket: Identifiable, Sendable {
     public let id: Int
@@ -13,6 +14,7 @@ public struct Socket: Identifiable, Sendable {
     public var send: @Sendable (Topic, Event, JSON) async throws -> Void
     public var request: @Sendable (Topic, Event, JSON) async throws -> Message
     public var messages: @Sendable () async -> AsyncStream<Message>
+    public var isConnected: @Sendable () async -> AnyPublisher<Bool, Never>
 
     public init(
         id: Int,
@@ -23,7 +25,8 @@ public struct Socket: Identifiable, Sendable {
         removeAll: @escaping @Sendable () async -> Void,
         send: @escaping @Sendable (Topic, Event, JSON) async throws -> Void,
         request: @escaping @Sendable (Topic, Event, JSON) async throws -> Message,
-        messages: @escaping @Sendable () async -> AsyncStream<Message>
+        messages: @escaping @Sendable () async -> AsyncStream<Message>,
+        isConnected: @escaping @Sendable () async -> AnyPublisher<Bool, Never>
     ) {
         self.id = id
         self.connect = connect
@@ -34,6 +37,7 @@ public struct Socket: Identifiable, Sendable {
         self.send = send
         self.request = request
         self.messages = messages
+        self.isConnected = isConnected
     }
 }
 
@@ -80,7 +84,8 @@ public extension Socket {
                 let push = Push(topic: topic, event: event, payload: payload)
                 return try await phoenix.request(push)
             },
-            messages: { phoenix.messages }
+            messages: { phoenix.messages },
+            isConnected: { phoenix.isConnected }
         )
     }
 }
