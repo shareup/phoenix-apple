@@ -13,8 +13,8 @@ public struct Socket: Identifiable, Sendable {
     public var removeAll: @Sendable () async -> Void
     public var send: @Sendable (Topic, Event, JSON) async throws -> Void
     public var request: @Sendable (Topic, Event, JSON) async throws -> Message
-    public var messages: @Sendable () -> AsyncStream<Message>
-    public var isConnected: @Sendable () -> AnyPublisher<Bool, Never>
+    public var messages: @Sendable () async -> AsyncStream<Message>
+    public var isConnected: @Sendable () async -> AnyPublisher<Bool, Never>
 
     public init(
         id: Int,
