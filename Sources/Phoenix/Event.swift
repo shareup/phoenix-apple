@@ -33,19 +33,19 @@ public enum Event: Hashable, ExpressibleByStringLiteral, Sendable {
     public var stringValue: String {
         switch self {
         case .join:
-            return "phx_join"
+            "phx_join"
         case .leave:
-            return "phx_leave"
+            "phx_leave"
         case .close:
-            return "phx_close"
+            "phx_close"
         case .reply:
-            return "phx_reply"
+            "phx_reply"
         case .error:
-            return "phx_error"
+            "phx_error"
         case .heartbeat:
-            return "heartbeat"
+            "heartbeat"
         case let .custom(string):
-            return string
+            string
         }
     }
 

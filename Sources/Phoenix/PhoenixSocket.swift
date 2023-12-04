@@ -23,10 +23,10 @@ final actor PhoenixSocket {
     var webSocket: WebSocket? {
         switch _connectionState.value {
         case let .connecting(ws), let .open(ws), let .closing(ws):
-            return ws
+            ws
 
         case .waitingToReconnect, .preparingToReconnect, .closed:
-            return nil
+            nil
         }
     }
 

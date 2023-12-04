@@ -1,4 +1,4 @@
-// swift-tools-version:5.8
+// swift-tools-version:5.9
 import PackageDescription
 
 let package = Package(
@@ -32,7 +32,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "4.0.2"
+            from: "4.0.3"
         ),
     ],
     targets: [
