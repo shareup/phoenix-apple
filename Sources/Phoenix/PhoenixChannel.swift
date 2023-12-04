@@ -294,12 +294,12 @@ private struct State: @unchecked Sendable {
 
         var description: String {
             switch self {
-            case .errored: return "errored"
-            case .joined: return "joined"
-            case .joining: return "joining"
-            case .leaving: return "leaving"
-            case .left: return "left"
-            case .unjoined: return "unjoined"
+            case .errored: "errored"
+            case .joined: "joined"
+            case .joining: "joining"
+            case .leaving: "leaving"
+            case .left: "left"
+            case .unjoined: "unjoined"
             }
         }
     }

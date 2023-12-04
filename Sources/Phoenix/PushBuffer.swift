@@ -152,7 +152,7 @@ Sendable {
                             if cancellation.isCancelled {
                                 throw CancellationError()
                             } else {
-                                return try state.next(cont)
+                                try state.next(cont)
                             }
                         }
 

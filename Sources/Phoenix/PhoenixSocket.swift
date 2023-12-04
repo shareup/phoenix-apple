@@ -51,6 +51,12 @@ final actor PhoenixSocket {
         _connectionState.eraseToAnyPublisher()
     }
 
+    nonisolated var isConnected: AnyPublisher<Bool, Never> {
+        _connectionState
+            .map(\.isOpen)
+            .eraseToAnyPublisher()
+    }
+
     private nonisolated let _connectionState =
         CurrentValueSubject<
             PhoenixSocket.ConnectionState,
@@ -230,7 +236,6 @@ extension PhoenixSocket {
                 guard let self else { return }
 
                 do {
-                    
                     let message = try decoder(msg)
 
                     _ = pushes.didReceive(message)
@@ -368,12 +373,12 @@ extension PhoenixSocket {
 
         var description: String {
             switch self {
-            case .closed: return "closed"
-            case .waitingToReconnect: return "waitingToReconnect"
-            case .preparingToReconnect: return "preparingToReconnect"
-            case .connecting: return "connecting"
-            case .open: return "open"
-            case .closing: return "closing"
+            case .closed: "closed"
+            case .waitingToReconnect: "waitingToReconnect"
+            case .preparingToReconnect: "preparingToReconnect"
+            case .connecting: "connecting"
+            case .open: "open"
+            case .closing: "closing"
             }
         }
     }
