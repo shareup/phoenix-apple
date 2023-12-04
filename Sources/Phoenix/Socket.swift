@@ -25,8 +25,8 @@ public struct Socket: Identifiable, Sendable {
         removeAll: @escaping @Sendable () async -> Void,
         send: @escaping @Sendable (Topic, Event, JSON) async throws -> Void,
         request: @escaping @Sendable (Topic, Event, JSON) async throws -> Message,
-        messages: @escaping @Sendable () async -> AsyncStream<Message>,
-        isConnected: @escaping @Sendable () async -> AnyPublisher<Bool, Never>
+        messages: @escaping @Sendable () -> AsyncStream<Message>,
+        isConnected: @escaping @Sendable () -> AnyPublisher<Bool, Never>
     ) {
         self.id = id
         self.connect = connect
