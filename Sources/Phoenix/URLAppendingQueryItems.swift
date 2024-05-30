@@ -27,7 +27,7 @@ public extension URL {
                 )
             }
 
-        items.forEach { name, value in
+        for (name, value) in items {
             queryItems.append(
                 URLQueryItem(name: name, value: value.addingPercentEncodingForFormData())
             )

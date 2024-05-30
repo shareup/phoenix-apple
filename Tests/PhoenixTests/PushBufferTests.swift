@@ -701,7 +701,7 @@ final class PushBufferTests: XCTestCase {
         buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
-            pushes.forEach { push in
+            for push in pushes {
                 group.addTask {
                     do {
                         self.prepareToSend(push)
@@ -760,7 +760,7 @@ final class PushBufferTests: XCTestCase {
         buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
-            pushes.forEach { push in
+            for push in pushes {
                 group.addTask {
                     do {
                         self.prepareToSend(push)
@@ -817,7 +817,7 @@ final class PushBufferTests: XCTestCase {
         buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
-            pushes.forEach { push in
+            for push in pushes {
                 group.addTask {
                     do {
                         self.prepareToSend(push)
@@ -881,7 +881,7 @@ final class PushBufferTests: XCTestCase {
         buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
-            pushes.forEach { push in
+            for push in pushes {
                 group.addTask {
                     do {
                         self.prepareToSend(push)
@@ -936,7 +936,7 @@ final class PushBufferTests: XCTestCase {
         buffer.resume()
 
         try await withThrowingTaskGroup(of: Void.self) { group in
-            pushes.forEach { push in
+            for push in pushes {
                 group.addTask {
                     self.prepareToSend(push)
                     let message = try await buffer.appendAndWait(push)

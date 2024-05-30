@@ -437,6 +437,7 @@ extension PhoenixSocket {
 
         shouldReconnect = false
         pushes.pause()
+        removeAll()
         tasks.cancelAll()
 
         os_log(
