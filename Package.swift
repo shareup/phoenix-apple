@@ -16,23 +16,23 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/shareup/dispatch-timer.git",
-            from: "3.0.0"
+            from: "3.0.1"
         ),
         .package(
             url: "https://github.com/shareup/json-apple.git",
-            from: "1.3.0"
+            from: "1.4.1"
         ),
         .package(
             url: "https://github.com/apple/swift-collections.git",
-            from: "1.0.3"
+            from: "1.1.2"
         ),
         .package(
             url: "https://github.com/shareup/synchronized.git",
-            from: "4.0.0"
+            from: "4.0.1"
         ),
         .package(
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "4.0.3"
+            from: "4.1.0"
         ),
     ],
     targets: [
