@@ -182,6 +182,9 @@ extension PhoenixSocket {
     }
 
     private func flush() {
+        tasks.cancel(forKey: "flush")
+        pushes.cancelAwaitingContinuation()
+
         let task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
 
@@ -469,7 +472,6 @@ extension PhoenixSocket {
         switch _connectionState.value {
         case let .connecting(ws) where ws.id == id,
              let .open(ws) where ws.id == id:
-
             os_log(
                 "close: %@",
                 log: .phoenix,

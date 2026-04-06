@@ -223,8 +223,8 @@ final class PushBufferTests: XCTestCase {
             }
         }
 
-        let _ = await timeoutTask(push: push1).value
-        let _ = await timeoutTask(push: push2).value
+        _ = await timeoutTask(push: push1).value
+        _ = await timeoutTask(push: push2).value
 
         #if compiler(>=5.8)
             await fulfillment(of: [ex], timeout: 2)
@@ -414,7 +414,7 @@ final class PushBufferTests: XCTestCase {
 
             group.addTask {
                 self.prepareToSend(join)
-                let _ = try await buffer.appendAndWait(join)
+                _ = try await buffer.appendAndWait(join)
                 XCTAssertFalse(didProcessJoin.access { didProcess in
                     let old = didProcess
                     didProcess = true
@@ -927,6 +927,69 @@ final class PushBufferTests: XCTestCase {
 
         XCTAssertEqual(3, result.access { $0.errorCount })
         XCTAssertEqual(1, result.access { $0.processCount })
+    }
+
+    func testCancelAwaitingContinuationCancelsWaitingIterator() async throws {
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let didCancel = Locked(false)
+
+        let iteratorTask = Task {
+            do {
+                for try await _ in buffer {
+                    XCTFail("Should not have produced push")
+                }
+            } catch {
+                XCTAssertTrue(error is CancellationError)
+                didCancel.access { $0 = true }
+            }
+        }
+
+        try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
+        buffer.cancelAwaitingContinuation()
+        await iteratorTask.value
+
+        XCTAssertTrue(didCancel.access { $0 })
+    }
+
+    func testCancelAwaitingContinuationAllowsNewIterator() async throws {
+        let buffer = PushBuffer()
+        buffer.resume()
+
+        let firstIteratorCancelled = Locked(false)
+
+        let firstTask = Task {
+            do {
+                for try await _ in buffer {
+                    XCTFail("Should not have produced push")
+                }
+            } catch {
+                firstIteratorCancelled.access { $0 = true }
+            }
+        }
+
+        try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 20)
+        buffer.cancelAwaitingContinuation()
+        await firstTask.value
+        XCTAssertTrue(firstIteratorCancelled.access { $0 })
+
+        let push = makePush(1)
+        let didReceivePush = Locked(false)
+
+        Task {
+            try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+            try await buffer.append(push) as Void
+        }
+
+        for try await p in buffer {
+            XCTAssertEqual(push, p)
+            didReceivePush.access { $0 = true }
+            buffer.didSend(p)
+            break
+        }
+
+        XCTAssertTrue(didReceivePush.access { $0 })
     }
 
     func testSlowPushesDoNotDelayOtherPushes() async throws {
