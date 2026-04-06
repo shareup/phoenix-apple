@@ -101,17 +101,32 @@ final actor PhoenixSocket {
     }
 
     func connect() async {
-        guard case .closed = _connectionState.value else { return }
+        switch _connectionState.value {
+        case .closed:
+            break
+        case .waitingToReconnect, .preparingToReconnect:
+            tasks.cancel(forKey: "reconnect")
+            _connectionState.value = .closed(connectionAttempts: 0)
+        case .connecting, .open, .closing:
+            return
+        }
         shouldReconnect = true
         await doConnect()
     }
 
     func disconnect(timeout: TimeInterval? = nil) async {
-        guard let ws = webSocket else { return }
-        await doCloseFromClient(
-            id: ws.id,
-            timeout: timeout?.nanoseconds ?? self.timeout
-        )
+        if let ws = webSocket {
+            await doCloseFromClient(
+                id: ws.id,
+                timeout: timeout?.nanoseconds ?? self.timeout
+            )
+        } else if !_connectionState.value.isClosed {
+            shouldReconnect = false
+            pushes.pause()
+            removeAll()
+            tasks.cancelAll()
+            _connectionState.value = .closed(connectionAttempts: 0)
+        }
     }
 }
 
@@ -182,6 +197,9 @@ extension PhoenixSocket {
     }
 
     private func flush() {
+        tasks.cancel(forKey: "flush")
+        pushes.cancelAwaitingContinuation()
+
         let task = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
 
@@ -229,6 +247,8 @@ extension PhoenixSocket {
     }
 
     private func listen() {
+        tasks.cancel(forKey: "listen")
+
         let task = Task { [weak self] in
             guard !Task.isCancelled,
                   let ws = await self?.webSocket,
@@ -276,6 +296,8 @@ extension PhoenixSocket {
 
 extension PhoenixSocket {
     private func scheduleHeartbeat() {
+        tasks.cancel(forKey: "heartbeat")
+
         let interval = heartbeatInterval
         let task = Task { [weak self] in
             try await Task.sleep(nanoseconds: interval)
@@ -410,6 +432,7 @@ extension PhoenixSocket {
             os_log("connect", log: .phoenix, type: .debug)
 
             let ws = try await doMakeWebSocket()
+            try Task.checkCancellation()
             _connectionState.value = .connecting(ws)
 
             try await ws.open()
@@ -423,6 +446,7 @@ extension PhoenixSocket {
             scheduleHeartbeat()
 
         } catch {
+            guard !Task.isCancelled else { return }
             _connectionState.value = .closed(connectionAttempts: attempts + 1)
             await doConnect()
         }
@@ -469,7 +493,6 @@ extension PhoenixSocket {
         switch _connectionState.value {
         case let .connecting(ws) where ws.id == id,
              let .open(ws) where ws.id == id:
-
             os_log(
                 "close: %@",
                 log: .phoenix,
@@ -485,7 +508,7 @@ extension PhoenixSocket {
             let connectTask = Task.detached { [weak self] in
                 await self?.doConnect()
             }
-            tasks.add(connectTask)
+            tasks.insert(connectTask, forKey: "reconnect")
 
         default:
             break

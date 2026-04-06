@@ -586,6 +586,82 @@ final class PhoenixSocketTests: XCTestCase {
         }
     }
 
+    func testDisconnectStopsReconnectionLoop() async throws {
+        let openCount = Locked(0)
+        let shouldFailOpen = Locked(false)
+
+        let socket = PhoenixSocket(
+            url: url,
+            timeout: 0.001,
+            heartbeatInterval: 0.001,
+            makeWebSocket: { [weak self] _, _, _, onOpen, onClose in
+                guard let self else { throw CancellationError() }
+                return fake(onOpen: onOpen, onClose: onClose, open: {
+                    openCount.access { $0 += 1 }
+                    if shouldFailOpen.access({ $0 }) {
+                        throw URLError(.notConnectedToInternet)
+                    }
+                    onOpen()
+                })
+            }
+        )
+
+        await socket.connect()
+        await AssertTrue(socket.connectionState.isOpen)
+
+        shouldFailOpen.access { $0 = true }
+
+        await AssertTrueEventually(openCount.access { $0 } >= 4)
+
+        await socket.disconnect()
+        XCTAssertTrue(socket.connectionState.isClosed)
+
+        try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+        let countAfterDisconnect = openCount.access { $0 }
+        try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
+        XCTAssertEqual(countAfterDisconnect, openCount.access { $0 })
+    }
+
+    func testConnectAfterDisconnectDuringReconnectionHasNoBackoff() async throws {
+        let openCount = Locked(0)
+        let shouldFailOpen = Locked(false)
+
+        let socket = PhoenixSocket(
+            url: url,
+            timeout: 0.01,
+            heartbeatInterval: 0.01,
+            makeWebSocket: { [weak self] _, _, _, onOpen, onClose in
+                guard let self else { throw CancellationError() }
+                return fake(onOpen: onOpen, onClose: onClose, open: {
+                    openCount.access { $0 += 1 }
+                    if shouldFailOpen.access({ $0 }) {
+                        throw URLError(.notConnectedToInternet)
+                    }
+                    onOpen()
+                })
+            }
+        )
+
+        await socket.connect()
+        await AssertTrue(socket.connectionState.isOpen)
+
+        shouldFailOpen.access { $0 = true }
+
+        await AssertTrueEventually(openCount.access { $0 } >= 4)
+
+        await socket.disconnect()
+        XCTAssertTrue(socket.connectionState.isClosed)
+
+        shouldFailOpen.access { $0 = false }
+
+        let start = ContinuousClock.now
+        await socket.connect()
+        let elapsed = ContinuousClock.now - start
+
+        await AssertTrue(socket.connectionState.isOpen)
+        XCTAssertLessThan(elapsed, .milliseconds(500))
+    }
+
     func testTriggersChannelErrorIfJoining() async throws {
         let didErrorWhileJoining = Locked(false)
 

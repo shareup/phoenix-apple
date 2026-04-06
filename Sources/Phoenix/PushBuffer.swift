@@ -123,6 +123,15 @@ Sendable {
         state.access { $0.putBack(push) }
     }
 
+    func cancelAwaitingContinuation() {
+        let cont = state.access { state -> AwaitingPushContinuation? in
+            let cont = state.awaitingPushContinuation
+            state.awaitingPushContinuation = nil
+            return cont
+        }
+        cont?.resume(throwing: CancellationError())
+    }
+
     /// Cancels all in-flight and buffered pushes and invalidates the
     /// buffer with the specified error or `CancellationError`. Any
     /// subsequent calls to `append()`, `appendAndWait()`, or `next()`
@@ -344,6 +353,7 @@ private extension PushBuffer {
         mutating func setTimeout(_ date: Date, makeTask: () -> Task<Void, Error>) {
             if let timeout {
                 guard date < timeout.date else { return }
+                timeout.cancel()
                 self.timeout = Timeout(date: date, task: makeTask())
             } else {
                 timeout = Timeout(date: date, task: makeTask())
