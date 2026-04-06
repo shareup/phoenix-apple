@@ -353,6 +353,7 @@ private extension PushBuffer {
         mutating func setTimeout(_ date: Date, makeTask: () -> Task<Void, Error>) {
             if let timeout {
                 guard date < timeout.date else { return }
+                timeout.cancel()
                 self.timeout = Timeout(date: date, task: makeTask())
             } else {
                 timeout = Timeout(date: date, task: makeTask())

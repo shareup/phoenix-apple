@@ -232,6 +232,8 @@ extension PhoenixSocket {
     }
 
     private func listen() {
+        tasks.cancel(forKey: "listen")
+
         let task = Task { [weak self] in
             guard !Task.isCancelled,
                   let ws = await self?.webSocket,
@@ -279,6 +281,8 @@ extension PhoenixSocket {
 
 extension PhoenixSocket {
     private func scheduleHeartbeat() {
+        tasks.cancel(forKey: "heartbeat")
+
         let interval = heartbeatInterval
         let task = Task { [weak self] in
             try await Task.sleep(nanoseconds: interval)
