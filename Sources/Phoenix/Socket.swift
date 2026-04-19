@@ -48,11 +48,17 @@ public extension Socket {
         encoder: @escaping PushEncoder = Push.encode,
         maxMessageSize: Int = 5 * 1024 * 1024
     ) -> Socket {
-        let makeWebSocket: MakeWebSocket = { _, url, _, _, _ in
-            try await WebSocket.system(
+        let makeWebSocket: MakeWebSocket = { id, url, options, onOpen, onClose in
+            var options = options
+            options.maximumMessageSize = maxMessageSize
+            var webSocket = try await WebSocket.system(
                 url: url,
-                options: WebSocketOptions(maximumMessageSize: maxMessageSize)
+                options: options,
+                onOpen: onOpen,
+                onClose: onClose
             )
+            webSocket.id = id
+            return webSocket
         }
 
         let phoenix = PhoenixSocket(

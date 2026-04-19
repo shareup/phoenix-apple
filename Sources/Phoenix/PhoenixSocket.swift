@@ -291,6 +291,13 @@ extension PhoenixSocket {
 
                 if Task.isCancelled { break }
             }
+
+            guard !Task.isCancelled else { return }
+            
+            await self?.doCloseFromServer(
+                id: ws.id,
+                error: WebSocketError.closeCodeAndReason(.normalClosure, nil)
+            )
         }
 
         tasks.insert(task, forKey: "listen")
@@ -476,8 +483,8 @@ extension PhoenixSocket {
 
         _connectionState.value = .closing(ws)
         try? await ws.close(timeout: timeout)
-        guard case let .closing(ws) = _connectionState.value,
-              ws.id == id,
+        guard case let .closing(_ws) = _connectionState.value,
+              _ws.id == id,
               shouldReconnect == false
         else { return }
         _connectionState.value = .closed(connectionAttempts: 0)
