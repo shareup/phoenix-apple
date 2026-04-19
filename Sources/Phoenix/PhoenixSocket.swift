@@ -107,7 +107,10 @@ final actor PhoenixSocket {
         case .waitingToReconnect, .preparingToReconnect:
             tasks.cancel(forKey: "reconnect")
             _connectionState.value = .closed(connectionAttempts: 0)
-        case .connecting, .open, .closing:
+        case .closing:
+            guard shouldReconnect == false else { return }
+            _connectionState.value = .closed(connectionAttempts: 0)
+        case .connecting, .open:
             return
         }
         shouldReconnect = true
@@ -473,6 +476,10 @@ extension PhoenixSocket {
 
         _connectionState.value = .closing(ws)
         try? await ws.close(timeout: timeout)
+        guard case let .closing(ws) = _connectionState.value,
+              ws.id == id,
+              shouldReconnect == false
+        else { return }
         _connectionState.value = .closed(connectionAttempts: 0)
     }
 

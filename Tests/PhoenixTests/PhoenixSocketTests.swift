@@ -564,6 +564,45 @@ final class PhoenixSocketTests: XCTestCase {
         XCTAssertEqual(1, closes.access { $0 })
     }
 
+    func testConnectDuringClientClosingReconnects() async throws {
+        let allowCloseToFinish = future(timeout: 2)
+        let openCount = Locked(0)
+
+        let socket = PhoenixSocket(
+            url: url,
+            makeWebSocket: { [weak self] _, _, _, onOpen, onClose in
+                guard let self else { throw CancellationError() }
+                return fake(
+                    onOpen: {
+                        openCount.access { $0 += 1 }
+                        onOpen()
+                    },
+                    onClose: onClose,
+                    close: { code, _ in
+                        try await allowCloseToFinish.value
+                        onClose(WebSocketClose(code, nil))
+                    }
+                )
+            }
+        )
+
+        await socket.connect()
+        await AssertTrue(socket.connectionState.isOpen)
+
+        let disconnectTask = Task { await socket.disconnect() }
+        await AssertTrueEventually(socket.connectionState.isClosing)
+
+        await socket.connect()
+        await AssertTrueEventually(socket.connectionState.isOpen)
+        XCTAssertGreaterThanOrEqual(openCount.access { $0 }, 2)
+
+        allowCloseToFinish.resolve()
+        await disconnectTask.value
+
+        await AssertTrueEventually(socket.connectionState.isOpen)
+        await socket.disconnect(timeout: 0.000001)
+    }
+
     func testReconnectsIfClosedRemotely() async throws {
         let opens = Locked(0)
         let closes = Locked(0)
