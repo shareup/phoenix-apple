@@ -748,6 +748,41 @@ final class PhoenixSocketTests: XCTestCase {
         XCTAssertLessThan(elapsed, .milliseconds(500))
     }
 
+    func testAppliesBackoffWhenConnectionFailsAndOnCloseFires() async throws {
+        let openCount = Locked(0)
+
+        let socket = PhoenixSocket(
+            url: url,
+            heartbeatInterval: 10,
+            makeWebSocket: { id, _, _, _, onClose in
+                WebSocket(
+                    id: id,
+                    open: {
+                        openCount.access { $0 += 1 }
+                        onClose(WebSocketClose(.abnormalClosure, nil))
+                        throw URLError(.notConnectedToInternet)
+                    },
+                    close: { _, _ in },
+                    send: { _ in },
+                    messagesPublisher: {
+                        Empty<WebSocketMessage, Never>(
+                            completeImmediately: false
+                        ).eraseToAnyPublisher()
+                    }
+                )
+            }
+        )
+
+        _ = Task { await socket.connect() }
+
+        try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 300)
+
+        let count = openCount.access { $0 }
+        XCTAssertLessThanOrEqual(count, 5)
+
+        await socket.disconnect(timeout: 0.000001)
+    }
+
     func testTriggersChannelErrorIfJoining() async throws {
         let didErrorWhileJoining = Locked(false)
 

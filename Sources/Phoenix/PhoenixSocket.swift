@@ -432,7 +432,8 @@ extension PhoenixSocket {
 
         do {
             if let timeout = Self.reconnectDelay(attempts: attempts) {
-                try await Task.sleep(nanoseconds: NSEC_PER_SEC * UInt64(timeout))
+                let ns = UInt64(Double(NSEC_PER_SEC) * timeout)
+                try await Task.sleep(nanoseconds: ns)
             }
 
             guard case .waitingToReconnect = _connectionState.value,
@@ -507,8 +508,18 @@ extension PhoenixSocket {
         }
 
         switch _connectionState.value {
-        case let .connecting(ws) where ws.id == id,
-             let .open(ws) where ws.id == id:
+        case let .connecting(ws) where ws.id == id:
+            os_log(
+                "close: %@",
+                log: .phoenix,
+                type: .error,
+                String(describing: error)
+            )
+            _connectionState.value = .closing(ws)
+            cancelAllInputOutput()
+            try? await ws.close(closeCode(from: error), timeout)
+
+        case let .open(ws) where ws.id == id:
             os_log(
                 "close: %@",
                 log: .phoenix,
@@ -538,7 +549,6 @@ private extension PhoenixSocket {
             id += 1
             return id
         }
-
         return try await makeWebSocket(
             id, // id
             url(), // url
@@ -546,7 +556,9 @@ private extension PhoenixSocket {
             {}, // onOpen
             { [id] close in
                 Task { [weak self] in
-                    guard let self, !Task.isCancelled else { return }
+                    guard let self,
+                          !Task.isCancelled
+                    else { return }
                     await doCloseFromServer(
                         id: id,
                         error: WebSocketError.closeCodeAndReason(
