@@ -37,6 +37,10 @@ public struct Message: Hashable, Sendable, CustomStringConvertible {
             throw DecodingError.invalidType(String(describing: jsonArray))
         }
 
+        guard arr.count >= 5 else {
+            throw DecodingError.missingValue("expected 5 message elements")
+        }
+
         let joinRef: Ref? = _ref(arr[0])
         let ref: Ref? = _ref(arr[1])
 

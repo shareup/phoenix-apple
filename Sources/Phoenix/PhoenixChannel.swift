@@ -22,6 +22,7 @@ final class PhoenixChannel: @unchecked Sendable {
     var isJoining: Bool { state.access { $0.isJoining } }
     var isJoined: Bool { state.access { $0.isJoined } }
     var isUnjoined: Bool { state.access { $0.isUnjoined } }
+    private var isReadyToJoin: Bool { state.access { $0.isReadyToJoin } }
 
     private let socket: PhoenixSocket
     private let state: Locked<State>
@@ -95,6 +96,10 @@ final class PhoenixChannel: @unchecked Sendable {
         payload: JSON = [:],
         timeout: TimeInterval? = nil
     ) async throws {
+        guard isReadyToJoin else {
+            throw PhoenixError.channelNotJoined(topic)
+        }
+
         let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
         let push = Push(
             topic: topic,
@@ -111,6 +116,10 @@ final class PhoenixChannel: @unchecked Sendable {
         payload: JSON = [:],
         timeout: TimeInterval? = nil
     ) async throws -> JSON {
+        guard isReadyToJoin else {
+            throw PhoenixError.channelNotJoined(topic)
+        }
+
         let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
         let push = Push(
             topic: topic,
@@ -136,13 +145,15 @@ final class PhoenixChannel: @unchecked Sendable {
     func prepareToSend(_ push: Push) async -> Bool {
         precondition(push.topic == topic)
 
+        if push.event == .join {
+            let ref = await socket.makeRef()
+            push.prepareToSend(ref: ref)
+            state.access { $0.didPrepareToSendJoin(ref: ref) }
+            return true
+        }
+
         guard let joinRef = state.access({ $0.joinRef }) else {
-            if push.event == .join {
-                push.prepareToSend(ref: await socket.makeRef())
-                return true
-            } else {
-                return false
-            }
+            return false
         }
 
         push.prepareToSend(ref: await socket.makeRef(), joinRef: joinRef)
@@ -214,6 +225,25 @@ private extension PhoenixChannel {
 
             future?.resolve((ref, reply))
             return reply
+        } catch let error as JoinTimeOutError {
+            state.access { $0.didFailJoin(clearJoinRef: true) }?.fail(TimeoutError())
+            tasks.cancel(forKey: "rejoin")
+
+            os_log(
+                "join: channel=%{public}s error=%{public}@",
+                log: .phoenix,
+                type: .error,
+                topic,
+                String(describing: TimeoutError())
+            )
+
+            await sendLeaveAfterJoinTimeout(
+                joinRef: error.joinRef,
+                timeout: timeout
+            )
+            scheduleRejoinIfPossible(timeout: timeout)
+
+            throw TimeoutError()
         } catch let error as NotReadyToJoinError {
             throw error
         } catch PhoenixError.leavingChannel {
@@ -238,6 +268,23 @@ private extension PhoenixChannel {
         }
     }
 
+    func sendLeaveAfterJoinTimeout(
+        joinRef: Ref?,
+        timeout: TimeInterval?
+    ) async {
+        guard let joinRef else { return }
+
+        let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
+        let push = Push(
+            topic: topic,
+            event: .leave,
+            timeout: Date(timeIntervalSinceNow: timeout)
+        )
+
+        push.prepareToSend(ref: await socket.makeRef(), joinRef: joinRef)
+        try? await socket.send(push)
+    }
+
     func scheduleRejoinIfPossible(timeout: TimeInterval? = nil) {
         tasks.storedNewTask(key: "rejoin") { [weak self] in
             try Task.checkCancellation()
@@ -248,21 +295,25 @@ private extension PhoenixChannel {
 
 private struct State: @unchecked Sendable {
     private(set) var connection: Connection
-    private var isReadyToJoin: Bool
+    private(set) var isReadyToJoin: Bool
     private var lastJoinTimeout: TimeInterval?
+    private var currentJoinRef: Ref?
     private var rejoinAttempts: Int
     private var rejoinDelay: [TimeInterval]
 
     var joinRef: Ref? {
         switch connection {
-        case .unjoined, .errored, .joining, .left:
+        case .unjoined, .left:
             nil
+
+        case .errored, .joining:
+            currentJoinRef
 
         case let .joined(ref, _):
             ref
 
         case let .leaving(ref, _):
-            ref
+            ref ?? currentJoinRef
         }
     }
 
@@ -322,6 +373,10 @@ private struct State: @unchecked Sendable {
         isReadyToJoin = true
     }
 
+    mutating func didPrepareToSendJoin(ref: Ref) {
+        currentJoinRef = ref
+    }
+
     mutating func rejoin(
         topic: Topic,
         payload: JSON,
@@ -366,7 +421,13 @@ private struct State: @unchecked Sendable {
                     timeout: Date(timeIntervalSinceNow: timeout)
                 )
 
-                let message: Message = try await socket.request(push)
+                let message: Message
+                do {
+                    message = try await socket.request(push)
+                } catch is TimeoutError {
+                    throw JoinTimeOutError(joinRef: push.ref)
+                }
+
                 let (ref, isOk, payload) = try message.refAndReply
 
                 guard isOk else {
@@ -398,17 +459,21 @@ private struct State: @unchecked Sendable {
 
         case let .joining(future):
             rejoinAttempts = 0
+            currentJoinRef = ref
             connection = .joined(ref, reply: reply)
             return future
         }
     }
 
-    mutating func didFailJoin() -> JoinFuture? {
+    mutating func didFailJoin(clearJoinRef: Bool = false) -> JoinFuture? {
         switch connection {
         case .unjoined, .errored, .joined, .leaving, .left:
             return nil
 
         case let .joining(future):
+            if clearJoinRef {
+                currentJoinRef = nil
+            }
             connection = .errored
             return future
         }
@@ -459,18 +524,22 @@ private struct State: @unchecked Sendable {
     mutating func leaveImmediately() -> () -> Void {
         switch connection {
         case .errored, .left, .unjoined:
+            currentJoinRef = nil
             connection = .left
             return {}
 
         case let .joining(join):
+            currentJoinRef = nil
             connection = .left
             return { join.fail(CancellationError()) }
 
         case let .leaving(_, leave):
+            currentJoinRef = nil
             connection = .left
             return { leave.resolve() }
 
         case .joined:
+            currentJoinRef = nil
             connection = .left
             return {}
         }
@@ -493,27 +562,26 @@ private struct State: @unchecked Sendable {
         socket: PhoenixSocket,
         sendMessage: @escaping (Message) -> Void
     ) -> () async -> Bool {
-        func doSendMessage() -> () -> Void {
-            switch connection {
-            case let .joined(joinRef, _):
-                if message.joinRef == joinRef || message.joinRef == nil {
-                    { sendMessage(message) }
-                } else {
-                    {
-                        os_log(
-                            "outdated message: channel=%{public}s joinRef=%d message=%d",
-                            log: .phoenix,
-                            type: .debug,
-                            message.topic,
-                            Int(joinRef.rawValue),
-                            Int(message.joinRef?.rawValue ?? 0)
-                        )
-                    }
-                }
+        let currentJoinRef = joinRef
 
-            case .unjoined, .errored, .joining, .leaving, .left:
-                { sendMessage(message) }
+        if let messageJoinRef = message.joinRef,
+           messageJoinRef != currentJoinRef
+        {
+            return {
+                os_log(
+                    "outdated message: channel=%{public}s joinRef=%d message=%d",
+                    log: .phoenix,
+                    type: .debug,
+                    message.topic,
+                    Int(currentJoinRef?.rawValue ?? 0),
+                    Int(messageJoinRef.rawValue)
+                )
+                return false
             }
+        }
+
+        func doSendMessage() -> () -> Void {
+            { sendMessage(message) }
         }
 
         switch message.event {
@@ -603,10 +671,12 @@ private struct State: @unchecked Sendable {
             return {}
 
         case let .joining(future):
+            currentJoinRef = nil
             connection = .errored
             return { future.fail(TimeoutError()) }
 
         case let .leaving(_, future):
+            currentJoinRef = nil
             connection = .left
             return { future.resolve() }
 
@@ -625,3 +695,7 @@ private struct State: @unchecked Sendable {
 }
 
 private struct NotReadyToJoinError: Error {}
+
+private struct JoinTimeOutError: Error {
+    let joinRef: Ref?
+}

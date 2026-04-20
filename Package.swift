@@ -32,7 +32,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/shareup/websocket-apple.git",
-            from: "4.1.0"
+            from: "4.1.1"
         ),
     ],
     targets: [

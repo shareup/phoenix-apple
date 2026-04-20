@@ -666,7 +666,7 @@ final class PhoenixSocketTests: XCTestCase {
 
         messages.send(completion: .finished)
 
-        await AssertTrueEventually(openCount.access({ $0 >= 2 }))
+        await AssertTrueEventually(openCount.access { $0 >= 2 })
         await AssertTrueEventually(socket.connectionState.isOpen)
 
         await socket.disconnect(timeout: 0.000001)
