@@ -502,11 +502,6 @@ extension PhoenixSocket {
     ) async {
         let timeout = TimeInterval(nanoseconds: timeout ?? self.timeout)
 
-        func cancelAllInputOutput() {
-            pushes.pause(error: error)
-            tasks.cancelAll()
-        }
-
         switch _connectionState.value {
         case let .connecting(ws) where ws.id == id:
             os_log(
@@ -516,7 +511,8 @@ extension PhoenixSocket {
                 String(describing: error)
             )
             _connectionState.value = .closing(ws)
-            cancelAllInputOutput()
+            pushes.pause(error: error)
+            tasks.cancelAll(where: { $0 != "reconnect" })
             try? await ws.close(closeCode(from: error), timeout)
 
         case let .open(ws) where ws.id == id:
@@ -528,7 +524,8 @@ extension PhoenixSocket {
             )
 
             _connectionState.value = .closing(ws)
-            cancelAllInputOutput()
+            pushes.pause(error: error)
+            tasks.cancelAll()
             try? await ws.close(closeCode(from: error), timeout)
             _connectionState.value = .closed(connectionAttempts: 0)
 

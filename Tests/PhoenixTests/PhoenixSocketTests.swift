@@ -783,6 +783,74 @@ final class PhoenixSocketTests: XCTestCase {
         await socket.disconnect(timeout: 0.000001)
     }
 
+    func testReconnectContinuesWhenReconnectOpenFailsAfterOnClose() async throws {
+        let creationCount = Locked(0)
+        let openAttemptCount = Locked(0)
+        let initialOnClose = Locked<WebSocketOnClose?>(nil)
+
+        let socket = PhoenixSocket(
+            url: url,
+            heartbeatInterval: 10,
+            makeWebSocket: { id, _, _, onOpen, onClose in
+                let creation = creationCount.access { count in
+                    defer { count += 1 }
+                    return count
+                }
+
+                guard creation > 0 else {
+                    initialOnClose.access { $0 = onClose }
+                    return WebSocket(
+                        id: id,
+                        open: {
+                            openAttemptCount.access { $0 += 1 }
+                            onOpen()
+                        },
+                        close: { _, _ in },
+                        send: { _ in },
+                        messagesPublisher: {
+                            Empty<WebSocketMessage, Never>(
+                                completeImmediately: false
+                            ).eraseToAnyPublisher()
+                        }
+                    )
+                }
+
+                return WebSocket(
+                    id: id,
+                    open: {
+                        let attempt = openAttemptCount.access { count in
+                            defer { count += 1 }
+                            return count
+                        }
+                        guard attempt >= 3 else {
+                            onClose(WebSocketClose(.abnormalClosure, nil))
+                            throw URLError(.notConnectedToInternet)
+                        }
+                        onOpen()
+                    },
+                    close: { _, _ in },
+                    send: { _ in },
+                    messagesPublisher: {
+                        Empty<WebSocketMessage, Never>(
+                            completeImmediately: false
+                        ).eraseToAnyPublisher()
+                    }
+                )
+            }
+        )
+
+        await socket.connect()
+        await AssertTrue(socket.connectionState.isOpen)
+
+        let close = try XCTUnwrap(initialOnClose.access { $0 })
+        close(WebSocketClose(.abnormalClosure, nil))
+
+        await AssertTrueEventually(openAttemptCount.access { $0 >= 4 }, 2)
+        await AssertTrueEventually(socket.connectionState.isOpen, 2)
+
+        await socket.disconnect(timeout: 0.000001)
+    }
+
     func testTriggersChannelErrorIfJoining() async throws {
         let didErrorWhileJoining = Locked(false)
 
