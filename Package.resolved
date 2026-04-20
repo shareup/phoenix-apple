@@ -50,8 +50,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/shareup/websocket-apple.git",
       "state" : {
-        "revision" : "a176fc4f7b9f7ad4f0a1fa245a2bbb024658a30e",
-        "version" : "4.1.0"
+        "revision" : "3a934c8d91e85b732605d58424acf75e96114282",
+        "version" : "4.1.1"
       }
     }
   ],

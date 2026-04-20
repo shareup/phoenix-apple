@@ -107,7 +107,10 @@ final actor PhoenixSocket {
         case .waitingToReconnect, .preparingToReconnect:
             tasks.cancel(forKey: "reconnect")
             _connectionState.value = .closed(connectionAttempts: 0)
-        case .connecting, .open, .closing:
+        case .closing:
+            guard shouldReconnect == false else { return }
+            _connectionState.value = .closed(connectionAttempts: 0)
+        case .connecting, .open:
             return
         }
         shouldReconnect = true
@@ -211,14 +214,16 @@ extension PhoenixSocket {
                 else { return }
 
                 do {
-                    if let channel = await channels[push.topic] {
-                        guard await channel.prepareToSend(push) else {
-                            pushes.putBack(push)
-                            await Task.yield()
-                            continue
+                    if push.ref == nil {
+                        if let channel = await channels[push.topic] {
+                            guard await channel.prepareToSend(push) else {
+                                pushes.putBack(push)
+                                await Task.yield()
+                                continue
+                            }
+                        } else {
+                            push.prepareToSend(ref: await makeRef())
                         }
-                    } else {
-                        push.prepareToSend(ref: await makeRef())
                     }
 
                     try await ws.send(encoder(push))
@@ -288,6 +293,13 @@ extension PhoenixSocket {
 
                 if Task.isCancelled { break }
             }
+
+            guard !Task.isCancelled else { return }
+
+            await self?.doCloseFromServer(
+                id: ws.id,
+                error: WebSocketError.closeCodeAndReason(.normalClosure, nil)
+            )
         }
 
         tasks.insert(task, forKey: "listen")
@@ -473,6 +485,10 @@ extension PhoenixSocket {
 
         _connectionState.value = .closing(ws)
         try? await ws.close(timeout: timeout)
+        guard case let .closing(_ws) = _connectionState.value,
+              _ws.id == id,
+              shouldReconnect == false
+        else { return }
         _connectionState.value = .closed(connectionAttempts: 0)
     }
 
@@ -545,8 +561,8 @@ private extension PhoenixSocket {
     // Serves the same purpose as `reconnectTimer` in PhoenixJS
     static func reconnectDelay(attempts: Int) -> TimeInterval? {
         guard attempts > 0 else { return nil }
-        guard attempts < 9 else { return 5 }
-        return [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 1, 2][attempts]
+        guard attempts <= 9 else { return 5 }
+        return [0.01, 0.05, 0.1, 0.15, 0.2, 0.25, 0.5, 1, 2][attempts - 1]
     }
 }
 

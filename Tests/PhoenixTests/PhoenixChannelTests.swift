@@ -408,37 +408,46 @@ final class PhoenixChannelTests: XCTestCase {
             await socket.connect()
 
             let sentMessages = Locked<[Message]>([])
+            let didSendJoin = AsyncThrowingFuture<Void>()
+            let canReplyToJoin = AsyncThrowingFuture<Void>()
+
+            let listener = Task {
+                for await msg in self.outgoingMessages {
+                    let message = try Message.decode(msg)
+
+                    if message.event == .join {
+                        didSendJoin.resolve()
+                        try await canReplyToJoin.value
+                    }
+
+                    try self.sendReply(for: message)
+
+                    let count = sentMessages.access { sentMessages in
+                        sentMessages.append(message)
+                        return sentMessages.count
+                    }
+
+                    if count == 4 { break }
+                }
+            }
+
+            let channel = await self.makeChannel(socket)
+            let joinTask = Task { try await channel.join() }
+
+            try await didSendJoin.value
 
             try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    for await msg in self.outgoingMessages {
-                        let message = try Message.decode(msg)
-                        try self.sendReply(for: message)
-                        let count = sentMessages.access { sentMessages in
-                            sentMessages.append(message)
-                            return sentMessages.count
-                        }
-                        if count == 4 { break }
-                    }
-                }
-
-                let channel = await self.makeChannel(socket)
-
                 for event in ["one", "two", "three"] {
-                    group.addTask {
-                        do {
-                            try await channel.send(event)
-                        } catch {
-                            XCTFail("Push should have succeeded instead of \(error)")
-                        }
-                    }
+                    group.addTask { try await channel.send(event) }
                 }
 
                 try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
-                try await channel.join()
-
+                canReplyToJoin.resolve()
                 try await group.waitForAll()
             }
+
+            _ = try await joinTask.value
+            _ = try await listener.value
 
             XCTAssertEqual(4, sentMessages.access { $0.count })
             XCTAssertEqual(.join, sentMessages.access { $0[0].event })
@@ -728,6 +737,8 @@ final class PhoenixChannelTests: XCTestCase {
             let channel = await self.makeChannel(socket)
 
             let isJoined = Locked(false)
+            let didSendJoin = AsyncThrowingFuture<Void>()
+            let canReplyToJoin = AsyncThrowingFuture<Void>()
 
             try await withThrowingTaskGroup(of: Void.self) { group in
                 group.addTask {
@@ -736,6 +747,8 @@ final class PhoenixChannelTests: XCTestCase {
                     for await msg in self.outgoingMessages {
                         let message = try Message.decode(msg)
                         if message.event == .join {
+                            didSendJoin.resolve()
+                            try await canReplyToJoin.value
                             isJoined.access { $0 = true }
                             didJoin = true
                         } else {
@@ -750,6 +763,7 @@ final class PhoenixChannelTests: XCTestCase {
                 }
 
                 group.addTask {
+                    try await didSendJoin.value
                     do {
                         let resp = try await channel.request("test")
                         XCTAssertTrue(isJoined.access { $0 })
@@ -764,35 +778,186 @@ final class PhoenixChannelTests: XCTestCase {
                     try await channel.join()
                 }
 
+                group.addTask {
+                    try await didSendJoin.value
+                    try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+                    canReplyToJoin.resolve()
+                }
+
                 try await group.waitForAll()
             }
         }
     }
 
-    func testDoesNotPushIfNotJoined() async throws {
+    func testSendThrowsIfJoinNeverCalled() async throws {
         try await withSocket { socket in
             await socket.connect()
             let channel = await self.makeChannel(socket)
 
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                let didSendPush = Locked(false)
-
-                group.addTask {
-                    try await channel.send("test")
-                    didSendPush.access { $0 = true }
+            do {
+                try await channel.send("test")
+                XCTFail("Should have thrown before join() was called")
+            } catch let error as PhoenixError {
+                guard case let .channelNotJoined(topic) = error else {
+                    return XCTFail("Unexpected error: \(error)")
                 }
-
-                group.addTask {
-                    await self.wait()
-                    try await channel.join()
-                }
-
-                try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 50)
-
-                XCTAssertFalse(didSendPush.access { $0 })
-
-                group.cancelAll()
+                XCTAssertEqual("topic", topic)
             }
+        }
+    }
+
+    func testRequestThrowsIfJoinNeverCalled() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+            let channel = await self.makeChannel(socket)
+
+            do {
+                _ = try await channel.request("test")
+                XCTFail("Should have thrown before join() was called")
+            } catch let error as PhoenixError {
+                guard case let .channelNotJoined(topic) = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertEqual("topic", topic)
+            }
+        }
+    }
+
+    func testSendsLeaveBeforeRejoiningAfterJoinTimeout() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+            let channel = await self.makeChannel(
+                rejoinDelay: [0],
+                socket
+            )
+
+            let didObserveRejoin = AsyncThrowingFuture<Void>()
+
+            let listener = Task {
+                var joinCount = 0
+                var sawLeave = false
+
+                for await msg in self.outgoingMessages {
+                    let message = try Message.decode(msg)
+
+                    switch message.event {
+                    case .join:
+                        joinCount += 1
+
+                        if joinCount == 2 {
+                            XCTAssertTrue(
+                                sawLeave,
+                                "Expected phx_leave before retrying phx_join"
+                            )
+                            didObserveRejoin.resolve()
+                            break
+                        }
+
+                    case .leave:
+                        sawLeave = true
+
+                    case .custom, .reply, .close, .error, .heartbeat:
+                        break
+                    }
+                }
+            }
+
+            do {
+                try await channel.join(timeout: 0.01)
+                XCTFail("Join should have timed out")
+            } catch is TimeoutError {}
+
+            try await didObserveRejoin.value
+            listener.cancel()
+        }
+    }
+
+    func testIgnoresOutdatedCloseWhileRejoining() async throws {
+        try await withSocket { socket in
+            await socket.connect()
+            let channel = await self.makeChannel(
+                rejoinDelay: [0],
+                socket
+            )
+
+            let outgoingMessages = self.outgoingMessages
+            let channelMessages = channel.messages
+
+            let firstJoinRef = AsyncThrowingFuture<Ref>()
+            let didReceiveClose = Locked(false)
+            let didReceiveError = AsyncThrowingFuture<Void>()
+
+            let listener = Task {
+                var joinCount = 0
+
+                for await msg in outgoingMessages {
+                    let message = try Message.decode(msg)
+
+                    guard message.event == .join else { continue }
+                    joinCount += 1
+
+                    switch joinCount {
+                    case 1:
+                        firstJoinRef.resolve(try XCTUnwrap(message.ref))
+                        try self.sendReply(for: message)
+
+                    case 2:
+                        let staleJoinRef = try await firstJoinRef.value
+                        self.receiveSubject.send(
+                            .text(
+                                """
+                                [\(staleJoinRef.rawValue),null,"topic","phx_close",{}]
+                                """
+                            )
+                        )
+                        try self.sendReply(for: message, payload: ["rejoined": true])
+                        return
+
+                    default:
+                        XCTFail("Expected only two join attempts")
+                    }
+                }
+            }
+
+            let messageTask = Task {
+                for await message in channelMessages {
+                    if message.event == .error {
+                        didReceiveError.resolve()
+                    } else if message.event == .close {
+                        didReceiveClose.access { $0 = true }
+                        break
+                    }
+                }
+            }
+
+            await self.wait()
+
+            _ = try await channel.join()
+
+            let initialJoinRef = try await firstJoinRef.value
+            self.receiveSubject.send(
+                .text(
+                    """
+                    [\(initialJoinRef.rawValue),null,"topic","phx_error",{}]
+                    """
+                )
+            )
+
+            try await didReceiveError.value
+            let payload = try await channel.join()
+            XCTAssertEqual(["rejoined": true], payload)
+            XCTAssertTrue(channel.isJoined)
+
+            let currentChannel = await socket.channels["topic"]
+            XCTAssertNotNil(currentChannel)
+            XCTAssertEqual(
+                ObjectIdentifier(channel),
+                ObjectIdentifier(try XCTUnwrap(currentChannel))
+            )
+            XCTAssertFalse(didReceiveClose.access { $0 })
+
+            listener.cancel()
+            messageTask.cancel()
         }
     }
 

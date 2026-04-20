@@ -564,6 +564,45 @@ final class PhoenixSocketTests: XCTestCase {
         XCTAssertEqual(1, closes.access { $0 })
     }
 
+    func testConnectDuringClientClosingReconnects() async throws {
+        let allowCloseToFinish = future(timeout: 2)
+        let openCount = Locked(0)
+
+        let socket = PhoenixSocket(
+            url: url,
+            makeWebSocket: { [weak self] _, _, _, onOpen, onClose in
+                guard let self else { throw CancellationError() }
+                return fake(
+                    onOpen: {
+                        openCount.access { $0 += 1 }
+                        onOpen()
+                    },
+                    onClose: onClose,
+                    close: { code, _ in
+                        try await allowCloseToFinish.value
+                        onClose(WebSocketClose(code, nil))
+                    }
+                )
+            }
+        )
+
+        await socket.connect()
+        await AssertTrue(socket.connectionState.isOpen)
+
+        let disconnectTask = Task { await socket.disconnect() }
+        await AssertTrueEventually(socket.connectionState.isClosing)
+
+        await socket.connect()
+        await AssertTrueEventually(socket.connectionState.isOpen)
+        XCTAssertGreaterThanOrEqual(openCount.access { $0 }, 2)
+
+        allowCloseToFinish.resolve()
+        await disconnectTask.value
+
+        await AssertTrueEventually(socket.connectionState.isOpen)
+        await socket.disconnect(timeout: 0.000001)
+    }
+
     func testReconnectsIfClosedRemotely() async throws {
         let opens = Locked(0)
         let closes = Locked(0)
@@ -584,6 +623,53 @@ final class PhoenixSocketTests: XCTestCase {
 
             XCTAssertGreaterThanOrEqual(1, closes.access { $0 })
         }
+    }
+
+    func testReconnectsWhenMessageStreamFinishesWithoutCloseCallback() async throws {
+        let openCount = Locked(0)
+        let creationCount = Locked(0)
+        let messages = PassthroughSubject<WebSocketMessage, Never>()
+
+        let socket = PhoenixSocket(
+            url: url,
+            heartbeatInterval: 10,
+            makeWebSocket: { id, _, _, onOpen, _ in
+                let attempt = creationCount.access { count in
+                    defer { count += 1 }
+                    return count
+                }
+
+                return WebSocket(
+                    id: id,
+                    open: {
+                        openCount.access { $0 += 1 }
+                        onOpen()
+                    },
+                    close: { _, _ in },
+                    send: { _ in },
+                    messagesPublisher: {
+                        if attempt == 0 {
+                            messages.eraseToAnyPublisher()
+                        } else {
+                            Empty<WebSocketMessage, Never>(
+                                completeImmediately: false
+                            ).eraseToAnyPublisher()
+                        }
+                    }
+                )
+            }
+        )
+
+        await socket.connect()
+        await AssertTrue(socket.connectionState.isOpen)
+        await wait()
+
+        messages.send(completion: .finished)
+
+        await AssertTrueEventually(openCount.access { $0 >= 2 })
+        await AssertTrueEventually(socket.connectionState.isOpen)
+
+        await socket.disconnect(timeout: 0.000001)
     }
 
     func testDisconnectStopsReconnectionLoop() async throws {
