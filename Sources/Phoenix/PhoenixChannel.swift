@@ -225,7 +225,7 @@ private extension PhoenixChannel {
 
             future?.resolve((ref, reply))
             return reply
-        } catch let error as JoinTimeOutError {
+        } catch let error as JoinTimeoutError {
             state.access { $0.didFailJoin(clearJoinRef: true) }?.fail(TimeoutError())
             tasks.cancel(forKey: "rejoin")
 
@@ -237,10 +237,12 @@ private extension PhoenixChannel {
                 String(describing: TimeoutError())
             )
 
-            await sendLeaveAfterJoinTimeout(
-                joinRef: error.joinRef,
-                timeout: timeout
-            )
+            Task {
+                await sendLeaveAfterJoinTimeout(
+                    joinRef: error.joinRef,
+                    timeout: timeout
+                )
+            }
             scheduleRejoinIfPossible(timeout: timeout)
 
             throw TimeoutError()
@@ -425,7 +427,7 @@ private struct State: @unchecked Sendable {
                 do {
                     message = try await socket.request(push)
                 } catch is TimeoutError {
-                    throw JoinTimeOutError(joinRef: push.ref)
+                    throw JoinTimeoutError(joinRef: push.ref)
                 }
 
                 let (ref, isOk, payload) = try message.refAndReply
@@ -696,6 +698,6 @@ private struct State: @unchecked Sendable {
 
 private struct NotReadyToJoinError: Error {}
 
-private struct JoinTimeOutError: Error {
+private struct JoinTimeoutError: Error {
     let joinRef: Ref?
 }
