@@ -225,7 +225,7 @@ private extension PhoenixChannel {
 
             future?.resolve((ref, reply))
             return reply
-        } catch let error as JoinTimeOutError {
+        } catch let error as JoinTimeoutError {
             state.access { $0.didFailJoin(clearJoinRef: true) }?.fail(TimeoutError())
             tasks.cancel(forKey: "rejoin")
 
@@ -237,10 +237,16 @@ private extension PhoenixChannel {
                 String(describing: TimeoutError())
             )
 
-            await sendLeaveAfterJoinTimeout(
-                joinRef: error.joinRef,
-                timeout: timeout
-            )
+            if let joinRef = error.joinRef {
+                tasks.storedNewTask(key: "leave-\(joinRef)") { [weak self] in
+                    guard let self else { return }
+                    await sendLeaveAfterJoinTimeout(
+                        joinRef: joinRef,
+                        timeout: timeout
+                    )
+                }
+            }
+
             scheduleRejoinIfPossible(timeout: timeout)
 
             throw TimeoutError()
@@ -269,10 +275,10 @@ private extension PhoenixChannel {
     }
 
     func sendLeaveAfterJoinTimeout(
-        joinRef: Ref?,
+        joinRef: Ref,
         timeout: TimeInterval?
     ) async {
-        guard let joinRef else { return }
+        defer { tasks.cancel(forKey: "leave-\(joinRef)") }
 
         let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
         let push = Push(
@@ -425,7 +431,7 @@ private struct State: @unchecked Sendable {
                 do {
                     message = try await socket.request(push)
                 } catch is TimeoutError {
-                    throw JoinTimeOutError(joinRef: push.ref)
+                    throw JoinTimeoutError(joinRef: push.ref)
                 }
 
                 let (ref, isOk, payload) = try message.refAndReply
@@ -696,6 +702,6 @@ private struct State: @unchecked Sendable {
 
 private struct NotReadyToJoinError: Error {}
 
-private struct JoinTimeOutError: Error {
+private struct JoinTimeoutError: Error {
     let joinRef: Ref?
 }

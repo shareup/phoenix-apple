@@ -187,52 +187,63 @@ final class PhoenixChannelTests: XCTestCase {
 
     func testRetriesJoinWithBackoffAfterTimeout() async throws {
         try await withSocket { socket in
-            await socket.connect()
-            let channel = await self.makeChannel(
-                rejoinDelay: [0, 0.001, 0.1, 100],
-                socket
-            )
+            try await self.serialized {
+                await socket.connect()
+                let channel = await self.makeChannel(
+                    rejoinDelay: [0, 0.001, 0.1, 100],
+                    socket
+                )
 
-            let start = Date()
+                let start = Date.now
+                let joinFuture = AsyncThrowingFuture<Void>(timeout: 2)
+                await self.yield(3)
 
-            Task {
-                var attempt = 0
-                for await msg in self.outgoingMessages {
-                    let message = try! Message.decode(msg)
+                let messagesTask = self.task {
+                    var attempt = 0
+                    for await msg in self.outgoingMessages {
+                        let message = try! Message.decode(msg)
 
-                    // Ignore leave messages
-                    if message.event == .leave { continue }
-                    XCTAssert(message.event == .join)
+                        // Ignore leave messages
+                        if message.event == .leave { continue }
+                        XCTAssert(message.event == .join)
 
-                    defer { attempt += 1 }
+                        defer { attempt += 1 }
 
-                    switch attempt {
-                    case 0:
-                        break
+                        switch attempt {
+                        case 0:
+                            break
 
-                    case 1:
-                        break
+                        case 1:
+                            break
 
-                    case 2:
-                        try self.sendReply(for: message)
+                        case 2:
+                            try self.sendReply(for: message)
+                            joinFuture.resolve()
 
-                    default:
-                        XCTFail()
+                        default:
+                            XCTFail()
+                        }
                     }
                 }
+                defer { messagesTask.cancel() }
+
+                await self.yield(2)
+
+                let joinTask = self.task {
+                    try await channel.join(timeout: 0.01)
+                }
+                defer { joinTask.cancel() }
+
+                try await joinFuture.value
+                await self.yield()
+                XCTAssertTrue(channel.isJoined)
+
+                let stop = Date.now
+                XCTAssertGreaterThanOrEqual(
+                    stop.timeIntervalSince(start),
+                    0.11
+                )
             }
-
-            Task {
-                await self.wait()
-                try await channel.join(timeout: 0.01)
-            }
-
-            await AssertTrueEventually(channel.isJoined)
-
-            XCTAssertGreaterThanOrEqual(
-                Date().timeIntervalSince(start),
-                0.11
-            )
         }
     }
 
