@@ -237,12 +237,16 @@ private extension PhoenixChannel {
                 String(describing: TimeoutError())
             )
 
-            Task {
-                await sendLeaveAfterJoinTimeout(
-                    joinRef: error.joinRef,
-                    timeout: timeout
-                )
+            if let joinRef = error.joinRef {
+                tasks.storedNewTask(key: "leave-\(joinRef)") { [weak self] in
+                    guard let self else { return }
+                    await sendLeaveAfterJoinTimeout(
+                        joinRef: joinRef,
+                        timeout: timeout
+                    )
+                }
             }
+
             scheduleRejoinIfPossible(timeout: timeout)
 
             throw TimeoutError()
@@ -271,10 +275,10 @@ private extension PhoenixChannel {
     }
 
     func sendLeaveAfterJoinTimeout(
-        joinRef: Ref?,
+        joinRef: Ref,
         timeout: TimeInterval?
     ) async {
-        guard let joinRef else { return }
+        defer { tasks.cancel(forKey: "leave-\(joinRef)") }
 
         let timeout = timeout ?? TimeInterval(nanoseconds: socket.timeout)
         let push = Push(
