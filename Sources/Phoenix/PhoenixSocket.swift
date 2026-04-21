@@ -451,12 +451,21 @@ extension PhoenixSocket {
 
             try Task.checkCancellation()
 
-            _connectionState.value = .open(ws)
-            pushes.resume()
-            listen()
-            flush()
-            scheduleHeartbeat()
+            switch _connectionState.value {
+            case let .connecting(_ws) where _ws.id == ws.id:
+                _connectionState.value = .open(ws)
+                pushes.resume()
+                listen()
+                flush()
+                scheduleHeartbeat()
 
+            case let .closing(_ws) where _ws.id == ws.id && shouldReconnect:
+                _connectionState.value = .closed(connectionAttempts: 0)
+                await doConnect()
+
+            default:
+                break
+            }
         } catch {
             guard !Task.isCancelled else { return }
             _connectionState.value = .closed(connectionAttempts: attempts + 1)

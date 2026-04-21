@@ -783,6 +783,62 @@ final class PhoenixSocketTests: XCTestCase {
         await socket.disconnect(timeout: 0.000001)
     }
 
+    func testReconnectsWhenOpenReturnsAfterCloseCallback() async throws {
+        let creationCount = Locked(0)
+        let openCount = Locked(0)
+
+        let socket = PhoenixSocket(
+            url: url,
+            heartbeatInterval: 10,
+            makeWebSocket: { id, _, _, onOpen, onClose in
+                let creation = creationCount.access { count in
+                    defer { count += 1 }
+                    return count
+                }
+
+                guard creation == 0 else {
+                    return WebSocket(
+                        id: id,
+                        open: {
+                            openCount.access { $0 += 1 }
+                            onOpen()
+                        },
+                        close: { _, _ in },
+                        send: { _ in },
+                        messagesPublisher: {
+                            Empty<WebSocketMessage, Never>(
+                                completeImmediately: false
+                            ).eraseToAnyPublisher()
+                        }
+                    )
+                }
+
+                return WebSocket(
+                    id: id,
+                    open: {
+                        openCount.access { $0 += 1 }
+                        onClose(WebSocketClose(.abnormalClosure, nil))
+                        try await Task.sleep(nanoseconds: NSEC_PER_MSEC * 10)
+                    },
+                    close: { _, _ in },
+                    send: { _ in },
+                    messagesPublisher: {
+                        Empty<WebSocketMessage, Never>(
+                            completeImmediately: false
+                        ).eraseToAnyPublisher()
+                    }
+                )
+            }
+        )
+
+        await socket.connect()
+
+        await AssertTrueEventually(openCount.access { $0 >= 2 })
+        await AssertTrueEventually(socket.connectionState.isOpen)
+
+        await socket.disconnect(timeout: 0.000001)
+    }
+
     func testReconnectContinuesWhenReconnectOpenFailsAfterOnClose() async throws {
         let creationCount = Locked(0)
         let openAttemptCount = Locked(0)
