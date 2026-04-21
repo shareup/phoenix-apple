@@ -432,8 +432,7 @@ extension PhoenixSocket {
 
         do {
             if let timeout = Self.reconnectDelay(attempts: attempts) {
-                let ns = UInt64(Double(NSEC_PER_SEC) * timeout)
-                try await Task.sleep(nanoseconds: ns)
+                try await Task.sleep(nanoseconds: timeout.nanoseconds)
             }
 
             guard case .waitingToReconnect = _connectionState.value,
