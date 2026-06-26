@@ -20,7 +20,7 @@ let package = Package(
         ),
         .package(
             url: "https://github.com/shareup/json-apple.git",
-            from: "1.4.1"
+            from: "2.0.0"
         ),
         .package(
             url: "https://github.com/apple/swift-collections.git",
